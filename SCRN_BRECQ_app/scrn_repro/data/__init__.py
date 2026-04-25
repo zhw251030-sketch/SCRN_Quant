@@ -8,6 +8,7 @@ from .degradation import (
     gaussian_noise_for_snr,
     make_random_trace_mask,
 )
+from .dataset import PatchSampleInfo, SCRNPatchDataset, build_train_loader, discover_patch_files
 from .patches import (
     PatchExtractionConfig,
     augment_patch,
@@ -23,9 +24,13 @@ __all__ = [
     "DEFAULT_SNR_DB_VALUES",
     "DegradationInfo",
     "PatchExtractionConfig",
+    "PatchSampleInfo",
+    "SCRNPatchDataset",
     "augment_patch",
+    "build_train_loader",
     "collect_patches_from_segy_dir",
     "degrade_patch",
+    "discover_patch_files",
     "gaussian_noise_for_snr",
     "iter_segy_files",
     "make_random_trace_mask",
