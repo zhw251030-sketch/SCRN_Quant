@@ -7,8 +7,9 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRN_ROOT = PROJECT_ROOT / "SCRN-main"
 BRECQ_ROOT = PROJECT_ROOT / "BRECQ-main"
+APP_ROOT = PROJECT_ROOT / "SCRN_BRECQ_app"
 
-DEFAULT_SCRN_CHECKPOINT = SCRN_ROOT / "trained_model" / "model.pth"
+DEFAULT_SCRN_CHECKPOINT = APP_ROOT / "checkpoints" / "scrn_repro.pth"
 
 
 def add_to_import_path(path: Path) -> None:

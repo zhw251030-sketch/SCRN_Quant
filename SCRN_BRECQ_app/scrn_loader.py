@@ -1,18 +1,17 @@
-"""Load SCRN models from the unmodified SCRN source tree."""
+"""加载 SCRN 独立复现模型。
+
+本模块只依赖 SCRN_BRECQ_app/scrn_repro 中的实现，不再导入 SCRN-main 源码。
+"""
 
 from pathlib import Path
 from typing import Any, Mapping, Optional, Union
 
-from .paths import DEFAULT_SCRN_CHECKPOINT, SCRN_ROOT, add_to_import_path, require_existing_path
+from .paths import DEFAULT_SCRN_CHECKPOINT, require_existing_path
+from .scrn_repro.model import SCRN
 
 
 def import_scrn_class():
-    """Import the SCRN class after making SCRN-main available on sys.path."""
-    require_existing_path(SCRN_ROOT, "SCRN source directory")
-    add_to_import_path(SCRN_ROOT)
-
-    from model.SCRN import SCRN
-
+    """返回独立复现的 SCRN 类，保留该函数便于兼容旧调用。"""
     return SCRN
 
 
