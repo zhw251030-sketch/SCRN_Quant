@@ -143,11 +143,17 @@ def _save_comparison_figure(path: Path, clean: np.ndarray, degraded: np.ndarray,
         (degraded, f"Input SNR={metrics['before_snr_db']:.2f}dB"),
         (prediction, f"Output SNR={metrics['after_snr_db']:.2f}dB"),
     ]
+    vmin = float(np.min(clean))
+    vmax = float(np.max(clean))
+    if vmin == vmax:
+        vmin, vmax = vmin - 1.0, vmax + 1.0
+
+    im = None
     for axis, (image, title) in zip(axes, panels):
-        im = axis.imshow(image, cmap="seismic", aspect="auto")
+        im = axis.imshow(image, cmap="seismic", aspect="auto", vmin=vmin, vmax=vmax)
         axis.set_title(title)
         axis.axis("off")
-        fig.colorbar(im, ax=axis, shrink=0.75)
+    fig.colorbar(im, ax=axes, shrink=0.75)
     fig.savefig(path, dpi=300)
     plt.close(fig)
 
