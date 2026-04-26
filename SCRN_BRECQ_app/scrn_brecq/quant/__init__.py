@@ -5,6 +5,7 @@
 """
 
 from .adaptive_rounding import AdaRoundQuantizer
+from .block_recon import BlockLossFunction, LinearTempDecay, block_reconstruction, reconstruction_loss
 from .data_utils import (
     DataSaverHook,
     GetLayerGrad,
@@ -16,6 +17,7 @@ from .data_utils import (
     save_inp_oup_data,
 )
 from .fold_bn import fold_bn_into_conv, search_fold_and_remove_bn, search_fold_and_reset_bn
+from .layer_recon import LayerLossFunction, layer_reconstruction
 from .quant_block import BaseQuantBlock, QuantFeatureFusionBlock, specials
 from .quant_layer import QuantModule, StraightThrough, UniformAffineQuantizer, lp_loss, round_ste
 from .quant_model import QuantModel
@@ -23,19 +25,25 @@ from .quant_model import QuantModel
 __all__ = [
     "AdaRoundQuantizer",
     "BaseQuantBlock",
+    "BlockLossFunction",
     "DataSaverHook",
     "GetLayerGrad",
     "GetLayerInpOut",
     "GradSaverHook",
+    "LayerLossFunction",
+    "LinearTempDecay",
     "QuantModel",
     "QuantModule",
     "QuantFeatureFusionBlock",
     "StraightThrough",
     "StopForwardException",
     "UniformAffineQuantizer",
+    "block_reconstruction",
     "fold_bn_into_conv",
+    "layer_reconstruction",
     "lp_loss",
     "quantize_model_till",
+    "reconstruction_loss",
     "round_ste",
     "search_fold_and_remove_bn",
     "search_fold_and_reset_bn",
