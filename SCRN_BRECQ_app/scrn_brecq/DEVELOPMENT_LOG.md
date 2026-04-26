@@ -37,10 +37,11 @@
 2. 校准数据加载器：从 SCRN patch 数据中采样 calibration data，提供给 BRECQ 重构使用。
 3. 基础量化层：迁移并重写 BRECQ 的均匀仿射量化、STE 和 `QuantModule`。
 4. SCRN 量化模型包装：递归替换 SCRN 中的 `Conv2d`、`Linear`，并处理 Conv-BN 折叠。
-5. AdaRound 权重量化：实现自适应 rounding 参数和 rounding regularization。
-6. 重构数据缓存：通过 hook 保存目标层/块的输入输出，为 reconstruction 提供数据。
-7. Layer/Block Reconstruction：实现 BRECQ 的层重构和适配 SCRN `FeatureFusionBlock` 的块重构。
-8. 命令行量化与评估：串联加载模型、校准数据、量化重构、保存结果和评估指标。
+5. SCRN 专用 QuantBlock 适配：让 `FeatureFusionBlock` 成为可识别的 block reconstruction 单元。
+6. AdaRound 权重量化：实现自适应 rounding 参数和 soft/hard rounding 策略。
+7. 重构数据缓存：通过 hook 保存目标层/块的输入输出，为 reconstruction 提供数据。
+8. Layer/Block Reconstruction：实现 BRECQ 的层重构和适配 SCRN `FeatureFusionBlock` 的块重构。
+9. 命令行量化与评估：串联加载模型、校准数据、量化重构、保存结果和评估指标。
 
 ### 训练结果选择
 
@@ -171,3 +172,28 @@
 - `python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/quant_block.py SCRN_BRECQ_app/scrn_brecq/quant/quant_model.py SCRN_BRECQ_app/scrn_brecq/quant/__init__.py`
 - `conda run -n quant python` 加载推荐 SCRN checkpoint，构造默认 `QuantModel(wrap_quant_blocks=True)`，确认 `BaseQuantBlock` 数量为 5。
 - 验证 block 包装后 quant off、W quant、W+A quant 三种状态均可前向，并与 `wrap_quant_blocks=False` 的 quant off 输出一致。
+
+## 2026-04-26 第六部分：AdaRound 权重量化
+
+### 修改内容
+
+- 新增 `quant/adaptive_rounding.py`，实现 `AdaRoundQuantizer`。
+- 更新 `quant/__init__.py`，导出 `AdaRoundQuantizer`。
+- 修正顶部整体任务计划，加入已完成的 SCRN 专用 `quant_block.py`，并将 AdaRound 标为第六部分。
+
+### 参考来源
+
+- `BRECQ-main/quant/adaptive_rounding.py`：参考 AdaRound 的 rounding 模式、hard-sigmoid 参数和 `alpha` 初始化方式。
+- `BRECQ-main/quant/layer_recon.py` 与 `block_recon.py`：确认后续 reconstruction 会替换 `weight_quantizer` 并优化 `alpha`。
+- `SCRN_BRECQ_app/scrn_brecq/quant/quant_layer.py`：复用 `UniformAffineQuantizer` 的 `delta`、`zero_point` 和 `round_ste`。
+
+### 实现说明
+
+- `AdaRoundQuantizer` 依赖已初始化的 `UniformAffineQuantizer`，否则会抛出明确错误。
+- 兼容原 BRECQ 中的 `learned_round_sigmoid` 名称，内部按 `learned_hard_sigmoid` 处理。
+- 对 rounding remainder 做轻微 clamp，避免 `alpha` 初始化时出现 NaN/Inf。
+
+### 验证方式
+
+- `python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/adaptive_rounding.py SCRN_BRECQ_app/scrn_brecq/quant/__init__.py`
+- `conda run -n quant python` 验证 `alpha` 类型、soft target 范围、soft/hard 前向、nearest/nearest_ste 前向、无 NaN/Inf 和未初始化量化器错误。
