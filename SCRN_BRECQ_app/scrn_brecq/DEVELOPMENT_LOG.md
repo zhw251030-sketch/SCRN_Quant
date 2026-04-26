@@ -29,9 +29,9 @@
 - 本次只创建文档、配置和包初始化文件，不包含可运行算法。
 - 后续提交前会对新增 Python 文件执行 `python -m py_compile`。
 
-## 2026-04-26 SCRN-BRECQ 后续任务计划
+## 2026-04-26 SCRN-BRECQ 后续任务计划（九部分）
 
-### 整体拆分
+### 整体拆分（已从八部分修正为九部分）
 
 1. SCRN 模型加载适配：把 SCRN 训练 checkpoint 恢复成 BRECQ 可处理的 FP32 `nn.Module`。
 2. 校准数据加载器：从 SCRN patch 数据中采样 calibration data，提供给 BRECQ 重构使用。
@@ -42,6 +42,11 @@
 7. 重构数据缓存：通过 hook 保存目标层/块的输入输出，为 reconstruction 提供数据。
 8. Layer/Block Reconstruction：实现 BRECQ 的层重构和适配 SCRN `FeatureFusionBlock` 的块重构。
 9. 命令行量化与评估：串联加载模型、校准数据、量化重构、保存结果和评估指标。
+
+### 计划修订说明
+
+- 原计划按八部分推进，后来为了单独处理 SCRN 的 `FeatureFusionBlock`，新增第五部分 `SCRN 专用 QuantBlock 适配`。
+- 因此 AdaRound 顺延为第六部分，后续 reconstruction 数据缓存、Layer/Block Reconstruction 和 CLI/评估分别顺延为第七到第九部分。
 
 ### 训练结果选择
 
