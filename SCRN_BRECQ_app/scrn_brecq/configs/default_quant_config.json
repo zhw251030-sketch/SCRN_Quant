@@ -1,0 +1,21 @@
+{
+  "seed": 1005,
+  "device": "cuda",
+  "n_bits_w": 4,
+  "n_bits_a": 4,
+  "channel_wise": true,
+  "act_quant": false,
+  "disable_8bit_head_stem": false,
+  "num_samples": 1024,
+  "batch_size": 16,
+  "iters_w": 20000,
+  "iters_a": 5000,
+  "rounding_loss_weight": 0.01,
+  "b_start": 20,
+  "b_end": 2,
+  "warmup": 0.2,
+  "activation_lr": 0.0004,
+  "lp_norm": 2.4,
+  "scale_method": "mse"
+}
+
