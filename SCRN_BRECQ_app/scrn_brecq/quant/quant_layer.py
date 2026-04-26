@@ -273,13 +273,15 @@ class QuantModule(nn.Module):
 
         # 保留原 module 的 Parameter 引用，使优化器和 state_dict 仍能看到可训练权重。
         self.weight = org_module.weight
-        self.org_weight = org_module.weight.detach().clone()
+        # 原始 FP32 权重作为 buffer 保存。这样 QuantModel 后续 `.to(device)` 时，
+        # FP32 路径和量化路径使用的张量会一起迁移到目标设备。
+        self.register_buffer("org_weight", org_module.weight.detach().clone())
         if org_module.bias is None:
             self.bias = None
-            self.org_bias = None
+            self.register_buffer("org_bias", None)
         else:
             self.bias = org_module.bias
-            self.org_bias = org_module.bias.detach().clone()
+            self.register_buffer("org_bias", org_module.bias.detach().clone())
 
         # 默认不启用量化，保证刚替换模块时输出仍是 FP32 路径。
         self.use_weight_quant = False
@@ -322,4 +324,3 @@ class QuantModule(nn.Module):
         """设置当前前向是否启用权重量化和激活量化。"""
         self.use_weight_quant = bool(weight_quant)
         self.use_act_quant = bool(act_quant)
-
