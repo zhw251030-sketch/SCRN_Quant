@@ -1,6 +1,7 @@
 {
   "seed": 1005,
   "device": "cuda",
+  "scrn_checkpoint": "SCRN_BRECQ_app/scrn_repro/runs/train/20260425_192916_four_gpu_train_quant_10750_0/checkpoints/best.pth",
   "n_bits_w": 4,
   "n_bits_a": 4,
   "channel_wise": true,
@@ -18,4 +19,3 @@
   "lp_norm": 2.4,
   "scale_method": "mse"
 }
-
