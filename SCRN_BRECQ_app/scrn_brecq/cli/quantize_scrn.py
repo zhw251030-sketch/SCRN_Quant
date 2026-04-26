@@ -100,22 +100,42 @@ def main() -> None:
     )
 
     write_json(run_dir / "config.json", build_run_config(config, loaded, device))
+    clean, degraded = load_eval_arrays(config["eval_clean_path"], config["eval_input_path"])
+
+    quant_model.set_quant_state(False, False)
+    fp32_prediction, fp32_seconds = predict_array(quant_model, degraded, device)
+
+    initialize_weight_quantization(quant_model, calibration_data, config)
+    quant_model.set_quant_state(True, False)
+    quant_pre_recon_prediction, quant_pre_recon_seconds = predict_array(quant_model, degraded, device)
+
     run_reconstruction(quant_model, calibration_data, config)
-    metrics, prediction = evaluate_quant_model(
-        quant_model,
-        clean_path=config["eval_clean_path"],
-        input_path=config["eval_input_path"],
-        device=device,
+    quant_model.set_quant_state(True, bool(config["act_quant"]))
+    quant_post_recon_prediction, quant_post_recon_seconds = predict_array(quant_model, degraded, device)
+    metrics = build_comparison_metrics(
+        clean,
+        degraded,
+        fp32_prediction=fp32_prediction,
+        fp32_seconds=fp32_seconds,
+        quant_pre_recon_prediction=quant_pre_recon_prediction,
+        quant_pre_recon_seconds=quant_pre_recon_seconds,
+        quant_post_recon_prediction=quant_post_recon_prediction,
+        quant_post_recon_seconds=quant_post_recon_seconds,
     )
 
-    np.save(run_dir / "prediction.npy", prediction)
+    np.save(run_dir / "fp32_prediction.npy", fp32_prediction)
+    np.save(run_dir / "quant_pre_recon_prediction.npy", quant_pre_recon_prediction)
+    np.save(run_dir / "quant_post_recon_prediction.npy", quant_post_recon_prediction)
+    np.save(run_dir / "prediction.npy", quant_post_recon_prediction)
     write_json(run_dir / "metrics.json", metrics)
     if bool(config["save_figure"]):
         save_comparison_figure(
             run_dir / "comparison.png",
-            clean=np.load(config["eval_clean_path"]).astype(np.float32),
-            degraded=np.load(config["eval_input_path"]).astype(np.float32),
-            prediction=prediction,
+            clean=clean,
+            degraded=degraded,
+            fp32_prediction=fp32_prediction,
+            quant_pre_recon_prediction=quant_pre_recon_prediction,
+            quant_post_recon_prediction=quant_post_recon_prediction,
             metrics=metrics,
         )
 
@@ -127,7 +147,10 @@ def main() -> None:
             "Metrics": metrics,
             "Artifacts": {
                 "checkpoint": checkpoint_path,
-                "prediction": run_dir / "prediction.npy",
+                "fp32_prediction": run_dir / "fp32_prediction.npy",
+                "quant_pre_recon_prediction": run_dir / "quant_pre_recon_prediction.npy",
+                "quant_post_recon_prediction": run_dir / "quant_post_recon_prediction.npy",
+                "comparison": run_dir / "comparison.png" if bool(config["save_figure"]) else "disabled",
                 "config": run_dir / "config.json",
                 "metrics": run_dir / "metrics.json",
             },
@@ -142,8 +165,10 @@ def main() -> None:
         },
     )
     print(
-        "before_snr={before_snr_db:.4f} after_snr={after_snr_db:.4f} "
-        "before_ssim={before_ssim:.4f} after_ssim={after_ssim:.4f} seconds={inference_seconds:.4f}".format(
+        "input_snr={input_snr_db:.4f} fp32_snr={fp32_snr_db:.4f} "
+        "pre_recon_snr={quant_pre_recon_snr_db:.4f} post_recon_snr={quant_post_recon_snr_db:.4f} "
+        "input_ssim={input_ssim:.4f} post_recon_ssim={quant_post_recon_ssim:.4f} "
+        "seconds={quant_post_recon_inference_seconds:.4f}".format(
             **metrics
         ),
         flush=True,
@@ -231,15 +256,24 @@ def build_quant_model(model: torch.nn.Module, config: dict[str, Any]) -> QuantMo
     return quant_model
 
 
-def run_reconstruction(quant_model: QuantModel, calibration_data: torch.Tensor, config: dict[str, Any]) -> None:
-    """执行 W-only，并按需执行 W+A reconstruction。"""
+def initialize_weight_quantization(
+    quant_model: QuantModel,
+    calibration_data: torch.Tensor,
+    config: dict[str, Any],
+) -> None:
+    """初始化权重量化 scale/zero point，并保留 reconstruction 前状态用于评估。"""
     device = next(quant_model.parameters()).device
     init_inputs = calibration_data[: min(int(config["init_batch_size"]), int(calibration_data.size(0)))].to(device)
-
     quant_model.eval()
     quant_model.set_quant_state(True, False)
     with torch.no_grad():
         _ = quant_model(init_inputs)
+
+
+def run_reconstruction(quant_model: QuantModel, calibration_data: torch.Tensor, config: dict[str, Any]) -> None:
+    """执行 W-only，并按需执行 W+A reconstruction。"""
+    device = next(quant_model.parameters()).device
+    init_inputs = calibration_data[: min(int(config["init_batch_size"]), int(calibration_data.size(0)))].to(device)
 
     weight_kwargs = {
         "cali_data": calibration_data,
@@ -298,34 +332,58 @@ def reconstruct_model(quant_model: QuantModel, module: torch.nn.Module, reconstr
             reconstruct_model(quant_model, child, reconstruction_kwargs, full_name)
 
 
-def evaluate_quant_model(
-    model: torch.nn.Module,
-    *,
-    clean_path: str | Path,
-    input_path: str | Path,
-    device: torch.device,
-) -> tuple[dict[str, float], np.ndarray]:
-    """在 SCRN 默认测试 `.npy` 上评估量化模型。"""
+def load_eval_arrays(clean_path: str | Path, input_path: str | Path) -> tuple[np.ndarray, np.ndarray]:
+    """读取 SCRN 默认测试 `.npy` 对，并检查形状一致。"""
     clean = np.load(clean_path).astype(np.float32)
     degraded = np.load(input_path).astype(np.float32)
     if clean.shape != degraded.shape:
         raise ValueError(f"clean and input shapes differ: {clean.shape} vs {degraded.shape}")
+    return clean, degraded
 
+
+def predict_array(model: torch.nn.Module, degraded: np.ndarray, device: torch.device) -> tuple[np.ndarray, float]:
+    """对单张 degraded array 做模型推理，返回预测和耗时。"""
     model.eval()
     start = time.time()
     with torch.no_grad():
         tensor = torch.from_numpy(degraded).view(1, 1, degraded.shape[0], degraded.shape[1]).float().to(device)
         prediction = model(tensor).squeeze(0).squeeze(0).cpu().numpy().astype(np.float32)
     elapsed = time.time() - start
+    return prediction, elapsed
 
+
+def build_comparison_metrics(
+    clean: np.ndarray,
+    degraded: np.ndarray,
+    *,
+    fp32_prediction: np.ndarray,
+    fp32_seconds: float,
+    quant_pre_recon_prediction: np.ndarray,
+    quant_pre_recon_seconds: float,
+    quant_post_recon_prediction: np.ndarray,
+    quant_post_recon_seconds: float,
+) -> dict[str, float]:
+    """构建五图对比对应的完整指标。"""
     metrics = {
-        "before_snr_db": snr_db(degraded, clean),
-        "after_snr_db": snr_db(prediction, clean),
-        "before_ssim": ssim_score(degraded, clean),
-        "after_ssim": ssim_score(prediction, clean),
-        "inference_seconds": elapsed,
+        "input_snr_db": snr_db(degraded, clean),
+        "input_ssim": ssim_score(degraded, clean),
+        "fp32_snr_db": snr_db(fp32_prediction, clean),
+        "fp32_ssim": ssim_score(fp32_prediction, clean),
+        "fp32_inference_seconds": float(fp32_seconds),
+        "quant_pre_recon_snr_db": snr_db(quant_pre_recon_prediction, clean),
+        "quant_pre_recon_ssim": ssim_score(quant_pre_recon_prediction, clean),
+        "quant_pre_recon_inference_seconds": float(quant_pre_recon_seconds),
+        "quant_post_recon_snr_db": snr_db(quant_post_recon_prediction, clean),
+        "quant_post_recon_ssim": ssim_score(quant_post_recon_prediction, clean),
+        "quant_post_recon_inference_seconds": float(quant_post_recon_seconds),
     }
-    return metrics, prediction
+    # 保留旧字段名，方便已有 summary/脚本把最终量化结果当作 after 指标读取。
+    metrics["before_snr_db"] = metrics["input_snr_db"]
+    metrics["before_ssim"] = metrics["input_ssim"]
+    metrics["after_snr_db"] = metrics["quant_post_recon_snr_db"]
+    metrics["after_ssim"] = metrics["quant_post_recon_ssim"]
+    metrics["inference_seconds"] = metrics["quant_post_recon_inference_seconds"]
+    return metrics
 
 
 def save_quant_checkpoint(
@@ -385,10 +443,12 @@ def save_comparison_figure(
     *,
     clean: np.ndarray,
     degraded: np.ndarray,
-    prediction: np.ndarray,
+    fp32_prediction: np.ndarray,
+    quant_pre_recon_prediction: np.ndarray,
+    quant_post_recon_prediction: np.ndarray,
     metrics: dict[str, float],
 ) -> None:
-    """保存 clean/input/output 对比图。"""
+    """保存五图对比：GT、输入、FP32、量化重建前、量化重建后。"""
     try:
         import matplotlib
 
@@ -397,11 +457,21 @@ def save_comparison_figure(
     except ModuleNotFoundError as exc:
         raise ModuleNotFoundError("Saving comparison figures requires installing matplotlib.") from exc
 
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
+    fig, axes = plt.subplots(1, 5, figsize=(20, 4.8), constrained_layout=True)
     panels = [
         (clean, "Ground Truth"),
-        (degraded, f"Input SNR={metrics['before_snr_db']:.2f}dB"),
-        (prediction, f"Output SNR={metrics['after_snr_db']:.2f}dB"),
+        (degraded, f"Input\nSNR={metrics['input_snr_db']:.2f}dB SSIM={metrics['input_ssim']:.3f}"),
+        (fp32_prediction, f"FP32 SCRN\nSNR={metrics['fp32_snr_db']:.2f}dB SSIM={metrics['fp32_ssim']:.3f}"),
+        (
+            quant_pre_recon_prediction,
+            "Quant Before Recon\n"
+            f"SNR={metrics['quant_pre_recon_snr_db']:.2f}dB SSIM={metrics['quant_pre_recon_ssim']:.3f}",
+        ),
+        (
+            quant_post_recon_prediction,
+            "Quant After BRECQ\n"
+            f"SNR={metrics['quant_post_recon_snr_db']:.2f}dB SSIM={metrics['quant_post_recon_ssim']:.3f}",
+        ),
     ]
     vmin = float(np.min(clean))
     vmax = float(np.max(clean))
@@ -411,9 +481,10 @@ def save_comparison_figure(
     image = None
     for axis, (array, title) in zip(axes, panels):
         image = axis.imshow(array, cmap="seismic", aspect="auto", vmin=vmin, vmax=vmax)
-        axis.set_title(title)
+        # 五图并排时标题需要显式压小，避免指标文字遮挡图像区域。
+        axis.set_title(title, fontsize=9, pad=6)
         axis.axis("off")
-    fig.colorbar(image, ax=axes, shrink=0.75)
+    fig.colorbar(image, ax=axes, shrink=0.72, fraction=0.02, pad=0.01)
     fig.savefig(path, dpi=300)
     plt.close(fig)
 

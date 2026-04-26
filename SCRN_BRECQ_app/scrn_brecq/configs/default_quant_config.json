@@ -7,7 +7,7 @@
   "calibration_dataset_dir": "SCRN_BRECQ_app/scrn_repro/datasets/scrn_quant_10750_0_patches",
   "eval_clean_path": "SCRN-main/test_data/clear.npy",
   "eval_input_path": "SCRN-main/test_data/noise_and_miss.npy",
-  "save_figure": false,
+  "save_figure": true,
   "n_bits_w": 4,
   "n_bits_a": 4,
   "channel_wise": true,

@@ -286,3 +286,25 @@
 - `python -m json.tool SCRN_BRECQ_app/scrn_brecq/configs/default_quant_config.json`
 - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn --num-samples 2 --batch-size 1 --iters-w 1 --run-name smoke_w_only --device auto`
 - 验证 smoke run 能完成 W-only 量化、保存 checkpoint、写出 metrics/summary，且 `git status` 不出现 `.pth`、`.npy` 或 quant run 产物。
+
+## 2026-04-26 第九部分补充：五图对比和重建前后指标
+
+### 修改内容
+
+- 更新 `cli/quantize_scrn.py`，在 reconstruction 前后分别评估量化模型，并保留 FP32 SCRN 输出。
+- metrics 扩展为 `input`、`fp32`、`quant_pre_recon`、`quant_post_recon` 四组 SNR/SSIM，同时保留旧的 `before_*`、`after_*` 字段兼容 summary。
+- 保存 `fp32_prediction.npy`、`quant_pre_recon_prediction.npy`、`quant_post_recon_prediction.npy`，并继续用 `prediction.npy` 指向最终重建后输出。
+- 更新五图对比图：Ground Truth、Degraded Input、FP32 SCRN、Quant Before Reconstruction、Quant After BRECQ。
+- 更新默认配置，将 `save_figure` 改为 `true`，默认运行会保存对比图。
+
+### 设计原因
+
+- 只看最终量化结果无法判断 BRECQ reconstruction 是否有效。
+- 加入量化重建前结果后，可以直接比较“直接量化损失”和“BRECQ 重建恢复幅度”。
+
+### 验证方式
+
+- `python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/quantize_scrn.py`
+- `python -m json.tool SCRN_BRECQ_app/scrn_brecq/configs/default_quant_config.json`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn --num-samples 2 --batch-size 1 --iters-w 1 --run-name smoke_five_panel --device auto`
+- 验证 run 目录中生成五图 `comparison.png`，metrics 包含 `fp32_*`、`quant_pre_recon_*`、`quant_post_recon_*`。
