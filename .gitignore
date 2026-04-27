@@ -7,6 +7,7 @@ SCRN-main/train_data/
 SCRN-main/trained_model/
 SCRN_BRECQ_app/scrn_repro/runs/
 SCRN_BRECQ_app/scrn_brecq/runs/quant/
+SCRN_BRECQ_app/scrn_brecq/runs/quant_eval/
 
 # Dataset and model artifact files
 *.npy

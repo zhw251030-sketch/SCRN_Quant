@@ -418,3 +418,38 @@
 - 关键包导入通过：`scrn_repro.model`、`scrn_repro.data`、`scrn_repro.training`、`scrn_brecq.data`、`scrn_brecq.model` 和 `scrn_brecq.quant` 的核心对象均可导入。
 - 使用缩小版 SCRN 做 `[1, 1, 16, 16]` 输入前向，输出形状为 `[1, 1, 16, 16]`。
 - 使用缩小版 SCRN 构造 `QuantModel` 后做同样输入前向，输出形状为 `[1, 1, 16, 16]`，并识别出 52 个 `QuantModule` 和 5 个 `BaseQuantBlock`。
+
+## 2026-04-27 补齐复现文档、smoke check 和量化 checkpoint 评估入口
+
+### 修改内容
+
+- 更新 `scrn_brecq/README.md`，把初始化目录树替换为当前完整结构，并补充模块职责、完整量化命令、量化 checkpoint 评估命令、smoke check 命令和运行产物说明。
+- 新增 `scrn_repro/README.md`，说明 SCRN 复现目录的代码边界、数据准备、训练、测试、smoke check、默认数据和默认 checkpoint 来源。
+- 更新 `SCRN_BRECQ_app/__init__.py` 和 `SCRN_BRECQ_app/scrn_loader.py`，明确它们是旧兼容入口；新的 BRECQ 量化流程应使用 `scrn_brecq/model/scrn_loader.py`。
+- 新增 `scrn_repro/cli/smoke_check.py`，用合成 patch 验证在线退化、SCRN 小模型前向和 SNR/SSIM 指标工具。
+- 新增 `scrn_brecq/cli/smoke_check.py`，用缩小版 SCRN 验证 `QuantModel` 包装、量化状态切换、量化前向、`QuantModule` 数量和 `BaseQuantBlock` 数量。
+- 新增 `scrn_brecq/cli/evaluate_quantized_scrn.py`，用于加载已保存的 `quantized_scrn_brecq.pth`，重新构造量化模型并输出 `prediction.npy`、`metrics.json`、`config.json`、`summary.md` 和可选 `comparison.png`。
+- 更新 `.gitignore`，忽略 `SCRN_BRECQ_app/scrn_brecq/runs/quant_eval/`，避免默认评估 run 产物进入 Git。
+
+### 设计说明
+
+- smoke check 采用脚本型 CLI，不引入 pytest，保持当前项目的研究脚本风格。
+- `evaluate_quantized_scrn.py` 只评估量化 checkpoint 本身，不额外加载 FP32 checkpoint 做对比。
+- 量化 checkpoint 中重构后的权重量化器是 `AdaRoundQuantizer`，而新构造的 `QuantModel` 默认使用 `UniformAffineQuantizer`。因此评估入口会先扫描 state dict 中的 `weight_quantizer.alpha` 键，按 `delta`、`zero_point` 和 `alpha` 恢复对应层的 AdaRound 结构，再执行严格 `load_state_dict`。
+- 当前 activation quant checkpoint 格式没有保存 activation `zero_point`。评估入口为可能存在的 `act_quantizer.delta` 预创建参数以允许严格加载，但 activation zero point 会在首次前向时按评估输入刷新；当前已验证的 smoke checkpoint 是 W-only。
+
+### 验证方式
+
+- `git status`
+- `git branch --show-current`
+- `git rev-parse --show-toplevel`
+- `conda run -n quant python -m compileall -q SCRN_BRECQ_app/scrn_repro SCRN_BRECQ_app/scrn_brecq`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_repro.cli.smoke_check --help`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.smoke_check --help`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn --help`
+- `conda run -n quant python -m json.tool SCRN_BRECQ_app/scrn_brecq/configs/default_quant_config.json`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_repro.cli.smoke_check --device cpu`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.smoke_check --device cpu`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn --checkpoint SCRN_BRECQ_app/scrn_brecq/runs/quant/20260426_212245_smoke_w_only/checkpoints/quantized_scrn_brecq.pth --device cpu --run-root /tmp/scrn_brecq_quant_eval_smoke --run-name smoke_eval --no-save-figure`
+- 量化 checkpoint 评估 smoke 输出目录为 `/tmp/scrn_brecq_quant_eval_smoke/20260427_143652_smoke_eval`，包含 `config.json`、`metrics.json`、`prediction.npy` 和 `summary.md`。
+- 评估 smoke 指标：`input_snr=3.9693`、`quant_snr=11.4205`、`input_ssim=0.6053`、`quant_ssim=0.8270`。

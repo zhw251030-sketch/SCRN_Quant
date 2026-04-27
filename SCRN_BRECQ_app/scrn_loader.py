@@ -1,6 +1,9 @@
-"""加载 SCRN 独立复现模型。
+"""加载 SCRN 独立复现模型的旧兼容入口。
 
-本模块只依赖 SCRN_BRECQ_app/scrn_repro 中的实现，不再导入 SCRN-main 源码。
+本模块只依赖 `SCRN_BRECQ_app/scrn_repro` 中的实现，不再导入 `SCRN-main`
+源码。新的 BRECQ 量化主流程使用 `SCRN_BRECQ_app.scrn_brecq.model.scrn_loader`
+中的加载器，因为那里会额外返回 checkpoint 路径、模型配置、epoch 和 loss 等
+量化 run 记录需要的元信息。
 """
 
 from pathlib import Path
