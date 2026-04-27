@@ -491,3 +491,42 @@
   - `max_unique_int_levels_per_channel_by_bit={"4": 16, "8": 214}`
   - `level_offender_count=0`
   - `fp32_quant_max_abs_diff=0.06882372498512268`
+
+## 2026-04-27 正式 W4A32 重建与真实性验证
+
+### 运行命令
+
+- 正式重建：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn --num-samples 1024 --batch-size 16 --iters-w 20000 --run-name w4_recon_1024samples_20000iters --device auto`
+- 量化真实性验证：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.verify_quantized_scrn --checkpoint SCRN_BRECQ_app/scrn_brecq/runs/quant/20260427_152554_w4_recon_1024samples_20000iters/checkpoints/quantized_scrn_brecq.pth --output-json SCRN_BRECQ_app/scrn_brecq/runs/quant/20260427_152554_w4_recon_1024samples_20000iters/verification.json --device cpu`
+
+### 运行产物
+
+- run 目录：`SCRN_BRECQ_app/scrn_brecq/runs/quant/20260427_152554_w4_recon_1024samples_20000iters`
+- 已生成 `metrics.json`、`summary.md`、`comparison.png`、`prediction.npy`、`fp32_prediction.npy`、`quant_pre_recon_prediction.npy`、`quant_post_recon_prediction.npy`、`checkpoints/quantized_scrn_brecq.pth` 和 `verification.json`。
+- 这些产物位于已忽略的 `runs/quant/`，不提交到 Git。
+
+### 指标结果
+
+- 输入退化：`SNR=3.9693 dB`、`SSIM=0.6053`
+- FP32 SCRN：`SNR=11.7869 dB`、`SSIM=0.8697`
+- W4A32 重建前：`SNR=11.4071 dB`、`SSIM=0.8255`
+- W4A32 BRECQ 重建后：`SNR=11.5909 dB`、`SSIM=0.8385`
+- BRECQ 重建带来约 `+0.1838 dB` SNR 和 `+0.0130` SSIM 提升。
+- 重建后相对 FP32 约下降 `0.1960 dB` SNR 和 `0.0312` SSIM。
+
+### 真实性验证结果
+
+- `passed=true`
+- `final_quant_state={"weight_quant": true, "act_quant": false}`，符合 W4A32。
+- `quant_modules=52`，`adaround_modules=51`。
+- `weight_bit_counts={"4": 50, "8": 2}`，首尾层保持 8bit，其余权重量化为 4bit。
+- `level_offender_count=0`。
+- `max_unique_int_levels_per_channel_by_bit={"4": 16, "8": 219}`，4bit 层未超过 16 个整数等级，8bit 层未超过 256 个整数等级。
+- FP32 路径与量化路径存在非零差异：`fp32_quant_max_abs_diff=0.03247570991516113`、`fp32_quant_mean_abs_diff=0.003559230826795101`。
+
+### 结论
+
+- 本次正式检查确认 checkpoint 不是只包了一层 `QuantModel` 的假量化：权重量化器落在目标整数网格，最终状态为 W-only，并且量化前向与 FP32 前向存在可测差异。
+- 4bit 掉点较小在该单张默认测试样本上是可观察结果，但仍需用更多测试样本或完整测试集统计均值后再判断泛化稳定性。
