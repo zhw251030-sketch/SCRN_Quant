@@ -530,3 +530,41 @@
 
 - 本次正式检查确认 checkpoint 不是只包了一层 `QuantModel` 的假量化：权重量化器落在目标整数网格，最终状态为 W-only，并且量化前向与 FP32 前向存在可测差异。
 - 4bit 掉点较小在该单张默认测试样本上是可观察结果，但仍需用更多测试样本或完整测试集统计均值后再判断泛化稳定性。
+
+## 2026-04-27 增加 torchrun 多卡 W-only BRECQ 重建
+
+### 修改内容
+
+- `cli/quantize_scrn.py` 新增 `--distributed` 和 `--gpus`，支持用 torchrun 启动多进程量化。
+- 分布式模式读取 `RANK`、`LOCAL_RANK` 和 `WORLD_SIZE`，每个 rank 绑定一张 CUDA 设备；rank 0 负责创建 run 目录、评估和保存产物，其他 rank 只参与 reconstruction。
+- `data/calibration_loader.py` 增加 rank/world_size 分片，`num_samples` 在分布式下保持全局语义。例如 `num_samples=1024`、`world_size=4` 时每个 rank 读取约 256 个 calibration 样本。
+- `quant/block_recon.py` 和 `quant/layer_recon.py` 支持 `multi_gpu=True`，在 `backward()` 后对 AdaRound 参数梯度执行 `torch.distributed.all_reduce` 并除以 `world_size`。
+- 分布式模式当前只支持 W-only；`--distributed --act-quant` 会直接报错，避免 activation scale 初始化和同步不一致。
+- 更新 `configs/default_quant_config.json` 和 `README.md`，记录默认单卡行为、单卡指定 GPU 命令和四卡 torchrun 示例。
+
+### 验证方式
+
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/quantize_scrn.py SCRN_BRECQ_app/scrn_brecq/data/calibration_loader.py SCRN_BRECQ_app/scrn_brecq/quant/block_recon.py SCRN_BRECQ_app/scrn_brecq/quant/layer_recon.py`
+- `conda run -n quant python -m json.tool SCRN_BRECQ_app/scrn_brecq/configs/default_quant_config.json`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn --help`
+- 单卡回归 smoke：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn --num-samples 2 --batch-size 1 --iters-w 1 --run-root /tmp/scrn_brecq_single_gpu_smoke --run-name single_gpu_smoke --device auto --no-save-figure`
+  - 输出目录：`/tmp/scrn_brecq_single_gpu_smoke/20260427_163038_single_gpu_smoke`
+  - 指标：`fp32_snr=11.7869`、`pre_recon_snr=11.4071`、`post_recon_snr=11.4199`。
+- 2 卡分布式 smoke：
+  - `CUDA_VISIBLE_DEVICES=0,1 conda run -n quant torchrun --standalone --nproc_per_node=2 -m SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn --distributed --num-samples 4 --batch-size 1 --iters-w 1 --run-root /tmp/scrn_brecq_dist_smoke --run-name dist_smoke --device cuda --no-save-figure`
+  - 在默认沙箱内 torchrun 本地 rendezvous 因 TCPStore 受限失败；按权限规则提升后通过。
+  - 输出目录：`/tmp/scrn_brecq_dist_smoke/20260427_163715_dist_smoke`
+  - `config.json` 记录 `distributed.enabled=true`、`world_size=2`、`device=cuda:0`。
+  - 指标：`fp32_snr=11.7869`、`pre_recon_snr=11.4071`、`post_recon_snr=11.4198`。
+- 对分布式 smoke checkpoint 运行真实性验证：
+  - `passed=true`
+  - `weight_bit_counts={"4": 50, "8": 2}`
+  - `level_offender_count=0`
+  - `fp32_quant_max_abs_diff=0.06889426708221436`
+
+### 后续建议
+
+- 正式四卡命令建议：
+  - `CUDA_VISIBLE_DEVICES=0,1,2,3 conda run -n quant torchrun --standalone --nproc_per_node=4 -m SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn --distributed --num-samples 1024 --batch-size 16 --iters-w 20000 --run-name w4_recon_1024samples_20000iters_dist4 --device cuda`
+- 若后续需要 W4A4，需要单独设计分布式 activation quantizer 初始化和同步。

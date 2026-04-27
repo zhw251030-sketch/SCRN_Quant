@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Iterable
 
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 
 from SCRN_BRECQ_app.scrn_repro.data import SCRNPatchDataset
 
@@ -34,6 +34,8 @@ class CalibrationDataConfig:
         seed: 控制在线退化过程，使相同配置下 calibration data 可复现。
         device: 返回的 calibration tensor 放置到哪个设备。
         pin_memory: CUDA 训练/量化时可开启 pinned memory；CPU 测试时保持 False。
+        rank: 分布式量化时当前进程编号，单进程为 0。
+        world_size: 分布式量化总进程数，单进程为 1。
     """
 
     dataset_dir: str | Path = DEFAULT_CALIBRATION_DATASET_DIR
@@ -43,6 +45,8 @@ class CalibrationDataConfig:
     seed: int | None = 1005
     device: str | torch.device = "cpu"
     pin_memory: bool = False
+    rank: int = 0
+    world_size: int = 1
 
 
 def build_calibration_dataset(config: CalibrationDataConfig) -> SCRNPatchDataset:
@@ -64,14 +68,24 @@ def build_calibration_dataset(config: CalibrationDataConfig) -> SCRNPatchDataset
 def build_calibration_loader(config: CalibrationDataConfig) -> DataLoader:
     """构建普通单进程/多进程 DataLoader。
 
-    BRECQ 校准不是 SCRN 的 DDP 训练流程，因此这里不使用 DistributedSampler，也不做
-    shuffle。保持固定文件顺序和固定 seed，有助于量化实验复现。
+    分布式量化时不使用随机 DistributedSampler，而是按全局固定顺序做确定性切片：
+    rank `r` 读取 `r, r + world_size, ...`。这样 `num_samples` 仍表示全局样本数，
+    且各 rank 不会重复同一份 calibration patch。
     """
     _validate_positive("batch_size", config.batch_size)
     if config.num_workers < 0:
         raise ValueError(f"num_workers must be non-negative, got {config.num_workers}")
+    _validate_rank(config.rank, config.world_size)
 
     dataset = build_calibration_dataset(config)
+    if int(config.world_size) > 1:
+        indices = list(range(int(config.rank), len(dataset), int(config.world_size)))
+        if not indices:
+            raise ValueError(
+                "Distributed calibration shard is empty: "
+                f"rank={config.rank}, world_size={config.world_size}, num_samples={config.num_samples}"
+            )
+        dataset = Subset(dataset, indices)
     return DataLoader(
         dataset,
         batch_size=config.batch_size,
@@ -118,7 +132,7 @@ def collect_calibration_inputs(
 def load_calibration_data(config: CalibrationDataConfig) -> torch.Tensor:
     """便捷入口：构建 loader 并返回 calibration 输入 tensor。"""
     loader = build_calibration_loader(config)
-    return collect_calibration_inputs(loader, config.num_samples, device=config.device)
+    return collect_calibration_inputs(loader, len(loader.dataset), device=config.device)
 
 
 def _extract_degraded_batch(batch) -> torch.Tensor:
@@ -153,3 +167,12 @@ def _validate_positive(name: str, value: int) -> None:
     if int(value) <= 0:
         raise ValueError(f"{name} must be positive, got {value}")
 
+
+def _validate_rank(rank: int, world_size: int) -> None:
+    """检查分布式 calibration 分片参数。"""
+    if int(world_size) <= 0:
+        raise ValueError(f"world_size must be positive, got {world_size}")
+    if int(rank) < 0:
+        raise ValueError(f"rank must be non-negative, got {rank}")
+    if int(rank) >= int(world_size):
+        raise ValueError(f"rank must be smaller than world_size, got rank={rank}, world_size={world_size}")

@@ -8,6 +8,7 @@ block reconstruction。它会把目标 block 内的权重量化器替换为 AdaR
 from __future__ import annotations
 
 import torch
+import torch.distributed as dist
 from torch import nn
 
 from SCRN_BRECQ_app.scrn_brecq.quant.adaptive_rounding import AdaRoundQuantizer
@@ -33,6 +34,7 @@ def block_reconstruction(
     lr: float = 4e-5,
     p: float = 2.0,
     multi_gpu: bool = False,
+    log_enabled: bool = True,
 ) -> None:
     """对一个 SCRN quant block 执行 BRECQ reconstruction。
 
@@ -81,6 +83,7 @@ def block_reconstruction(
             decay_start=0.0,
             warmup=warmup,
             p=p,
+            log_enabled=log_enabled,
         )
 
         sample_size = min(int(batch_size), int(cached_inps.size(0)))
@@ -94,6 +97,7 @@ def block_reconstruction(
             out_quant = block(cur_inp)
             err = loss_func(out_quant, cur_out, cur_grad)
             err.backward()
+            _sync_parameter_gradients(opt_params, multi_gpu=multi_gpu)
             optimizer.step()
             if scheduler is not None:
                 scheduler.step()
@@ -125,6 +129,7 @@ class BlockLossFunction:
         decay_start: float = 0.0,
         warmup: float = 0.0,
         p: float = 2.0,
+        log_enabled: bool = True,
     ) -> None:
         self.block = block
         self.round_loss = str(round_loss)
@@ -132,6 +137,7 @@ class BlockLossFunction:
         self.rec_loss = str(rec_loss)
         self.loss_start = int(max_count) * float(warmup)
         self.p = float(p)
+        self.log_enabled = bool(log_enabled)
         self.temp_decay = LinearTempDecay(
             max_count,
             rel_start_decay=float(warmup) + (1.0 - float(warmup)) * float(decay_start),
@@ -156,7 +162,7 @@ class BlockLossFunction:
             raise NotImplementedError(f"Unsupported round loss: {self.round_loss}")
 
         total_loss = rec_loss + round_loss
-        if self.count % 500 == 0:
+        if self.log_enabled and self.count % 500 == 0:
             print(
                 "Total loss:\t{:.3f} (rec:{:.3f}, round:{:.3f})\tb={:.2f}\tcount={}".format(
                     float(total_loss.detach()),
@@ -235,8 +241,8 @@ def _validate_reconstruction_args(
     multi_gpu: bool,
 ) -> None:
     """检查 reconstruction 公共参数。"""
-    if multi_gpu:
-        raise NotImplementedError("multi_gpu=True is not supported in SCRN-BRECQ reconstruction.")
+    if multi_gpu and (not dist.is_available() or not dist.is_initialized()):
+        raise RuntimeError("multi_gpu=True requires an initialized torch.distributed process group.")
     if not isinstance(target, (QuantModule, BaseQuantBlock)):
         raise TypeError(f"Expected QuantModule or BaseQuantBlock, got {type(target)!r}")
     if not isinstance(cali_data, torch.Tensor):
@@ -336,6 +342,18 @@ def _rounding_regularizer(module: QuantModule, weight: float, b: float) -> torch
 def _sample_indices(cached_inps: torch.Tensor, sample_size: int) -> torch.Tensor:
     """从缓存样本中随机取一个 mini-batch。"""
     return torch.randperm(int(cached_inps.size(0)), device=cached_inps.device)[:sample_size]
+
+
+def _sync_parameter_gradients(params: list[nn.Parameter], *, multi_gpu: bool) -> None:
+    """分布式 reconstruction 时同步待优化参数梯度。"""
+    if not multi_gpu:
+        return
+    world_size = dist.get_world_size()
+    for param in params:
+        if param.grad is None:
+            continue
+        dist.all_reduce(param.grad, op=dist.ReduceOp.SUM)
+        param.grad.div_(world_size)
 
 
 def _empty_cuda_cache_if_needed() -> None:

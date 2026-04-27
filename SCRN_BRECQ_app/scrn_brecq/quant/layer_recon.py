@@ -19,6 +19,7 @@ from SCRN_BRECQ_app.scrn_brecq.quant.block_recon import (
     _prepare_adaround_params,
     _rounding_regularizer,
     _sample_indices,
+    _sync_parameter_gradients,
     _validate_reconstruction_args,
     reconstruction_loss,
 )
@@ -43,6 +44,7 @@ def layer_reconstruction(
     lr: float = 4e-5,
     p: float = 2.0,
     multi_gpu: bool = False,
+    log_enabled: bool = True,
 ) -> None:
     """对单个 QuantModule 执行 BRECQ reconstruction。
 
@@ -89,6 +91,7 @@ def layer_reconstruction(
             decay_start=0.0,
             warmup=warmup,
             p=p,
+            log_enabled=log_enabled,
         )
 
         sample_size = min(int(batch_size), int(cached_inps.size(0)))
@@ -102,6 +105,7 @@ def layer_reconstruction(
             out_quant = layer(cur_inp)
             err = loss_func(out_quant, cur_out, cur_grad)
             err.backward()
+            _sync_parameter_gradients(opt_params, multi_gpu=multi_gpu)
             optimizer.step()
             if scheduler is not None:
                 scheduler.step()
@@ -129,6 +133,7 @@ class LayerLossFunction:
         decay_start: float = 0.0,
         warmup: float = 0.0,
         p: float = 2.0,
+        log_enabled: bool = True,
     ) -> None:
         self.layer = layer
         self.round_loss = str(round_loss)
@@ -136,6 +141,7 @@ class LayerLossFunction:
         self.rec_loss = str(rec_loss)
         self.loss_start = int(max_count) * float(warmup)
         self.p = float(p)
+        self.log_enabled = bool(log_enabled)
         self.temp_decay = LinearTempDecay(
             max_count,
             rel_start_decay=float(warmup) + (1.0 - float(warmup)) * float(decay_start),
@@ -158,7 +164,7 @@ class LayerLossFunction:
             raise NotImplementedError(f"Unsupported round loss: {self.round_loss}")
 
         total_loss = rec_loss + round_loss
-        if self.count % 500 == 0:
+        if self.log_enabled and self.count % 500 == 0:
             print(
                 "Total loss:\t{:.3f} (rec:{:.3f}, round:{:.3f})\tb={:.2f}\tcount={}".format(
                     float(total_loss.detach()),

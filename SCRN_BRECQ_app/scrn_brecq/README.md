@@ -72,6 +72,27 @@ conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn \
   --device auto
 ```
 
+指定单张 GPU 运行量化:
+
+```bash
+conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn \
+  --gpus 1 \
+  --device cuda
+```
+
+使用 torchrun 做 W-only 多卡 BRECQ 重建:
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1,2,3 conda run -n quant torchrun --standalone --nproc_per_node=4 \
+  -m SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn \
+  --distributed \
+  --num-samples 1024 \
+  --batch-size 16 \
+  --iters-w 20000 \
+  --run-name w4_recon_1024samples_20000iters_dist4 \
+  --device cuda
+```
+
 重新评估已保存的量化 checkpoint:
 
 ```bash
@@ -100,4 +121,5 @@ conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.smoke_check --device 
 - `evaluate_quantized_scrn.py` 默认写入 `SCRN_BRECQ_app/scrn_brecq/runs/quant_eval/`。
 - 运行产物通常包括 `config.json`、`metrics.json`、`summary.md`、`prediction.npy`、可选 `comparison.png` 和 checkpoint。
 - 正式 W4A32 重建建议从默认配置开始，即 `num_samples=1024`、`batch_size=16`、`iters_w=20000`、`act_quant=false`。
+- 分布式量化当前只支持 W-only；`--distributed` 与 `--act-quant` 同时使用会报错。
 - `.npy`、`.pth`、运行目录、缓存和日志不应提交到 Git。

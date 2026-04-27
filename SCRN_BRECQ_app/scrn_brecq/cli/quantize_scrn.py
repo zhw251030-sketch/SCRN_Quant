@@ -10,12 +10,14 @@ from __future__ import annotations
 import argparse
 from dataclasses import asdict
 from datetime import datetime
+import os
 from pathlib import Path
 import time
 from typing import Any
 
 import numpy as np
 import torch
+import torch.distributed as dist
 
 from SCRN_BRECQ_app.scrn_brecq.data import CalibrationDataConfig, load_calibration_data
 from SCRN_BRECQ_app.scrn_brecq.model import load_scrn_for_brecq
@@ -49,6 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--eval-clean-path", default=None, help="Evaluation clean reference .npy")
     parser.add_argument("--eval-input-path", default=None, help="Evaluation degraded input .npy")
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None)
+    parser.add_argument("--gpus", default=None, help="Visible GPU ids, e.g. `0` or `0,1,2,3`; multi-GPU requires torchrun")
 
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--num-samples", type=int, default=None)
@@ -72,6 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--act-quant", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--disable-8bit-head-stem", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--save-figure", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--distributed", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--asym", action=argparse.BooleanOptionalAction, default=None)
     return parser
 
@@ -80,100 +84,125 @@ def main() -> None:
     """命令行主流程。"""
     args = build_parser().parse_args()
     config = load_and_resolve_config(args)
+    configure_visible_gpus(config)
+    distributed_state = init_distributed(config)
+    rank = int(distributed_state["rank"])
+    world_size = int(distributed_state["world_size"])
+    is_main = rank == 0
+    device = select_device(str(config["device"]), distributed_state)
     set_random_seed(int(config["seed"]))
-    device = select_device(str(config["device"]))
-    run_dir = create_run_dir(config["run_root"], run_name=str(config["run_name"]))
 
-    print(f"[SCRN-BRECQ] run_dir={run_dir}", flush=True)
-    loaded = load_scrn_for_brecq(config["scrn_checkpoint"], device=device)
-    quant_model = build_quant_model(loaded.model, config).to(device)
-    calibration_data = load_calibration_data(
-        CalibrationDataConfig(
-            dataset_dir=config["calibration_dataset_dir"],
-            num_samples=int(config["num_samples"]),
-            batch_size=int(config["batch_size"]),
-            num_workers=int(config["num_workers"]),
-            seed=int(config["seed"]),
-            device=device,
-            pin_memory=(device.type == "cuda"),
-        )
-    )
+    run_dir = create_run_dir(config["run_root"], run_name=str(config["run_name"])) if is_main else None
+    run_dir = share_run_dir(run_dir, bool(config["distributed"]))
 
-    write_json(run_dir / "config.json", build_run_config(config, loaded, device))
-    clean, degraded = load_eval_arrays(config["eval_clean_path"], config["eval_input_path"])
-
-    quant_model.set_quant_state(False, False)
-    fp32_prediction, fp32_seconds = predict_array(quant_model, degraded, device)
-
-    initialize_weight_quantization(quant_model, calibration_data, config)
-    quant_model.set_quant_state(True, False)
-    quant_pre_recon_prediction, quant_pre_recon_seconds = predict_array(quant_model, degraded, device)
-
-    run_reconstruction(quant_model, calibration_data, config)
-    quant_model.set_quant_state(True, bool(config["act_quant"]))
-    quant_post_recon_prediction, quant_post_recon_seconds = predict_array(quant_model, degraded, device)
-    metrics = build_comparison_metrics(
-        clean,
-        degraded,
-        fp32_prediction=fp32_prediction,
-        fp32_seconds=fp32_seconds,
-        quant_pre_recon_prediction=quant_pre_recon_prediction,
-        quant_pre_recon_seconds=quant_pre_recon_seconds,
-        quant_post_recon_prediction=quant_post_recon_prediction,
-        quant_post_recon_seconds=quant_post_recon_seconds,
-    )
-
-    np.save(run_dir / "fp32_prediction.npy", fp32_prediction)
-    np.save(run_dir / "quant_pre_recon_prediction.npy", quant_pre_recon_prediction)
-    np.save(run_dir / "quant_post_recon_prediction.npy", quant_post_recon_prediction)
-    np.save(run_dir / "prediction.npy", quant_post_recon_prediction)
-    write_json(run_dir / "metrics.json", metrics)
-    if bool(config["save_figure"]):
-        save_comparison_figure(
-            run_dir / "comparison.png",
-            clean=clean,
-            degraded=degraded,
-            fp32_prediction=fp32_prediction,
-            quant_pre_recon_prediction=quant_pre_recon_prediction,
-            quant_post_recon_prediction=quant_post_recon_prediction,
-            metrics=metrics,
+    try:
+        if is_main:
+            print(f"[SCRN-BRECQ] run_dir={run_dir}", flush=True)
+        loaded = load_scrn_for_brecq(config["scrn_checkpoint"], device=device)
+        quant_model = build_quant_model(loaded.model, config).to(device)
+        calibration_data = load_calibration_data(
+            CalibrationDataConfig(
+                dataset_dir=config["calibration_dataset_dir"],
+                num_samples=int(config["num_samples"]),
+                batch_size=int(config["batch_size"]),
+                num_workers=int(config["num_workers"]),
+                seed=int(config["seed"]),
+                device=device,
+                pin_memory=(device.type == "cuda"),
+                rank=rank,
+                world_size=world_size,
+            )
         )
 
-    checkpoint_path = save_quant_checkpoint(run_dir, quant_model, loaded, config, metrics)
-    write_summary(
-        run_dir / "summary.md",
-        title="SCRN-BRECQ Quantization Run",
-        sections={
-            "Metrics": metrics,
-            "Artifacts": {
-                "checkpoint": checkpoint_path,
-                "fp32_prediction": run_dir / "fp32_prediction.npy",
-                "quant_pre_recon_prediction": run_dir / "quant_pre_recon_prediction.npy",
-                "quant_post_recon_prediction": run_dir / "quant_post_recon_prediction.npy",
-                "comparison": run_dir / "comparison.png" if bool(config["save_figure"]) else "disabled",
-                "config": run_dir / "config.json",
-                "metrics": run_dir / "metrics.json",
-            },
-            "Quantization": {
-                "n_bits_w": config["n_bits_w"],
-                "n_bits_a": config["n_bits_a"],
-                "act_quant": config["act_quant"],
-                "num_samples": config["num_samples"],
-                "iters_w": config["iters_w"],
-                "iters_a": config["iters_a"],
-            },
-        },
-    )
-    print(
-        "input_snr={input_snr_db:.4f} fp32_snr={fp32_snr_db:.4f} "
-        "pre_recon_snr={quant_pre_recon_snr_db:.4f} post_recon_snr={quant_post_recon_snr_db:.4f} "
-        "input_ssim={input_ssim:.4f} post_recon_ssim={quant_post_recon_ssim:.4f} "
-        "seconds={quant_post_recon_inference_seconds:.4f}".format(
-            **metrics
-        ),
-        flush=True,
-    )
-    print(f"[SCRN-BRECQ] checkpoint={checkpoint_path}", flush=True)
+        if is_main:
+            write_json(run_dir / "config.json", build_run_config(config, loaded, device, distributed_state))
+            clean, degraded = load_eval_arrays(config["eval_clean_path"], config["eval_input_path"])
+
+            quant_model.set_quant_state(False, False)
+            fp32_prediction, fp32_seconds = predict_array(quant_model, degraded, device)
+        else:
+            clean = degraded = None
+            fp32_prediction = quant_pre_recon_prediction = None
+            fp32_seconds = quant_pre_recon_seconds = 0.0
+
+        initialize_weight_quantization(quant_model, calibration_data, config)
+        quant_model.set_quant_state(True, False)
+        if is_main:
+            quant_pre_recon_prediction, quant_pre_recon_seconds = predict_array(quant_model, degraded, device)
+        barrier_if_distributed(bool(config["distributed"]))
+
+        run_reconstruction(quant_model, calibration_data, config, is_main=is_main)
+        barrier_if_distributed(bool(config["distributed"]))
+
+        if is_main:
+            quant_model.set_quant_state(True, bool(config["act_quant"]))
+            quant_post_recon_prediction, quant_post_recon_seconds = predict_array(quant_model, degraded, device)
+            metrics = build_comparison_metrics(
+                clean,
+                degraded,
+                fp32_prediction=fp32_prediction,
+                fp32_seconds=fp32_seconds,
+                quant_pre_recon_prediction=quant_pre_recon_prediction,
+                quant_pre_recon_seconds=quant_pre_recon_seconds,
+                quant_post_recon_prediction=quant_post_recon_prediction,
+                quant_post_recon_seconds=quant_post_recon_seconds,
+            )
+
+            np.save(run_dir / "fp32_prediction.npy", fp32_prediction)
+            np.save(run_dir / "quant_pre_recon_prediction.npy", quant_pre_recon_prediction)
+            np.save(run_dir / "quant_post_recon_prediction.npy", quant_post_recon_prediction)
+            np.save(run_dir / "prediction.npy", quant_post_recon_prediction)
+            write_json(run_dir / "metrics.json", metrics)
+            if bool(config["save_figure"]):
+                save_comparison_figure(
+                    run_dir / "comparison.png",
+                    clean=clean,
+                    degraded=degraded,
+                    fp32_prediction=fp32_prediction,
+                    quant_pre_recon_prediction=quant_pre_recon_prediction,
+                    quant_post_recon_prediction=quant_post_recon_prediction,
+                    metrics=metrics,
+                )
+
+            checkpoint_path = save_quant_checkpoint(run_dir, quant_model, loaded, config, metrics)
+            write_summary(
+                run_dir / "summary.md",
+                title="SCRN-BRECQ Quantization Run",
+                sections={
+                    "Metrics": metrics,
+                    "Artifacts": {
+                        "checkpoint": checkpoint_path,
+                        "fp32_prediction": run_dir / "fp32_prediction.npy",
+                        "quant_pre_recon_prediction": run_dir / "quant_pre_recon_prediction.npy",
+                        "quant_post_recon_prediction": run_dir / "quant_post_recon_prediction.npy",
+                        "comparison": run_dir / "comparison.png" if bool(config["save_figure"]) else "disabled",
+                        "config": run_dir / "config.json",
+                        "metrics": run_dir / "metrics.json",
+                    },
+                    "Quantization": {
+                        "n_bits_w": config["n_bits_w"],
+                        "n_bits_a": config["n_bits_a"],
+                        "act_quant": config["act_quant"],
+                        "num_samples": config["num_samples"],
+                        "iters_w": config["iters_w"],
+                        "iters_a": config["iters_a"],
+                    },
+                    "Distributed": distributed_state,
+                },
+            )
+            print(
+                "input_snr={input_snr_db:.4f} fp32_snr={fp32_snr_db:.4f} "
+                "pre_recon_snr={quant_pre_recon_snr_db:.4f} post_recon_snr={quant_post_recon_snr_db:.4f} "
+                "input_ssim={input_ssim:.4f} post_recon_ssim={quant_post_recon_ssim:.4f} "
+                "seconds={quant_post_recon_inference_seconds:.4f}".format(
+                    **metrics
+                ),
+                flush=True,
+            )
+            print(f"[SCRN-BRECQ] checkpoint={checkpoint_path}", flush=True)
+    finally:
+        if bool(config["distributed"]) and dist.is_available() and dist.is_initialized():
+            dist.destroy_process_group()
 
 
 def load_and_resolve_config(args: argparse.Namespace) -> dict[str, Any]:
@@ -198,6 +227,8 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         "opt_mode": "mse",
         "asym": True,
         "init_batch_size": 64,
+        "distributed": False,
+        "gpus": "",
     }
     for key, value in defaults.items():
         config.setdefault(key, value)
@@ -208,7 +239,7 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     float_keys = ["rounding_loss_weight", "b_start", "b_end", "warmup", "activation_lr", "lp_norm"]
     for key in float_keys:
         config[key] = float(config[key])
-    bool_keys = ["channel_wise", "act_quant", "disable_8bit_head_stem", "save_figure", "asym"]
+    bool_keys = ["channel_wise", "act_quant", "disable_8bit_head_stem", "save_figure", "asym", "distributed"]
     for key in bool_keys:
         config[key] = bool(config[key])
 
@@ -220,17 +251,101 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"num_workers must be non-negative, got {config['num_workers']}")
     if config["opt_mode"] not in {"mse", "fisher_diag", "fisher_full"}:
         raise ValueError(f"Unsupported opt_mode: {config['opt_mode']}")
+    if config["distributed"] and config["act_quant"]:
+        raise NotImplementedError("Distributed SCRN-BRECQ currently supports W-only reconstruction; set --no-act-quant.")
+    if config["distributed"] and config["device"] == "cpu":
+        raise ValueError("--distributed requires CUDA; do not use --device cpu.")
+    if _visible_gpu_count_from_text(str(config.get("gpus", ""))) > 1 and not config["distributed"]:
+        raise ValueError("Multiple GPUs require --distributed and torchrun. Use --gpus with --distributed.")
     for path_key in ["scrn_checkpoint", "calibration_dataset_dir", "eval_clean_path", "eval_input_path"]:
         if not Path(config[path_key]).exists():
             raise FileNotFoundError(f"{path_key} does not exist: {config[path_key]}")
     return config
 
 
-def select_device(device_arg: str) -> torch.device:
+def configure_visible_gpus(config: dict[str, Any]) -> None:
+    """根据 `--gpus` 限制当前进程可见 CUDA 设备。"""
+    gpus = str(config.get("gpus", "")).strip()
+    if gpus:
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpus
+
+
+def init_distributed(config: dict[str, Any]) -> dict[str, int]:
+    """初始化 torchrun 分布式环境，单进程时返回默认 rank 信息。"""
+    if not bool(config["distributed"]):
+        return {"enabled": False, "rank": 0, "local_rank": 0, "world_size": 1}
+
+    required = ("RANK", "LOCAL_RANK", "WORLD_SIZE")
+    missing = [name for name in required if name not in os.environ]
+    if missing:
+        raise RuntimeError(f"--distributed requires torchrun environment variables, missing: {missing}")
+    if not torch.cuda.is_available():
+        raise RuntimeError("--distributed requires CUDA but torch.cuda.is_available() is False")
+
+    rank = int(os.environ["RANK"])
+    local_rank = int(os.environ["LOCAL_RANK"])
+    world_size = int(os.environ["WORLD_SIZE"])
+    visible_count = visible_gpu_count(config)
+    if visible_count < world_size:
+        raise ValueError(f"Visible GPU count {visible_count} is smaller than WORLD_SIZE={world_size}")
+    if local_rank >= visible_count:
+        raise ValueError(f"LOCAL_RANK={local_rank} is outside visible GPU count {visible_count}")
+
+    torch.cuda.set_device(local_rank)
+    dist.init_process_group(backend="nccl")
+    return {"enabled": True, "rank": rank, "local_rank": local_rank, "world_size": world_size}
+
+
+def visible_gpu_count(config: dict[str, Any]) -> int:
+    """返回当前配置下应当可见的 GPU 数量。"""
+    configured = _visible_gpu_count_from_text(str(config.get("gpus", "")))
+    if configured > 0:
+        return configured
+    env_count = _visible_gpu_count_from_text(os.environ.get("CUDA_VISIBLE_DEVICES", ""))
+    if env_count > 0:
+        return env_count
+    return int(torch.cuda.device_count())
+
+
+def _visible_gpu_count_from_text(value: str) -> int:
+    """解析 `0,1,2` 形式的 GPU 列表长度。"""
+    value = str(value).strip()
+    if not value or value == "-1":
+        return 0
+    return len([item for item in value.split(",") if item.strip()])
+
+
+def share_run_dir(run_dir: Path | None, distributed: bool) -> Path:
+    """分布式时由 rank 0 广播 run 目录。"""
+    if not distributed:
+        if run_dir is None:
+            raise RuntimeError("run_dir was not created")
+        return run_dir
+    payload = [str(run_dir) if run_dir is not None else None]
+    dist.broadcast_object_list(payload, src=0)
+    if payload[0] is None:
+        raise RuntimeError("Failed to broadcast run_dir from rank 0")
+    return Path(payload[0])
+
+
+def barrier_if_distributed(distributed: bool) -> None:
+    """分布式流程同步点，单进程时不做处理。"""
+    if distributed:
+        if torch.cuda.is_available():
+            dist.barrier(device_ids=[torch.cuda.current_device()])
+        else:
+            dist.barrier()
+
+
+def select_device(device_arg: str, distributed_state: dict[str, Any] | None = None) -> torch.device:
     """解析设备参数。"""
     if device_arg == "cpu":
         return torch.device("cpu")
     if device_arg in {"auto", "cuda"} and torch.cuda.is_available():
+        if distributed_state is not None and int(distributed_state.get("world_size", 1)) > 1:
+            local_rank = int(distributed_state["local_rank"])
+            torch.cuda.set_device(local_rank)
+            return torch.device("cuda", local_rank)
         return torch.device("cuda")
     if device_arg == "cuda":
         raise RuntimeError("CUDA was requested but torch.cuda.is_available() is False")
@@ -270,7 +385,13 @@ def initialize_weight_quantization(
         _ = quant_model(init_inputs)
 
 
-def run_reconstruction(quant_model: QuantModel, calibration_data: torch.Tensor, config: dict[str, Any]) -> None:
+def run_reconstruction(
+    quant_model: QuantModel,
+    calibration_data: torch.Tensor,
+    config: dict[str, Any],
+    *,
+    is_main: bool = True,
+) -> None:
     """执行 W-only，并按需执行 W+A reconstruction。"""
     device = next(quant_model.parameters()).device
     init_inputs = calibration_data[: min(int(config["init_batch_size"]), int(calibration_data.size(0)))].to(device)
@@ -286,11 +407,15 @@ def run_reconstruction(quant_model: QuantModel, calibration_data: torch.Tensor, 
         "warmup": float(config["warmup"]),
         "act_quant": False,
         "p": float(config["lp_norm"]),
+        "multi_gpu": bool(config["distributed"]),
+        "log_enabled": is_main,
     }
-    reconstruct_model(quant_model, quant_model.model, weight_kwargs)
+    reconstruct_model(quant_model, quant_model.model, weight_kwargs, log_enabled=is_main)
     quant_model.set_quant_state(True, False)
 
     if bool(config["act_quant"]):
+        if bool(config["distributed"]):
+            raise NotImplementedError("Distributed activation reconstruction is not supported yet.")
         quant_model.set_quant_state(True, True)
         with torch.no_grad():
             _ = quant_model(init_inputs)
@@ -304,12 +429,20 @@ def run_reconstruction(quant_model: QuantModel, calibration_data: torch.Tensor, 
             "act_quant": True,
             "lr": float(config["activation_lr"]),
             "p": float(config["lp_norm"]),
+            "log_enabled": is_main,
         }
-        reconstruct_model(quant_model, quant_model.model, act_kwargs)
+        reconstruct_model(quant_model, quant_model.model, act_kwargs, log_enabled=is_main)
         quant_model.set_quant_state(True, True)
 
 
-def reconstruct_model(quant_model: QuantModel, module: torch.nn.Module, reconstruction_kwargs: dict[str, Any], prefix: str = "") -> None:
+def reconstruct_model(
+    quant_model: QuantModel,
+    module: torch.nn.Module,
+    reconstruction_kwargs: dict[str, Any],
+    prefix: str = "",
+    *,
+    log_enabled: bool = True,
+) -> None:
     """递归遍历 QuantModel，执行 layer 或 block reconstruction。
 
     遇到 `BaseQuantBlock` 后不再进入其内部，避免 block 内 `QuantModule` 被重复重构。
@@ -318,18 +451,22 @@ def reconstruct_model(quant_model: QuantModel, module: torch.nn.Module, reconstr
         full_name = f"{prefix}.{name}" if prefix else name
         if isinstance(child, BaseQuantBlock):
             if child.ignore_reconstruction:
-                print(f"[SCRN-BRECQ] skip block {full_name}", flush=True)
+                if log_enabled:
+                    print(f"[SCRN-BRECQ] skip block {full_name}", flush=True)
                 continue
-            print(f"[SCRN-BRECQ] reconstruct block {full_name}", flush=True)
+            if log_enabled:
+                print(f"[SCRN-BRECQ] reconstruct block {full_name}", flush=True)
             block_reconstruction(quant_model, child, **reconstruction_kwargs)
         elif isinstance(child, QuantModule):
             if child.ignore_reconstruction:
-                print(f"[SCRN-BRECQ] skip layer {full_name}", flush=True)
+                if log_enabled:
+                    print(f"[SCRN-BRECQ] skip layer {full_name}", flush=True)
                 continue
-            print(f"[SCRN-BRECQ] reconstruct layer {full_name}", flush=True)
+            if log_enabled:
+                print(f"[SCRN-BRECQ] reconstruct layer {full_name}", flush=True)
             layer_reconstruction(quant_model, child, **reconstruction_kwargs)
         else:
-            reconstruct_model(quant_model, child, reconstruction_kwargs, full_name)
+            reconstruct_model(quant_model, child, reconstruction_kwargs, full_name, log_enabled=log_enabled)
 
 
 def load_eval_arrays(clean_path: str | Path, input_path: str | Path) -> tuple[np.ndarray, np.ndarray]:
@@ -411,11 +548,12 @@ def save_quant_checkpoint(
     return checkpoint_path
 
 
-def build_run_config(config: dict[str, Any], loaded, device: torch.device) -> dict[str, Any]:
+def build_run_config(config: dict[str, Any], loaded, device: torch.device, distributed_state: dict[str, Any]) -> dict[str, Any]:
     """构建写入 run `config.json` 的配置快照。"""
     return {
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "device": str(device),
+        "distributed": dict(distributed_state),
         "quant_config": serializable_config(config),
         "source_checkpoint": str(loaded.checkpoint_path),
         "source_checkpoint_epoch": loaded.epoch,
