@@ -601,3 +601,25 @@
 - 用已有 checkpoint 运行 `verify_quantized_scrn.py`，确认报告包含 `model_size.checkpoint_files`、`model_size.parameters` 和 `model_size.estimated_storage`。
 - 用 `--num-samples 2 --batch-size 1 --iters-w 1` smoke run 确认 `metrics.json` 也包含 `model_size`。
 - 在已有 global128 checkpoint 上的统计结果显示：实际量化 checkpoint 约 `5.0707 MiB`，理论 packed 模型约 `0.2427 MiB`，估算模型压缩率约 `6.77x`，量化权重参数占比约 `98.995%`。
+
+## 2026-04-27 增加多样本量化泛化评估入口
+
+### 修改内容
+
+- 新增 `cli/evaluate_quantized_scrn_multi.py`，用于对已保存 `quantized_scrn_brecq.pth` 做多样本评估。
+- 默认评估集为 `SCRN_BRECQ_app/scrn_repro/datasets/scrn_quant_10750_0_patches`，从 clean patch 中按固定 seed 抽样，并复用 `scrn_repro.data.degrade_patch()` 在线生成 degraded 输入。
+- 每个样本在同一 degraded 输入上分别运行 FP32 路径和量化路径，记录 input/FP32/quant 的 SNR、SSIM，以及 FP32 与量化输出的 MSE、平均绝对差和最大绝对差。
+- 新增 `runs/generalization_eval/README.md`，`.gitignore` 忽略该目录下真实 run 产物但保留 README。
+- 更新 `README.md` 和 `runs/README.md`，记录多样本评估命令、默认输出目录和产物边界。
+
+### 验证方式
+
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/evaluate_quantized_scrn_multi.py`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi --help`
+- 使用已有 global128 checkpoint 运行 smoke：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi --checkpoint SCRN_BRECQ_app/scrn_brecq/runs/quant/20260427_192819_w4_recon_1024samples_20000iters_dist4_bsz32_global128/checkpoints/quantized_scrn_brecq.pth --num-eval-samples 4 --batch-size 2 --device cpu --run-root /tmp/scrn_brecq_generalization_smoke --no-save-figures`
+  - 验证生成 `config.json`、`metrics.json`、`summary.md`、`per_sample_metrics.jsonl`，且 `metrics.json` 包含 `sample_count=4` 和 `model_size`。
+- 正式 128 样本试跑：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi --checkpoint SCRN_BRECQ_app/scrn_brecq/runs/quant/20260427_192819_w4_recon_1024samples_20000iters_dist4_bsz32_global128/checkpoints/quantized_scrn_brecq.pth --num-eval-samples 128 --batch-size 16 --device auto --run-name global128_quant10750_eval128`
+  - 输出目录：`SCRN_BRECQ_app/scrn_brecq/runs/generalization_eval/20260427_222925_global128_quant10750_eval128`
+  - 聚合结果：`input_snr_db_mean=0.9709`、`fp32_snr_db_mean=6.0901`、`quant_snr_db_mean=4.8802`、`quant_minus_fp32_snr_db_mean=-1.2099`、`fp32_ssim_mean=0.7562`、`quant_ssim_mean=0.7161`。

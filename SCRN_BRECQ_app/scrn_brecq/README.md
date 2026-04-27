@@ -21,6 +21,7 @@ scrn_brecq/
 ├── cli/
 │   ├── __init__.py
 │   ├── evaluate_quantized_scrn.py
+│   ├── evaluate_quantized_scrn_multi.py
 │   ├── quantize_scrn.py
 │   ├── smoke_check.py
 │   └── verify_quantized_scrn.py
@@ -42,7 +43,8 @@ scrn_brecq/
 │   └── quant_model.py
 ├── utils/
 │   ├── __init__.py
-│   └── io.py
+│   ├── io.py
+│   └── model_size.py
 └── runs/
     └── README.md
 ```
@@ -55,8 +57,10 @@ scrn_brecq/
 - `quant/`: BRECQ 迁移核心，包括量化层、AdaRound、BN folding、QuantModel、SCRN block 适配和 layer/block reconstruction。
 - `cli/quantize_scrn.py`: 执行完整 SCRN-BRECQ 量化、重构、评估和 checkpoint 保存。
 - `cli/evaluate_quantized_scrn.py`: 重新加载已保存的 `quantized_scrn_brecq.pth` 并评估量化模型。
+- `cli/evaluate_quantized_scrn_multi.py`: 对已保存量化 checkpoint 做多样本评估，输出逐样本 JSONL 和聚合泛化指标。
 - `cli/smoke_check.py`: 无权重依赖的快速结构检查，用合成输入验证 QuantModel 包装和量化前向。
 - `cli/verify_quantized_scrn.py`: 检查已保存 checkpoint 是否真正启用量化，包括 bit 分布、离散等级和 FP32/量化输出差异。
+- `utils/model_size.py`: 统计 checkpoint 文件大小、权重 bit 分布和理论 packed 模型大小。
 - `runs/`: 量化运行产物目录。实际 run 输出被 `.gitignore` 忽略。
 
 ## 常用命令
@@ -101,6 +105,17 @@ conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_sc
   --device cpu
 ```
 
+多样本泛化评估已保存的量化 checkpoint:
+
+```bash
+conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi \
+  --checkpoint SCRN_BRECQ_app/scrn_brecq/runs/quant/20260427_192819_w4_recon_1024samples_20000iters_dist4_bsz32_global128/checkpoints/quantized_scrn_brecq.pth \
+  --num-eval-samples 128 \
+  --batch-size 16 \
+  --run-name global128_quant10750_eval128 \
+  --device auto
+```
+
 验证已保存 checkpoint 的量化真实性:
 
 ```bash
@@ -119,7 +134,9 @@ conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.smoke_check --device 
 
 - `quantize_scrn.py` 默认写入 `SCRN_BRECQ_app/scrn_brecq/runs/quant/`。
 - `evaluate_quantized_scrn.py` 默认写入 `SCRN_BRECQ_app/scrn_brecq/runs/quant_eval/`。
+- `evaluate_quantized_scrn_multi.py` 默认写入 `SCRN_BRECQ_app/scrn_brecq/runs/generalization_eval/`。
 - 运行产物通常包括 `config.json`、`metrics.json`、`summary.md`、`prediction.npy`、可选 `comparison.png` 和 checkpoint。
+- 多样本评估产物包括 `config.json`、`metrics.json`、`summary.md`、`per_sample_metrics.jsonl` 和可选 `figures/`，默认不保存全部预测 `.npy`。
 - `metrics.json` 会记录推理耗时、BRECQ reconstruction 耗时、本次量化流程总耗时、checkpoint 文件大小、权重 bit 参数分布和理论打包模型大小。
 - 当前 `.pth` 是可恢复的 PyTorch checkpoint，不是 bit-packed 部署文件；真实 4bit 压缩收益应优先看 `model_size.estimated_storage`。
 - 正式 W4A32 重建建议从默认配置开始，即 `num_samples=1024`、`batch_size=16`、`iters_w=20000`、`act_quant=false`。
