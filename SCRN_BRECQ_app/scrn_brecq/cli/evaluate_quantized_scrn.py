@@ -18,6 +18,7 @@ import torch
 from torch import nn
 
 from SCRN_BRECQ_app.scrn_brecq.quant import AdaRoundQuantizer, QuantModel, QuantModule
+from SCRN_BRECQ_app.scrn_brecq.utils import build_model_size_report
 from SCRN_BRECQ_app.scrn_repro.model import SCRNConfig, build_scrn_from_config
 from SCRN_BRECQ_app.scrn_repro.training import collect_environment, create_run_dir, write_json, write_summary
 from SCRN_BRECQ_app.scrn_repro.utils import snr_db, ssim_score
@@ -67,6 +68,11 @@ def main() -> None:
     clean, degraded = load_eval_arrays(clean_path, input_path)
     prediction, seconds = predict_array(quant_model, degraded, device)
     metrics = build_metrics(clean, degraded, prediction, seconds)
+    metrics["model_size"] = build_model_size_report(
+        quant_model,
+        source_checkpoint_path=checkpoint.get("source_checkpoint"),
+        quant_checkpoint_path=checkpoint_path,
+    )
 
     run_dir = create_run_dir(args.run_root, run_name=args.run_name)
     np.save(run_dir / "prediction.npy", prediction)
@@ -90,6 +96,7 @@ def main() -> None:
         title="SCRN-BRECQ Quantized Checkpoint Evaluation",
         sections={
             "Metrics": metrics,
+            "Model Size": metrics["model_size"],
             "Inputs": {
                 "checkpoint": checkpoint_path,
                 "clean": clean_path,
@@ -266,7 +273,7 @@ def predict_array(model: torch.nn.Module, degraded: np.ndarray, device: torch.de
     return prediction, time.time() - start
 
 
-def build_metrics(clean: np.ndarray, degraded: np.ndarray, prediction: np.ndarray, seconds: float) -> dict[str, float]:
+def build_metrics(clean: np.ndarray, degraded: np.ndarray, prediction: np.ndarray, seconds: float) -> dict[str, Any]:
     """构建量化 checkpoint 评估指标，并保留 before/after 兼容字段。"""
     metrics = {
         "input_snr_db": snr_db(degraded, clean),
@@ -317,7 +324,7 @@ def save_evaluation_figure(
     clean: np.ndarray,
     degraded: np.ndarray,
     prediction: np.ndarray,
-    metrics: Mapping[str, float],
+    metrics: Mapping[str, Any],
 ) -> None:
     """保存 clean、input、quantized prediction 三图对比。"""
     try:

@@ -5,10 +5,13 @@
 """
 
 from .io import load_json, load_torch_checkpoint, require_file
+from .model_size import build_checkpoint_file_size_report, build_model_size_report, refresh_checkpoint_file_sizes
 
 __all__ = [
+    "build_checkpoint_file_size_report",
+    "build_model_size_report",
     "load_json",
     "load_torch_checkpoint",
+    "refresh_checkpoint_file_sizes",
     "require_file",
 ]
-

@@ -582,3 +582,22 @@
 
 - `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/quantize_scrn.py`
 - 后续新 run 可直接从 `metrics.json` 读取耗时，不再需要用 run 目录文件时间戳估算。
+
+## 2026-04-27 增加模型大小与理论压缩率指标
+
+### 修改内容
+
+- 新增 `utils/model_size.py`，统一统计 checkpoint 文件大小、权重参数 bit 分布和理论打包模型大小。
+- `cli/quantize_scrn.py` 的 `metrics.json` 新增 `model_size`：
+  - `checkpoint_files`：FP32 源 checkpoint 与量化 checkpoint 的实际文件大小。
+  - `parameters`：总参数量、参与权重量化的参数量、按 bit 统计的层数和参数量。
+  - `estimated_storage`：FP32 参数大小、理论量化权重大小、scale/zero point 开销、估算 packed 模型大小和压缩率。
+- `cli/verify_quantized_scrn.py` 和 `cli/evaluate_quantized_scrn.py` 同步输出 `model_size`，方便对已有 checkpoint 追加分析。
+- 明确当前 `.pth` 是可恢复 PyTorch checkpoint，不是 bit-packed 部署文件；真实压缩收益应看理论打包大小，后续如需文件真正变小，需要单独实现 packed/int checkpoint 导出。
+
+### 验证方式
+
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/utils/model_size.py SCRN_BRECQ_app/scrn_brecq/cli/quantize_scrn.py SCRN_BRECQ_app/scrn_brecq/cli/verify_quantized_scrn.py SCRN_BRECQ_app/scrn_brecq/cli/evaluate_quantized_scrn.py`
+- 用已有 checkpoint 运行 `verify_quantized_scrn.py`，确认报告包含 `model_size.checkpoint_files`、`model_size.parameters` 和 `model_size.estimated_storage`。
+- 用 `--num-samples 2 --batch-size 1 --iters-w 1` smoke run 确认 `metrics.json` 也包含 `model_size`。
+- 在已有 global128 checkpoint 上的统计结果显示：实际量化 checkpoint 约 `5.0707 MiB`，理论 packed 模型约 `0.2427 MiB`，估算模型压缩率约 `6.77x`，量化权重参数占比约 `98.995%`。

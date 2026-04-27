@@ -25,6 +25,7 @@ from SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn import (
     select_device,
 )
 from SCRN_BRECQ_app.scrn_brecq.quant import AdaRoundQuantizer, QuantModule
+from SCRN_BRECQ_app.scrn_brecq.utils import build_model_size_report
 from SCRN_BRECQ_app.scrn_repro.training import write_json
 from SCRN_BRECQ_app.scrn_repro.utils import snr_db, ssim_score
 
@@ -93,6 +94,11 @@ def main() -> None:
         },
         "eval_paths": {"clean": str(clean_path), "input": str(input_path)},
         "layer_quantization": layer_report,
+        "model_size": build_model_size_report(
+            quant_model,
+            source_checkpoint_path=checkpoint.get("source_checkpoint"),
+            quant_checkpoint_path=checkpoint_path,
+        ),
         "output_comparison": output_report,
         "checks": checks,
         "passed": all(checks.values()),

@@ -28,7 +28,7 @@ from SCRN_BRECQ_app.scrn_brecq.quant import (
     block_reconstruction,
     layer_reconstruction,
 )
-from SCRN_BRECQ_app.scrn_brecq.utils import load_json
+from SCRN_BRECQ_app.scrn_brecq.utils import build_model_size_report, load_json, refresh_checkpoint_file_sizes
 from SCRN_BRECQ_app.scrn_repro.training import collect_environment, create_run_dir, write_json, write_summary
 from SCRN_BRECQ_app.scrn_repro.utils import set_random_seed, snr_db, ssim_score
 
@@ -151,12 +151,15 @@ def main() -> None:
                 quant_post_recon_seconds=quant_post_recon_seconds,
             )
             add_timing_metrics(metrics, run_start_time=run_start_time, reconstruction_seconds=reconstruction_seconds)
+            metrics["model_size"] = build_model_size_report(
+                quant_model,
+                source_checkpoint_path=loaded.checkpoint_path,
+            )
 
             np.save(run_dir / "fp32_prediction.npy", fp32_prediction)
             np.save(run_dir / "quant_pre_recon_prediction.npy", quant_pre_recon_prediction)
             np.save(run_dir / "quant_post_recon_prediction.npy", quant_post_recon_prediction)
             np.save(run_dir / "prediction.npy", quant_post_recon_prediction)
-            write_json(run_dir / "metrics.json", metrics)
             if bool(config["save_figure"]):
                 save_comparison_figure(
                     run_dir / "comparison.png",
@@ -169,11 +172,18 @@ def main() -> None:
                 )
 
             checkpoint_path = save_quant_checkpoint(run_dir, quant_model, loaded, config, metrics)
+            refresh_checkpoint_file_sizes(
+                metrics["model_size"],
+                source_checkpoint_path=loaded.checkpoint_path,
+                quant_checkpoint_path=checkpoint_path,
+            )
+            write_json(run_dir / "metrics.json", metrics)
             write_summary(
                 run_dir / "summary.md",
                 title="SCRN-BRECQ Quantization Run",
                 sections={
                     "Metrics": metrics,
+                    "Model Size": metrics["model_size"],
                     "Artifacts": {
                         "checkpoint": checkpoint_path,
                         "fp32_prediction": run_dir / "fp32_prediction.npy",
@@ -504,7 +514,7 @@ def build_comparison_metrics(
     quant_pre_recon_seconds: float,
     quant_post_recon_prediction: np.ndarray,
     quant_post_recon_seconds: float,
-) -> dict[str, float]:
+) -> dict[str, Any]:
     """构建五图对比对应的完整指标。"""
     metrics = {
         "input_snr_db": snr_db(degraded, clean),
@@ -528,7 +538,7 @@ def build_comparison_metrics(
     return metrics
 
 
-def add_timing_metrics(metrics: dict[str, float], *, run_start_time: float, reconstruction_seconds: float) -> None:
+def add_timing_metrics(metrics: dict[str, Any], *, run_start_time: float, reconstruction_seconds: float) -> None:
     """补充量化流程耗时指标。
 
     `elapsed_seconds` 从 CLI 主流程开始计时，到最终量化推理完成后写入 metrics 前结束；
@@ -546,7 +556,7 @@ def save_quant_checkpoint(
     quant_model: QuantModel,
     loaded,
     config: dict[str, Any],
-    metrics: dict[str, float],
+    metrics: dict[str, Any],
 ) -> Path:
     """保存量化模型 checkpoint。"""
     checkpoint_path = run_dir / "checkpoints" / "quantized_scrn_brecq.pth"
@@ -602,7 +612,7 @@ def save_comparison_figure(
     fp32_prediction: np.ndarray,
     quant_pre_recon_prediction: np.ndarray,
     quant_post_recon_prediction: np.ndarray,
-    metrics: dict[str, float],
+    metrics: dict[str, Any],
 ) -> None:
     """保存五图对比：GT、输入、FP32、量化重建前、量化重建后。"""
     try:

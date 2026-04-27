@@ -120,7 +120,8 @@ conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.smoke_check --device 
 - `quantize_scrn.py` 默认写入 `SCRN_BRECQ_app/scrn_brecq/runs/quant/`。
 - `evaluate_quantized_scrn.py` 默认写入 `SCRN_BRECQ_app/scrn_brecq/runs/quant_eval/`。
 - 运行产物通常包括 `config.json`、`metrics.json`、`summary.md`、`prediction.npy`、可选 `comparison.png` 和 checkpoint。
-- `metrics.json` 会记录推理耗时、BRECQ reconstruction 耗时和本次量化流程总耗时。
+- `metrics.json` 会记录推理耗时、BRECQ reconstruction 耗时、本次量化流程总耗时、checkpoint 文件大小、权重 bit 参数分布和理论打包模型大小。
+- 当前 `.pth` 是可恢复的 PyTorch checkpoint，不是 bit-packed 部署文件；真实 4bit 压缩收益应优先看 `model_size.estimated_storage`。
 - 正式 W4A32 重建建议从默认配置开始，即 `num_samples=1024`、`batch_size=16`、`iters_w=20000`、`act_quant=false`。
 - 分布式量化当前只支持 W-only；`--distributed` 与 `--act-quant` 同时使用会报错。
 - `.npy`、`.pth`、运行目录、缓存和日志不应提交到 Git。
