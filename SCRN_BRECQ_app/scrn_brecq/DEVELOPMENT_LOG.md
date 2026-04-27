@@ -308,3 +308,113 @@
 - `python -m json.tool SCRN_BRECQ_app/scrn_brecq/configs/default_quant_config.json`
 - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn --num-samples 2 --batch-size 1 --iters-w 1 --run-name smoke_five_panel --device auto`
 - 验证 run 目录中生成五图 `comparison.png`，metrics 包含 `fp32_*`、`quant_pre_recon_*`、`quant_post_recon_*`。
+
+## 2026-04-27 文件结构合理性检查
+
+### 检查范围
+
+- 检查仓库根目录 `/home/data1/hanwen/project/Project/SCRN_Quant` 的顶层结构。
+- 检查 `BRECQ-main/`、`SCRN-main/` 和 `SCRN_BRECQ_app/` 三个主要目录的职责边界。
+- 检查 `SCRN_BRECQ_app/scrn_brecq/` 内部模块划分是否覆盖 SCRN 上迁移 BRECQ 的复现流程。
+- 检查 `.gitignore` 是否覆盖数据、权重、运行日志、缓存和量化输出等不应提交的运行产物。
+
+### 检查结论
+
+- 当前 Git 实际只有仓库根目录下一个 `.git`，`BRECQ-main/`、`SCRN-main/` 和 `SCRN_BRECQ_app/` 是同一 Git 仓库内的三个顶层代码区域；如果后续文档中继续称为“三个仓库”，应理解为三个代码来源/应用区域，而不是三个嵌套 Git 仓库。
+- `BRECQ-main/` 保留原 BRECQ 参考源码，`SCRN-main/` 保留原 SCRN 参考源码，新的迁移实现集中在 `SCRN_BRECQ_app/scrn_brecq/`，符合“不直接污染参考源码仓库”的复现应用要求。
+- `SCRN_BRECQ_app/scrn_repro/` 保存 SCRN 复现模型、数据处理、训练和测试支撑代码；`SCRN_BRECQ_app/scrn_brecq/` 保存 BRECQ 迁移量化代码，两者职责边界清楚。
+- `scrn_brecq/` 当前模块划分为 `configs/`、`cli/`、`data/`、`model/`、`quant/`、`utils/` 和 `runs/`，可以对应配置、命令入口、校准数据、SCRN 模型加载、量化算法、通用 I/O 和运行输出，结构能够支撑现有复现流程。
+- `quant/` 下已经按 BRECQ 迁移流程拆分出量化层、BN folding、量化模型包装、SCRN block 适配、AdaRound、数据缓存、layer reconstruction 和 block reconstruction，模块边界与后训练量化流程基本一致。
+- `.gitignore` 已覆盖 `SCRN-main` 下的大数据/权重目录、`SCRN_BRECQ_app/scrn_repro/runs/`、`SCRN_BRECQ_app/scrn_brecq/runs/quant/`、`*.npy`、`*.pth`、`*.ckpt`、`__pycache__/` 等运行产物，当前结构不会把 smoke run、checkpoint、预测数组和缓存提交进 Git。
+
+### 待澄清或后续优化点
+
+- `SCRN_BRECQ_app/scrn_loader.py` 和 `SCRN_BRECQ_app/paths.py` 是顶层兼容/路径辅助文件，其中 `scrn_loader.py` 与 `scrn_brecq/model/scrn_loader.py` 在职责上有重叠；目前不影响量化 CLI，但后续应明确保留为兼容入口，或在确认没有旧调用后清理。
+- `SCRN_BRECQ_app/scrn_brecq/README.md` 中的目录树仍是初始化骨架，已经落后于当前实现状态；后续做复现文档整理时应同步更新为当前完整结构。
+- `SCRN_BRECQ_app/scrn_repro/datasets/` 和若干训练/测试产物在本地存在但被 Git 忽略；这对本机复现实验可用，但从干净 clone 复现时需要单独准备数据和 checkpoint。
+- 根目录下存在本地 `application/` 空目录，当前没有被 Git 跟踪，也没有参与 SCRN-BRECQ 复现流程；暂不处理。
+
+### 验证方式
+
+- `git status`
+- `git branch --show-current`
+- `git rev-parse --show-toplevel`
+- `find . -maxdepth 2 -type d`
+- `find . -name .git -type d`
+- `rg --files SCRN_BRECQ_app`
+- `git ls-files`
+- `git check-ignore -v SCRN_BRECQ_app/__pycache__ SCRN_BRECQ_app/scrn_brecq/runs/quant SCRN_BRECQ_app/scrn_repro/runs SCRN-main/trained_model/model.pth SCRN-main/test_data/clear.npy`
+- `conda run -n quant python -m compileall -q SCRN_BRECQ_app/scrn_brecq SCRN_BRECQ_app/scrn_repro`
+- `conda run -n quant python -m json.tool SCRN_BRECQ_app/scrn_brecq/configs/default_quant_config.json`
+
+## 2026-04-27 SCRN 复现与 BRECQ 迁移文件齐备性详查
+
+### 检查目标
+
+- `SCRN_BRECQ_app/scrn_repro/` 应能独立支撑 SCRN 复现：模型定义、数据准备、在线退化、训练、测试、指标、checkpoint 和 run 记录都应有明确文件。
+- `SCRN_BRECQ_app/scrn_brecq/` 应能支撑在 SCRN 上应用 BRECQ：SCRN checkpoint 加载、calibration 输入、量化模型包装、基础量化器、AdaRound、layer/block reconstruction、命令行量化评估、配置和运行产物隔离都应有明确文件。
+
+### `scrn_repro/` 文件齐备性
+
+- 包入口：已有 `__init__.py`，目录可以作为 `SCRN_BRECQ_app.scrn_repro` 包导入。
+- 模型复现：已有 `model/scrn.py` 和 `model/__init__.py`，包含 `SCRNConfig`、`SCRN`、`FeatureFusionBlock`、`SwinBlock`、窗口注意力、窗口 padding/reverse 和 `build_scrn_from_config`，满足复现 SCRN 网络结构的基本文件要求。
+- 数据准备：已有 `data/patches.py`，覆盖 SEG-Y 文件发现、读取、归一化、patch 切分、增强和 `.npy` 保存；已有 `cli/prepare_patches.py` 作为数据准备命令行入口。
+- 在线退化：已有 `data/degradation.py`，覆盖随机缺失道 mask、目标 SNR 高斯噪声和 `degrade_patch`；已有 `data/dataset.py`，用 clean patch 在线生成 `(degraded, clean)` 训练样本。
+- 训练入口：已有 `cli/train_scrn.py`，覆盖单卡/CPU 训练、DDP 训练、Adam、MSE loss、MultiStepLR、checkpoint、metrics 和 summary 输出。
+- 测试入口：已有 `cli/test_scrn.py`，覆盖从 checkpoint 恢复模型、读取 clean/input `.npy`、输出 prediction、SNR/SSIM 指标和可选对比图。
+- 实验记录：已有 `training/checkpoint.py` 和 `training/run_manager.py`，覆盖 checkpoint 读写、run 目录、JSON/JSONL/CSV/summary 和环境信息记录。
+- 指标与工具：已有 `utils/metrics.py` 和 `utils/misc.py`，覆盖 SNR、SSIM、随机种子和目录检查。
+- 数据占位：已有 `datasets/scrn_train_patches/README.md` 和 `datasets/scrn_quant_10750_0_patches/README.md`；本地 `.npy` 数据存在但被 Git 忽略，符合不提交数据的要求。
+
+结论：`scrn_repro/` 已具备 SCRN 复现所需的主要代码文件，能覆盖“准备数据 -> 训练 SCRN -> 测试 SCRN -> 保存结果”的闭环。当前更像研究脚本型复现目录，不是完整发布包；后续为了干净环境复现，应补充根目录 README 或复现说明，并考虑加入固定训练/测试配置文件。
+
+### `scrn_brecq/` 文件齐备性
+
+- 包入口与文档：已有 `__init__.py`、`README.md` 和 `DEVELOPMENT_LOG.md`，能说明目录目标并记录迁移过程。
+- 默认配置：已有 `configs/default_quant_config.json`，覆盖 seed、device、run_root、checkpoint、calibration 数据、评估输入、量化 bit、BRECQ reconstruction 迭代数、loss 参数和图像保存开关。
+- SCRN 模型加载：已有 `model/scrn_loader.py` 和 `model/__init__.py`，覆盖 checkpoint 读取、`model_config` 恢复、state dict 前缀处理、默认推荐 checkpoint 和 `LoadedSCRN` 元信息。
+- calibration 数据：已有 `data/calibration_loader.py` 和 `data/__init__.py`，复用 `SCRNPatchDataset`，只收集 degraded 输入作为 BRECQ calibration data。
+- 基础量化层：已有 `quant/quant_layer.py`，覆盖 STE、Lp loss、`UniformAffineQuantizer`、`QuantModule` 和 Conv/Linear 包装。
+- BN folding：已有 `quant/fold_bn.py`，覆盖 Conv-BN 参数折叠、BN reset/remove 和递归搜索。
+- 量化模型包装：已有 `quant/quant_model.py`，覆盖 SCRN 中 Conv/Linear 的递归替换、量化状态开关、首尾层 8bit 和输出激活量化关闭。
+- SCRN block 适配：已有 `quant/quant_block.py`，覆盖 `BaseQuantBlock`、`QuantFeatureFusionBlock` 和 SCRN `FeatureFusionBlock` 的 specials 映射。
+- AdaRound：已有 `quant/adaptive_rounding.py`，覆盖 soft/hard rounding、alpha 初始化和与 `UniformAffineQuantizer` 的连接。
+- 重构缓存：已有 `quant/data_utils.py`，覆盖目标层/块输入输出缓存、梯度缓存、hook 截断和 `quantize_model_till`。
+- 重构算法：已有 `quant/layer_recon.py` 和 `quant/block_recon.py`，覆盖 layer reconstruction、block reconstruction、rounding regularization、Fisher/MSE loss 和温度衰减。
+- 量化入口：已有 `cli/quantize_scrn.py`，覆盖加载 SCRN、加载 calibration data、构造 QuantModel、初始化量化参数、执行 reconstruction、保存量化 checkpoint、输出 metrics/summary/prediction 和五图对比。
+- 运行产物隔离：已有 `runs/README.md`，`.gitignore` 已忽略 `scrn_brecq/runs/quant/`、`.npy`、`.pth`、缓存和日志文件。
+
+结论：`scrn_brecq/` 已具备把 BRECQ 后训练量化迁移到 SCRN 的主要实现文件，能覆盖“加载 FP32 SCRN -> 构造量化模型 -> 收集校准输入 -> BRECQ 权重量化重构 -> 评估保存”的闭环。当前缺口主要不是核心算法文件，而是复现实用性文件：缺少单独加载已保存量化 checkpoint 再评估的入口，`README.md` 的目录树仍停留在初始化状态，尚无独立测试目录或固定 smoke test 脚本。
+
+### 本次发现的具体待办
+
+- 更新 `scrn_brecq/README.md` 当前结构树，让它与已实现文件一致。
+- 为 `scrn_repro/` 增加根 README 或复现说明，说明数据准备、训练、测试和默认 checkpoint 来源。
+- 考虑为 `scrn_repro` 和 `scrn_brecq` 增加最小测试目录或 smoke test 脚本，避免只靠开发日志中的手动命令验证。
+- 考虑新增 `scrn_brecq/cli/evaluate_quantized_scrn.py`，用于从保存的 `quantized_scrn_brecq.pth` 重新加载并评估量化模型，增强复现闭环。
+- 明确 `SCRN_BRECQ_app/scrn_loader.py` 与 `scrn_brecq/model/scrn_loader.py` 的关系，避免之后读代码时误用旧兼容入口。
+
+### 验证方式
+
+- `git ls-files SCRN_BRECQ_app/scrn_repro SCRN_BRECQ_app/scrn_brecq`
+- `find SCRN_BRECQ_app/scrn_repro SCRN_BRECQ_app/scrn_brecq -maxdepth 3 -type d`
+- `find SCRN_BRECQ_app/scrn_repro SCRN_BRECQ_app/scrn_brecq -maxdepth 3 -type f ! -path '*/__pycache__/*' ! -name '*.npy' ! -name '*.pth' ! -name '*.pt' ! -name '*.ckpt'`
+- `rg -n "^(class|def) " SCRN_BRECQ_app/scrn_repro SCRN_BRECQ_app/scrn_brecq`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_repro.cli.prepare_patches --help`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_repro.cli.train_scrn --help`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_repro.cli.test_scrn --help`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn --help`
+- `conda run -n quant python -m compileall -q SCRN_BRECQ_app/scrn_repro SCRN_BRECQ_app/scrn_brecq`
+- `conda run -n quant python -m json.tool SCRN_BRECQ_app/scrn_brecq/configs/default_quant_config.json`
+- `conda run -n quant python -c "...关键包导入检查..."`
+- `conda run -n quant python -c "...SCRN 小输入前向检查..."`
+- `conda run -n quant python -c "...QuantModel 包装和小输入前向检查..."`
+
+### 轻量验证结果
+
+- `prepare_patches.py`、`train_scrn.py`、`test_scrn.py` 和 `quantize_scrn.py` 的 `--help` 均能正常导入和显示参数。
+- `compileall` 通过，说明两个目录下的 Python 文件语法可编译。
+- `default_quant_config.json` 可被 `json.tool` 解析，且默认 checkpoint、calibration 数据目录、评估输入和 run 目录路径能被 `quantize_scrn.py` 的配置解析逻辑识别。
+- 关键包导入通过：`scrn_repro.model`、`scrn_repro.data`、`scrn_repro.training`、`scrn_brecq.data`、`scrn_brecq.model` 和 `scrn_brecq.quant` 的核心对象均可导入。
+- 使用缩小版 SCRN 做 `[1, 1, 16, 16]` 输入前向，输出形状为 `[1, 1, 16, 16]`。
+- 使用缩小版 SCRN 构造 `QuantModel` 后做同样输入前向，输出形状为 `[1, 1, 16, 16]`，并识别出 52 个 `QuantModule` 和 5 个 `BaseQuantBlock`。
