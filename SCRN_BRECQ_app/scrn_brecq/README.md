@@ -22,7 +22,8 @@ scrn_brecq/
 │   ├── __init__.py
 │   ├── evaluate_quantized_scrn.py
 │   ├── quantize_scrn.py
-│   └── smoke_check.py
+│   ├── smoke_check.py
+│   └── verify_quantized_scrn.py
 ├── data/
 │   ├── __init__.py
 │   └── calibration_loader.py
@@ -55,6 +56,7 @@ scrn_brecq/
 - `cli/quantize_scrn.py`: 执行完整 SCRN-BRECQ 量化、重构、评估和 checkpoint 保存。
 - `cli/evaluate_quantized_scrn.py`: 重新加载已保存的 `quantized_scrn_brecq.pth` 并评估量化模型。
 - `cli/smoke_check.py`: 无权重依赖的快速结构检查，用合成输入验证 QuantModel 包装和量化前向。
+- `cli/verify_quantized_scrn.py`: 检查已保存 checkpoint 是否真正启用量化，包括 bit 分布、离散等级和 FP32/量化输出差异。
 - `runs/`: 量化运行产物目录。实际 run 输出被 `.gitignore` 忽略。
 
 ## 常用命令
@@ -78,6 +80,14 @@ conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_sc
   --device cpu
 ```
 
+验证已保存 checkpoint 的量化真实性:
+
+```bash
+conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.verify_quantized_scrn \
+  --checkpoint SCRN_BRECQ_app/scrn_brecq/runs/quant/20260426_212245_smoke_w_only/checkpoints/quantized_scrn_brecq.pth \
+  --device cpu
+```
+
 无数据、无权重依赖的结构 smoke check:
 
 ```bash
@@ -89,4 +99,5 @@ conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.smoke_check --device 
 - `quantize_scrn.py` 默认写入 `SCRN_BRECQ_app/scrn_brecq/runs/quant/`。
 - `evaluate_quantized_scrn.py` 默认写入 `SCRN_BRECQ_app/scrn_brecq/runs/quant_eval/`。
 - 运行产物通常包括 `config.json`、`metrics.json`、`summary.md`、`prediction.npy`、可选 `comparison.png` 和 checkpoint。
+- 正式 W4A32 重建建议从默认配置开始，即 `num_samples=1024`、`batch_size=16`、`iters_w=20000`、`act_quant=false`。
 - `.npy`、`.pth`、运行目录、缓存和日志不应提交到 Git。

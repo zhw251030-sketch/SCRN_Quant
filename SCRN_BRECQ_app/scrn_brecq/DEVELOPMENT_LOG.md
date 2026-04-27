@@ -453,3 +453,41 @@
 - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn --checkpoint SCRN_BRECQ_app/scrn_brecq/runs/quant/20260426_212245_smoke_w_only/checkpoints/quantized_scrn_brecq.pth --device cpu --run-root /tmp/scrn_brecq_quant_eval_smoke --run-name smoke_eval --no-save-figure`
 - 量化 checkpoint 评估 smoke 输出目录为 `/tmp/scrn_brecq_quant_eval_smoke/20260427_143652_smoke_eval`，包含 `config.json`、`metrics.json`、`prediction.npy` 和 `summary.md`。
 - 评估 smoke 指标：`input_snr=3.9693`、`quant_snr=11.4205`、`input_ssim=0.6053`、`quant_ssim=0.8270`。
+
+## 2026-04-27 新增量化真实性验证 CLI
+
+### 修改内容
+
+- 新增 `cli/verify_quantized_scrn.py`，用于读取已保存的 `quantized_scrn_brecq.pth` 并验证量化是否真实生效。
+- 更新 `README.md`，补充 `verify_quantized_scrn.py` 的目录说明、使用命令和正式 W4A32 重建建议参数。
+
+### 验证口径
+
+- 复用 `evaluate_quantized_scrn.py` 的 checkpoint 加载逻辑，避免重复实现 AdaRound 结构恢复。
+- 报告 `final_quant_state`、`QuantModule` 数量、AdaRound 数量、权重量化 bit 分布、每个 bit 下的最大整数等级数，以及是否存在超过 `2**bit` 的异常层。
+- 使用同一 checkpoint 比较 FP32 路径和量化路径输出，报告 SNR/SSIM、最大绝对差、平均绝对差和 MSE。
+- `passed=true` 需要同时满足：存在量化模块、无离散等级异常、FP32 与量化输出存在非零差异。
+
+### 正式重建检查计划
+
+- 先提交验证 CLI 与文档改动，避免正式 run 产物和代码改动混在一个提交里。
+- 随后运行 W4A32 正式检查：
+  - `num_samples=1024`
+  - `batch_size=16`
+  - `iters_w=20000`
+  - `act_quant=false`
+  - `run_name=w4_recon_1024samples_20000iters`
+- 正式 run 完成后，对生成的 `quantized_scrn_brecq.pth` 运行 `verify_quantized_scrn.py`，并把验证 JSON 写到对应 run 目录。
+
+### 验证方式
+
+- 待提交前执行：
+  - `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/verify_quantized_scrn.py`
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.verify_quantized_scrn --help`
+  - 使用已有 smoke checkpoint 运行 `verify_quantized_scrn.py` 做功能验证。
+- 已用 `20260426_214141_smoke_five_panel_layout` 的 checkpoint 验证：
+  - `passed=true`
+  - `weight_bit_counts={"4": 50, "8": 2}`
+  - `max_unique_int_levels_per_channel_by_bit={"4": 16, "8": 214}`
+  - `level_offender_count=0`
+  - `fp32_quant_max_abs_diff=0.06882372498512268`
