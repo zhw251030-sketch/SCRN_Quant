@@ -568,3 +568,17 @@
 - 正式四卡命令建议：
   - `CUDA_VISIBLE_DEVICES=0,1,2,3 conda run -n quant torchrun --standalone --nproc_per_node=4 -m SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn --distributed --num-samples 1024 --batch-size 16 --iters-w 20000 --run-name w4_recon_1024samples_20000iters_dist4 --device cuda`
 - 若后续需要 W4A4，需要单独设计分布式 activation quantizer 初始化和同步。
+
+## 2026-04-27 增加量化重建耗时指标
+
+### 修改内容
+
+- `cli/quantize_scrn.py` 在 `metrics.json` 中新增耗时字段：
+  - `reconstruction_seconds` / `reconstruction_minutes`：layer/block reconstruction 墙钟耗时；分布式模式下包含结束同步等待。
+  - `elapsed_seconds` / `elapsed_minutes`：CLI 主流程开始到最终量化推理完成、写入 metrics 前的总墙钟耗时。
+- 终端最终输出从单一 `seconds` 改为同时显示 `inference_seconds`、`reconstruction_seconds` 和 `elapsed_seconds`，避免把最终推理耗时误读为整次量化耗时。
+
+### 验证方式
+
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/quantize_scrn.py`
+- 后续新 run 可直接从 `metrics.json` 读取耗时，不再需要用 run 目录文件时间戳估算。

@@ -82,6 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     """命令行主流程。"""
+    run_start_time = time.time()
     args = build_parser().parse_args()
     config = load_and_resolve_config(args)
     configure_visible_gpus(config)
@@ -131,8 +132,10 @@ def main() -> None:
             quant_pre_recon_prediction, quant_pre_recon_seconds = predict_array(quant_model, degraded, device)
         barrier_if_distributed(bool(config["distributed"]))
 
+        reconstruction_start_time = time.time()
         run_reconstruction(quant_model, calibration_data, config, is_main=is_main)
         barrier_if_distributed(bool(config["distributed"]))
+        reconstruction_seconds = time.time() - reconstruction_start_time
 
         if is_main:
             quant_model.set_quant_state(True, bool(config["act_quant"]))
@@ -147,6 +150,7 @@ def main() -> None:
                 quant_post_recon_prediction=quant_post_recon_prediction,
                 quant_post_recon_seconds=quant_post_recon_seconds,
             )
+            add_timing_metrics(metrics, run_start_time=run_start_time, reconstruction_seconds=reconstruction_seconds)
 
             np.save(run_dir / "fp32_prediction.npy", fp32_prediction)
             np.save(run_dir / "quant_pre_recon_prediction.npy", quant_pre_recon_prediction)
@@ -194,7 +198,8 @@ def main() -> None:
                 "input_snr={input_snr_db:.4f} fp32_snr={fp32_snr_db:.4f} "
                 "pre_recon_snr={quant_pre_recon_snr_db:.4f} post_recon_snr={quant_post_recon_snr_db:.4f} "
                 "input_ssim={input_ssim:.4f} post_recon_ssim={quant_post_recon_ssim:.4f} "
-                "seconds={quant_post_recon_inference_seconds:.4f}".format(
+                "inference_seconds={quant_post_recon_inference_seconds:.4f} "
+                "reconstruction_seconds={reconstruction_seconds:.2f} elapsed_seconds={elapsed_seconds:.2f}".format(
                     **metrics
                 ),
                 flush=True,
@@ -521,6 +526,19 @@ def build_comparison_metrics(
     metrics["after_ssim"] = metrics["quant_post_recon_ssim"]
     metrics["inference_seconds"] = metrics["quant_post_recon_inference_seconds"]
     return metrics
+
+
+def add_timing_metrics(metrics: dict[str, float], *, run_start_time: float, reconstruction_seconds: float) -> None:
+    """补充量化流程耗时指标。
+
+    `elapsed_seconds` 从 CLI 主流程开始计时，到最终量化推理完成后写入 metrics 前结束；
+    `reconstruction_seconds` 覆盖 layer/block reconstruction，并在分布式模式下包含结束同步等待。
+    """
+    elapsed_seconds = time.time() - float(run_start_time)
+    metrics["reconstruction_seconds"] = float(reconstruction_seconds)
+    metrics["reconstruction_minutes"] = float(reconstruction_seconds) / 60.0
+    metrics["elapsed_seconds"] = float(elapsed_seconds)
+    metrics["elapsed_minutes"] = float(elapsed_seconds) / 60.0
 
 
 def save_quant_checkpoint(
