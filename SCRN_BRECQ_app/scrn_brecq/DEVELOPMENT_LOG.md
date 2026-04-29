@@ -623,3 +623,26 @@
   - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi --checkpoint SCRN_BRECQ_app/scrn_brecq/runs/quant/20260427_192819_w4_recon_1024samples_20000iters_dist4_bsz32_global128/checkpoints/quantized_scrn_brecq.pth --num-eval-samples 128 --batch-size 16 --device auto --run-name global128_quant10750_eval128`
   - 输出目录：`SCRN_BRECQ_app/scrn_brecq/runs/generalization_eval/20260427_222925_global128_quant10750_eval128`
   - 聚合结果：`input_snr_db_mean=0.9709`、`fp32_snr_db_mean=6.0901`、`quant_snr_db_mean=4.8802`、`quant_minus_fp32_snr_db_mean=-1.2099`、`fp32_ssim_mean=0.7562`、`quant_ssim_mean=0.7161`。
+
+## 2026-04-29 整理 Codex 聊天记录归档文件
+
+### 修改内容
+
+- 将通用聊天归档文件调整为按具体对话主题保存，便于同一服务器不同 Codex/OpenAI 账号交接时查阅。
+- 当前保留并纳入 Git 的聊天记录文件包括：
+  - `CODEX_CHAT_BRECQ应用SCRN01_文件编写.md`
+  - `CODEX_CHAT_BRECQ应用SCRN02_代码查阅检验.md`
+  - `CODEX_CHAT_SCRN复现测试260425.md`
+  - `CODEX_CHAT_安装插件skill.md`
+- 移除此前仅作为模板的通用/占位归档文件：
+  - `CODEX_CHAT_ARCHIVE.md`
+  - `CODEX_CHAT_BRECQ应用SCRN03_量化实验记录.md`
+  - `CODEX_CHAT_BRECQ应用SCRN04_泛化评估记录.md`
+  - `CODEX_CHAT_BRECQ应用SCRN05_后续优化讨论.md`
+- `CODEX_CONTEXT.md` 仍作为短交接上下文保留。
+
+### 验证方式
+
+- `git status` 检查新增和删除文件范围。
+- `git diff --check` 检查 Markdown 空白格式。
+- 本次只调整归档文档，不涉及 Python 代码或运行产物。
