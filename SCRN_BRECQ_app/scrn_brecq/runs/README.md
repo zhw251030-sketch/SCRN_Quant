@@ -21,3 +21,12 @@ runs/quant/20260426_120000_w4a4_example/
 - `runs/quant/`: 完整量化、重建、评估和 checkpoint 保存。
 - `runs/quant_eval/`: 已保存量化 checkpoint 的单样本评估。
 - `runs/generalization_eval/`: 已保存量化 checkpoint 的多样本泛化评估。
+
+量化 run 中的 checkpoint 约定：
+
+- `checkpoints/quantized_scrn_brecq_pre_recon.pth`: 权重量化初始化后、BRECQ reconstruction 前的量化模型。
+- `checkpoints/quantized_scrn_brecq.pth`: BRECQ reconstruction 后的最终量化模型。
+
+多样本泛化评估如果只传 `--checkpoint`，报告中的 `quant_*` 旧字段表示最终量化模型；如果同时传
+`--pre-recon-checkpoint`，报告会额外写入 `quant_pre_recon_*`、`quant_post_recon_*` 和
+`quant_post_minus_pre_*` 指标。

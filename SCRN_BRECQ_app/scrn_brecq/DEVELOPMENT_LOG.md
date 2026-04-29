@@ -646,3 +646,29 @@
 - `git status` 检查新增和删除文件范围。
 - `git diff --check` 检查 Markdown 空白格式。
 - 本次只调整归档文档，不涉及 Python 代码或运行产物。
+
+## 2026-04-29 增加重建前 checkpoint 与多样本 pre/post 对比
+
+### 修改内容
+
+- `cli/quantize_scrn.py` 在权重量化初始化后、BRECQ reconstruction 前新增保存
+  `checkpoints/quantized_scrn_brecq_pre_recon.pth`。
+- 最终 checkpoint 仍为 `checkpoints/quantized_scrn_brecq.pth`，并通过 `checkpoint_stage` 区分
+  `pre_reconstruction` 和 `post_reconstruction`。
+- `cli/evaluate_quantized_scrn_multi.py` 新增 `--pre-recon-checkpoint`：
+  - 未传该参数时，兼容旧行为，`quant_*` 字段表示最终重建后量化模型。
+  - 传入该参数时，在同一批 degraded 输入上同时评估 FP32、量化重建前、量化重建后路径。
+  - 逐样本和聚合指标新增 `quant_pre_recon_*`、`quant_post_recon_*` 和
+    `quant_post_minus_pre_*`，用于判断 BRECQ reconstruction 是否带来稳定提升。
+  - 可视化从四图扩展为最多五图：clean、input、FP32、Quant Pre-Recon、Quant Post-Recon。
+- 更新 `README.md` 和 `runs/README.md`，明确多样本评估中 `Quant` 默认含义是最终重建后结果；
+  历史 run 如果没有保存 `quantized_scrn_brecq_pre_recon.pth`，不能事后恢复重建前模型，只能重新跑量化流程。
+
+### 验证方式
+
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/quantize_scrn.py SCRN_BRECQ_app/scrn_brecq/cli/evaluate_quantized_scrn_multi.py`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi --help`
+- 使用小规模 `quantize_scrn.py` smoke run 验证同时生成 pre/post 两个 checkpoint。
+- 使用 smoke run 的两个 checkpoint 运行多样本评估，验证 `metrics.json` 同时包含
+  `quant_pre_recon_snr_db_mean`、`quant_post_recon_snr_db_mean` 和
+  `quant_post_minus_pre_snr_db_mean`。

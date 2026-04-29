@@ -130,6 +130,23 @@ def main() -> None:
         quant_model.set_quant_state(True, False)
         if is_main:
             quant_pre_recon_prediction, quant_pre_recon_seconds = predict_array(quant_model, degraded, device)
+            pre_recon_checkpoint_path = save_quant_checkpoint(
+                run_dir,
+                quant_model,
+                loaded,
+                config,
+                metrics={
+                    "input_snr_db": snr_db(degraded, clean),
+                    "fp32_snr_db": snr_db(fp32_prediction, clean),
+                    "fp32_ssim": ssim_score(fp32_prediction, clean),
+                    "quant_pre_recon_snr_db": snr_db(quant_pre_recon_prediction, clean),
+                    "quant_pre_recon_ssim": ssim_score(quant_pre_recon_prediction, clean),
+                    "quant_pre_recon_inference_seconds": float(quant_pre_recon_seconds),
+                },
+                checkpoint_name="quantized_scrn_brecq_pre_recon.pth",
+                checkpoint_stage="pre_reconstruction",
+                final_quant_state={"weight_quant": True, "act_quant": False},
+            )
         barrier_if_distributed(bool(config["distributed"]))
 
         reconstruction_start_time = time.time()
@@ -185,6 +202,7 @@ def main() -> None:
                     "Metrics": metrics,
                     "Model Size": metrics["model_size"],
                     "Artifacts": {
+                        "pre_recon_checkpoint": pre_recon_checkpoint_path,
                         "checkpoint": checkpoint_path,
                         "fp32_prediction": run_dir / "fp32_prediction.npy",
                         "quant_pre_recon_prediction": run_dir / "quant_pre_recon_prediction.npy",
@@ -557,19 +575,24 @@ def save_quant_checkpoint(
     loaded,
     config: dict[str, Any],
     metrics: dict[str, Any],
+    *,
+    checkpoint_name: str = "quantized_scrn_brecq.pth",
+    checkpoint_stage: str = "post_reconstruction",
+    final_quant_state: dict[str, bool] | None = None,
 ) -> Path:
     """保存量化模型 checkpoint。"""
-    checkpoint_path = run_dir / "checkpoints" / "quantized_scrn_brecq.pth"
+    checkpoint_path = run_dir / "checkpoints" / checkpoint_name
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "created_at": datetime.now().isoformat(timespec="seconds"),
+        "checkpoint_stage": checkpoint_stage,
         "quant_model_state_dict": quant_model.state_dict(),
         "model_config": asdict(loaded.config),
         "quant_config": serializable_config(config),
         "source_checkpoint": str(loaded.checkpoint_path),
         "source_checkpoint_epoch": loaded.epoch,
         "source_checkpoint_loss": loaded.loss,
-        "final_quant_state": {"weight_quant": True, "act_quant": bool(config["act_quant"])},
+        "final_quant_state": final_quant_state or {"weight_quant": True, "act_quant": bool(config["act_quant"])},
         "metrics": metrics,
     }
     torch.save(payload, checkpoint_path)
