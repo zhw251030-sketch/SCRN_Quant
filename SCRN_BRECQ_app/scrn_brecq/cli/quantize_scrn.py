@@ -149,10 +149,66 @@ def main() -> None:
             )
         barrier_if_distributed(bool(config["distributed"]))
 
-        reconstruction_start_time = time.time()
-        run_reconstruction(quant_model, calibration_data, config, is_main=is_main)
+        weight_reconstruction_start_time = time.time()
+        run_weight_reconstruction(quant_model, calibration_data, config, is_main=is_main)
         barrier_if_distributed(bool(config["distributed"]))
-        reconstruction_seconds = time.time() - reconstruction_start_time
+        weight_reconstruction_seconds = time.time() - weight_reconstruction_start_time
+
+        if is_main:
+            quant_model.set_quant_state(True, False)
+            quant_post_weight_recon_prediction, quant_post_weight_recon_seconds = predict_array(quant_model, degraded, device)
+            weight_recon_checkpoint_path = save_quant_checkpoint(
+                run_dir,
+                quant_model,
+                loaded,
+                config,
+                metrics={
+                    "input_snr_db": snr_db(degraded, clean),
+                    "fp32_snr_db": snr_db(fp32_prediction, clean),
+                    "fp32_ssim": ssim_score(fp32_prediction, clean),
+                    "quant_post_weight_recon_snr_db": snr_db(quant_post_weight_recon_prediction, clean),
+                    "quant_post_weight_recon_ssim": ssim_score(quant_post_weight_recon_prediction, clean),
+                    "quant_post_weight_recon_inference_seconds": float(quant_post_weight_recon_seconds),
+                },
+                checkpoint_name="quantized_scrn_brecq_weight_recon.pth",
+                checkpoint_stage="post_weight_reconstruction",
+                final_quant_state={"weight_quant": True, "act_quant": False},
+            )
+        else:
+            quant_post_weight_recon_prediction = None
+            quant_post_weight_recon_seconds = 0.0
+            weight_recon_checkpoint_path = None
+
+        quant_pre_act_recon_prediction = None
+        quant_pre_act_recon_seconds = 0.0
+        pre_act_recon_checkpoint_path = None
+        activation_reconstruction_seconds = 0.0
+        if bool(config["act_quant"]):
+            initialize_activation_quantization(quant_model, calibration_data, config)
+            if is_main:
+                quant_model.set_quant_state(True, True)
+                quant_pre_act_recon_prediction, quant_pre_act_recon_seconds = predict_array(quant_model, degraded, device)
+                pre_act_recon_checkpoint_path = save_quant_checkpoint(
+                    run_dir,
+                    quant_model,
+                    loaded,
+                    config,
+                    metrics={
+                        "input_snr_db": snr_db(degraded, clean),
+                        "fp32_snr_db": snr_db(fp32_prediction, clean),
+                        "fp32_ssim": ssim_score(fp32_prediction, clean),
+                        "quant_pre_act_recon_snr_db": snr_db(quant_pre_act_recon_prediction, clean),
+                        "quant_pre_act_recon_ssim": ssim_score(quant_pre_act_recon_prediction, clean),
+                        "quant_pre_act_recon_inference_seconds": float(quant_pre_act_recon_seconds),
+                    },
+                    checkpoint_name="quantized_scrn_brecq_pre_act_recon.pth",
+                    checkpoint_stage="pre_activation_reconstruction",
+                    final_quant_state={"weight_quant": True, "act_quant": True},
+                )
+
+            activation_reconstruction_start_time = time.time()
+            run_activation_reconstruction(quant_model, calibration_data, config, is_main=is_main)
+            activation_reconstruction_seconds = time.time() - activation_reconstruction_start_time
 
         if is_main:
             quant_model.set_quant_state(True, bool(config["act_quant"]))
@@ -164,10 +220,19 @@ def main() -> None:
                 fp32_seconds=fp32_seconds,
                 quant_pre_recon_prediction=quant_pre_recon_prediction,
                 quant_pre_recon_seconds=quant_pre_recon_seconds,
+                quant_post_weight_recon_prediction=quant_post_weight_recon_prediction,
+                quant_post_weight_recon_seconds=quant_post_weight_recon_seconds,
+                quant_pre_act_recon_prediction=quant_pre_act_recon_prediction,
+                quant_pre_act_recon_seconds=quant_pre_act_recon_seconds,
                 quant_post_recon_prediction=quant_post_recon_prediction,
                 quant_post_recon_seconds=quant_post_recon_seconds,
             )
-            add_timing_metrics(metrics, run_start_time=run_start_time, reconstruction_seconds=reconstruction_seconds)
+            add_timing_metrics(
+                metrics,
+                run_start_time=run_start_time,
+                weight_reconstruction_seconds=weight_reconstruction_seconds,
+                activation_reconstruction_seconds=activation_reconstruction_seconds,
+            )
             metrics["model_size"] = build_model_size_report(
                 quant_model,
                 source_checkpoint_path=loaded.checkpoint_path,
@@ -175,6 +240,10 @@ def main() -> None:
 
             np.save(run_dir / "fp32_prediction.npy", fp32_prediction)
             np.save(run_dir / "quant_pre_recon_prediction.npy", quant_pre_recon_prediction)
+            np.save(run_dir / "quant_post_weight_recon_prediction.npy", quant_post_weight_recon_prediction)
+            if quant_pre_act_recon_prediction is not None:
+                np.save(run_dir / "quant_pre_act_recon_prediction.npy", quant_pre_act_recon_prediction)
+                np.save(run_dir / "quant_post_act_recon_prediction.npy", quant_post_recon_prediction)
             np.save(run_dir / "quant_post_recon_prediction.npy", quant_post_recon_prediction)
             np.save(run_dir / "prediction.npy", quant_post_recon_prediction)
             if bool(config["save_figure"]):
@@ -184,7 +253,10 @@ def main() -> None:
                     degraded=degraded,
                     fp32_prediction=fp32_prediction,
                     quant_pre_recon_prediction=quant_pre_recon_prediction,
+                    quant_post_weight_recon_prediction=quant_post_weight_recon_prediction,
+                    quant_pre_act_recon_prediction=quant_pre_act_recon_prediction,
                     quant_post_recon_prediction=quant_post_recon_prediction,
+                    config=config,
                     metrics=metrics,
                 )
 
@@ -203,9 +275,22 @@ def main() -> None:
                     "Model Size": metrics["model_size"],
                     "Artifacts": {
                         "pre_recon_checkpoint": pre_recon_checkpoint_path,
+                        "weight_recon_checkpoint": weight_recon_checkpoint_path,
+                        "pre_act_recon_checkpoint": pre_act_recon_checkpoint_path,
                         "checkpoint": checkpoint_path,
                         "fp32_prediction": run_dir / "fp32_prediction.npy",
                         "quant_pre_recon_prediction": run_dir / "quant_pre_recon_prediction.npy",
+                        "quant_post_weight_recon_prediction": run_dir / "quant_post_weight_recon_prediction.npy",
+                        "quant_pre_act_recon_prediction": (
+                            run_dir / "quant_pre_act_recon_prediction.npy"
+                            if quant_pre_act_recon_prediction is not None
+                            else "disabled"
+                        ),
+                        "quant_post_act_recon_prediction": (
+                            run_dir / "quant_post_act_recon_prediction.npy"
+                            if quant_pre_act_recon_prediction is not None
+                            else "disabled"
+                        ),
                         "quant_post_recon_prediction": run_dir / "quant_post_recon_prediction.npy",
                         "comparison": run_dir / "comparison.png" if bool(config["save_figure"]) else "disabled",
                         "config": run_dir / "config.json",
@@ -224,7 +309,8 @@ def main() -> None:
             )
             print(
                 "input_snr={input_snr_db:.4f} fp32_snr={fp32_snr_db:.4f} "
-                "pre_recon_snr={quant_pre_recon_snr_db:.4f} post_recon_snr={quant_post_recon_snr_db:.4f} "
+                "pre_w_snr={quant_pre_recon_snr_db:.4f} post_w_snr={quant_post_weight_recon_snr_db:.4f} "
+                "post_recon_snr={quant_post_recon_snr_db:.4f} "
                 "input_ssim={input_ssim:.4f} post_recon_ssim={quant_post_recon_ssim:.4f} "
                 "inference_seconds={quant_post_recon_inference_seconds:.4f} "
                 "reconstruction_seconds={reconstruction_seconds:.2f} elapsed_seconds={elapsed_seconds:.2f}".format(
@@ -418,17 +504,14 @@ def initialize_weight_quantization(
         _ = quant_model(init_inputs)
 
 
-def run_reconstruction(
+def run_weight_reconstruction(
     quant_model: QuantModel,
     calibration_data: torch.Tensor,
     config: dict[str, Any],
     *,
     is_main: bool = True,
 ) -> None:
-    """执行 W-only，并按需执行 W+A reconstruction。"""
-    device = next(quant_model.parameters()).device
-    init_inputs = calibration_data[: min(int(config["init_batch_size"]), int(calibration_data.size(0)))].to(device)
-
+    """执行 W-only BRECQ reconstruction。"""
     weight_kwargs = {
         "cali_data": calibration_data,
         "batch_size": int(config["batch_size"]),
@@ -446,26 +529,58 @@ def run_reconstruction(
     reconstruct_model(quant_model, quant_model.model, weight_kwargs, log_enabled=is_main)
     quant_model.set_quant_state(True, False)
 
+
+def initialize_activation_quantization(
+    quant_model: QuantModel,
+    calibration_data: torch.Tensor,
+    config: dict[str, Any],
+) -> None:
+    """用 calibration 输入初始化 activation quantizer，并关闭网络最终输出量化。"""
+    device = next(quant_model.parameters()).device
+    init_inputs = calibration_data[: min(int(config["init_batch_size"]), int(calibration_data.size(0)))].to(device)
+    quant_model.set_quant_state(True, True)
+    with torch.no_grad():
+        _ = quant_model(init_inputs)
+    quant_model.disable_network_output_quantization()
+
+
+def run_activation_reconstruction(
+    quant_model: QuantModel,
+    calibration_data: torch.Tensor,
+    config: dict[str, Any],
+    *,
+    is_main: bool = True,
+) -> None:
+    """执行 activation quantizer scale reconstruction。"""
+    if bool(config["distributed"]):
+        raise NotImplementedError("Distributed activation reconstruction is not supported yet.")
+    act_kwargs = {
+        "cali_data": calibration_data,
+        "batch_size": int(config["batch_size"]),
+        "iters": int(config["iters_a"]),
+        "opt_mode": "mse",
+        "asym": False,
+        "act_quant": True,
+        "lr": float(config["activation_lr"]),
+        "p": float(config["lp_norm"]),
+        "log_enabled": is_main,
+    }
+    reconstruct_model(quant_model, quant_model.model, act_kwargs, log_enabled=is_main)
+    quant_model.set_quant_state(True, True)
+
+
+def run_reconstruction(
+    quant_model: QuantModel,
+    calibration_data: torch.Tensor,
+    config: dict[str, Any],
+    *,
+    is_main: bool = True,
+) -> None:
+    """兼容旧调用：执行权重重建，并按需执行激活重建。"""
+    run_weight_reconstruction(quant_model, calibration_data, config, is_main=is_main)
     if bool(config["act_quant"]):
-        if bool(config["distributed"]):
-            raise NotImplementedError("Distributed activation reconstruction is not supported yet.")
-        quant_model.set_quant_state(True, True)
-        with torch.no_grad():
-            _ = quant_model(init_inputs)
-        quant_model.disable_network_output_quantization()
-        act_kwargs = {
-            "cali_data": calibration_data,
-            "batch_size": int(config["batch_size"]),
-            "iters": int(config["iters_a"]),
-            "opt_mode": "mse",
-            "asym": False,
-            "act_quant": True,
-            "lr": float(config["activation_lr"]),
-            "p": float(config["lp_norm"]),
-            "log_enabled": is_main,
-        }
-        reconstruct_model(quant_model, quant_model.model, act_kwargs, log_enabled=is_main)
-        quant_model.set_quant_state(True, True)
+        initialize_activation_quantization(quant_model, calibration_data, config)
+        run_activation_reconstruction(quant_model, calibration_data, config, is_main=is_main)
 
 
 def reconstruct_model(
@@ -530,23 +645,58 @@ def build_comparison_metrics(
     fp32_seconds: float,
     quant_pre_recon_prediction: np.ndarray,
     quant_pre_recon_seconds: float,
+    quant_post_weight_recon_prediction: np.ndarray,
+    quant_post_weight_recon_seconds: float,
+    quant_pre_act_recon_prediction: np.ndarray | None,
+    quant_pre_act_recon_seconds: float,
     quant_post_recon_prediction: np.ndarray,
     quant_post_recon_seconds: float,
 ) -> dict[str, Any]:
-    """构建五图对比对应的完整指标。"""
+    """构建 W-only 或 W+A 阶段对比对应的完整指标。"""
+    pre_weight_snr = snr_db(quant_pre_recon_prediction, clean)
+    pre_weight_ssim = ssim_score(quant_pre_recon_prediction, clean)
+    post_weight_snr = snr_db(quant_post_weight_recon_prediction, clean)
+    post_weight_ssim = ssim_score(quant_post_weight_recon_prediction, clean)
+    post_recon_snr = snr_db(quant_post_recon_prediction, clean)
+    post_recon_ssim = ssim_score(quant_post_recon_prediction, clean)
     metrics = {
         "input_snr_db": snr_db(degraded, clean),
         "input_ssim": ssim_score(degraded, clean),
         "fp32_snr_db": snr_db(fp32_prediction, clean),
         "fp32_ssim": ssim_score(fp32_prediction, clean),
         "fp32_inference_seconds": float(fp32_seconds),
-        "quant_pre_recon_snr_db": snr_db(quant_pre_recon_prediction, clean),
-        "quant_pre_recon_ssim": ssim_score(quant_pre_recon_prediction, clean),
+        "quant_pre_recon_snr_db": pre_weight_snr,
+        "quant_pre_recon_ssim": pre_weight_ssim,
         "quant_pre_recon_inference_seconds": float(quant_pre_recon_seconds),
-        "quant_post_recon_snr_db": snr_db(quant_post_recon_prediction, clean),
-        "quant_post_recon_ssim": ssim_score(quant_post_recon_prediction, clean),
+        "quant_pre_weight_recon_snr_db": pre_weight_snr,
+        "quant_pre_weight_recon_ssim": pre_weight_ssim,
+        "quant_pre_weight_recon_inference_seconds": float(quant_pre_recon_seconds),
+        "quant_post_weight_recon_snr_db": post_weight_snr,
+        "quant_post_weight_recon_ssim": post_weight_ssim,
+        "quant_post_weight_recon_inference_seconds": float(quant_post_weight_recon_seconds),
+        "quant_weight_recon_snr_gain_db": post_weight_snr - pre_weight_snr,
+        "quant_weight_recon_ssim_gain": post_weight_ssim - pre_weight_ssim,
+        "quant_post_recon_snr_db": post_recon_snr,
+        "quant_post_recon_ssim": post_recon_ssim,
         "quant_post_recon_inference_seconds": float(quant_post_recon_seconds),
     }
+    if quant_pre_act_recon_prediction is not None:
+        pre_act_snr = snr_db(quant_pre_act_recon_prediction, clean)
+        pre_act_ssim = ssim_score(quant_pre_act_recon_prediction, clean)
+        metrics.update(
+            {
+                "quant_pre_act_recon_snr_db": pre_act_snr,
+                "quant_pre_act_recon_ssim": pre_act_ssim,
+                "quant_pre_act_recon_inference_seconds": float(quant_pre_act_recon_seconds),
+                "quant_post_act_recon_snr_db": post_recon_snr,
+                "quant_post_act_recon_ssim": post_recon_ssim,
+                "quant_post_act_recon_inference_seconds": float(quant_post_recon_seconds),
+                "quant_act_init_snr_delta_db": pre_act_snr - post_weight_snr,
+                "quant_act_init_ssim_delta": pre_act_ssim - post_weight_ssim,
+                "quant_act_recon_snr_gain_db": post_recon_snr - pre_act_snr,
+                "quant_act_recon_ssim_gain": post_recon_ssim - pre_act_ssim,
+            }
+        )
     # 保留旧字段名，方便已有 summary/脚本把最终量化结果当作 after 指标读取。
     metrics["before_snr_db"] = metrics["input_snr_db"]
     metrics["before_ssim"] = metrics["input_ssim"]
@@ -556,13 +706,24 @@ def build_comparison_metrics(
     return metrics
 
 
-def add_timing_metrics(metrics: dict[str, Any], *, run_start_time: float, reconstruction_seconds: float) -> None:
+def add_timing_metrics(
+    metrics: dict[str, Any],
+    *,
+    run_start_time: float,
+    weight_reconstruction_seconds: float,
+    activation_reconstruction_seconds: float = 0.0,
+) -> None:
     """补充量化流程耗时指标。
 
     `elapsed_seconds` 从 CLI 主流程开始计时，到最终量化推理完成后写入 metrics 前结束；
     `reconstruction_seconds` 覆盖 layer/block reconstruction，并在分布式模式下包含结束同步等待。
     """
     elapsed_seconds = time.time() - float(run_start_time)
+    reconstruction_seconds = float(weight_reconstruction_seconds) + float(activation_reconstruction_seconds)
+    metrics["weight_reconstruction_seconds"] = float(weight_reconstruction_seconds)
+    metrics["weight_reconstruction_minutes"] = float(weight_reconstruction_seconds) / 60.0
+    metrics["activation_reconstruction_seconds"] = float(activation_reconstruction_seconds)
+    metrics["activation_reconstruction_minutes"] = float(activation_reconstruction_seconds) / 60.0
     metrics["reconstruction_seconds"] = float(reconstruction_seconds)
     metrics["reconstruction_minutes"] = float(reconstruction_seconds) / 60.0
     metrics["elapsed_seconds"] = float(elapsed_seconds)
@@ -634,10 +795,13 @@ def save_comparison_figure(
     degraded: np.ndarray,
     fp32_prediction: np.ndarray,
     quant_pre_recon_prediction: np.ndarray,
+    quant_post_weight_recon_prediction: np.ndarray,
+    quant_pre_act_recon_prediction: np.ndarray | None,
     quant_post_recon_prediction: np.ndarray,
+    config: dict[str, Any],
     metrics: dict[str, Any],
 ) -> None:
-    """保存五图对比：GT、输入、FP32、量化重建前、量化重建后。"""
+    """保存 W-only 五图或 W+A 七图阶段对比。"""
     try:
         import matplotlib
 
@@ -646,22 +810,50 @@ def save_comparison_figure(
     except ModuleNotFoundError as exc:
         raise ModuleNotFoundError("Saving comparison figures requires installing matplotlib.") from exc
 
-    fig, axes = plt.subplots(1, 5, figsize=(20, 4.8), constrained_layout=True)
+    w_only_label = f"W{int(config['n_bits_w'])}A32"
+    wa_label = f"W{int(config['n_bits_w'])}A{int(config['n_bits_a'])}"
     panels = [
         (clean, "Ground Truth"),
         (degraded, f"Input\nSNR={metrics['input_snr_db']:.2f}dB SSIM={metrics['input_ssim']:.3f}"),
         (fp32_prediction, f"FP32 SCRN\nSNR={metrics['fp32_snr_db']:.2f}dB SSIM={metrics['fp32_ssim']:.3f}"),
         (
             quant_pre_recon_prediction,
-            "Quant Before Recon\n"
+            f"{w_only_label} Pre Weight Recon\n"
             f"SNR={metrics['quant_pre_recon_snr_db']:.2f}dB SSIM={metrics['quant_pre_recon_ssim']:.3f}",
         ),
         (
-            quant_post_recon_prediction,
-            "Quant After BRECQ\n"
-            f"SNR={metrics['quant_post_recon_snr_db']:.2f}dB SSIM={metrics['quant_post_recon_ssim']:.3f}",
+            quant_post_weight_recon_prediction,
+            f"{w_only_label} Post Weight Recon\n"
+            f"SNR={metrics['quant_post_weight_recon_snr_db']:.2f}dB "
+            f"SSIM={metrics['quant_post_weight_recon_ssim']:.3f}",
         ),
     ]
+    if quant_pre_act_recon_prediction is not None:
+        panels.extend(
+            [
+                (
+                    quant_pre_act_recon_prediction,
+                    f"{wa_label} Pre Act Recon\n"
+                    f"SNR={metrics['quant_pre_act_recon_snr_db']:.2f}dB "
+                    f"SSIM={metrics['quant_pre_act_recon_ssim']:.3f}",
+                ),
+                (
+                    quant_post_recon_prediction,
+                    f"{wa_label} Post Act Recon\n"
+                    f"SNR={metrics['quant_post_recon_snr_db']:.2f}dB "
+                    f"SSIM={metrics['quant_post_recon_ssim']:.3f}",
+                ),
+            ]
+        )
+    else:
+        panels.append(
+            (
+                quant_post_recon_prediction,
+                f"{w_only_label} Final\n"
+                f"SNR={metrics['quant_post_recon_snr_db']:.2f}dB SSIM={metrics['quant_post_recon_ssim']:.3f}",
+            )
+        )
+    fig, axes = plt.subplots(1, len(panels), figsize=(4 * len(panels), 4.8), constrained_layout=True)
     vmin = float(np.min(clean))
     vmax = float(np.max(clean))
     if vmin == vmax:
@@ -670,8 +862,8 @@ def save_comparison_figure(
     image = None
     for axis, (array, title) in zip(axes, panels):
         image = axis.imshow(array, cmap="seismic", aspect="auto", vmin=vmin, vmax=vmax)
-        # 五图并排时标题需要显式压小，避免指标文字遮挡图像区域。
-        axis.set_title(title, fontsize=9, pad=6)
+        # 多图并排时标题需要显式压小，避免指标文字遮挡图像区域。
+        axis.set_title(title, fontsize=8, pad=6)
         axis.axis("off")
     fig.colorbar(image, ax=axes, shrink=0.72, fraction=0.02, pad=0.01)
     fig.savefig(path, dpi=300)

@@ -672,3 +672,59 @@
 - 使用 smoke run 的两个 checkpoint 运行多样本评估，验证 `metrics.json` 同时包含
   `quant_pre_recon_snr_db_mean`、`quant_post_recon_snr_db_mean` 和
   `quant_post_minus_pre_snr_db_mean`。
+
+## 2026-04-29 修复 W4A8 激活量化 checkpoint 与阶段输出
+
+### 修改内容
+
+- `quant/quant_layer.py` 将 `UniformAffineQuantizer.zero_point` 注册为 buffer，使 W+A
+  checkpoint 能保存 activation quantizer 的零点。
+- `cli/evaluate_quantized_scrn.py` 的 checkpoint 恢复逻辑会在 `strict=True` 加载前恢复
+  activation quantizer 的 `delta` 和 `zero_point` 形状；新 checkpoint 不再依赖 eval 输入
+  重新初始化激活量化状态。
+- `cli/verify_quantized_scrn.py` 新增 `activation_quantization` 报告：
+  - `activation_delta_count`
+  - `activation_zero_point_count`
+  - `initialized_activation_quantizers`
+  - `missing_activation_state_count`
+  - `activation_quantizers_restored`
+- `cli/quantize_scrn.py` 将 reconstruction 拆成权重重建和激活重建两个阶段：
+  - W-only 权重初始化后保存 `quantized_scrn_brecq_pre_recon.pth`。
+  - W-only 权重重建后保存 `quantized_scrn_brecq_weight_recon.pth`。
+  - W+A 激活量化初始化后保存 `quantized_scrn_brecq_pre_act_recon.pth`。
+  - 最终保存 `quantized_scrn_brecq.pth`。
+- W-only run 仍输出 5 图；W+A run 输出 7 图：
+  Ground Truth、Input、FP32、W-only Pre Weight Recon、W-only Post Weight Recon、
+  W+A Pre Act Recon、W+A Post Act Recon。
+- `metrics.json` 新增阶段指标：
+  - `quant_pre_weight_recon_*`
+  - `quant_post_weight_recon_*`
+  - `quant_pre_act_recon_*`
+  - `quant_post_act_recon_*`
+  - `quant_weight_recon_*_gain`
+  - `quant_act_init_*_delta`
+  - `quant_act_recon_*_gain`
+  - `weight_reconstruction_seconds`
+  - `activation_reconstruction_seconds`
+- 更新 `README.md` 和 `runs/README.md`，记录 W4A8 smoke 命令、checkpoint 约定和 7 图含义。
+
+### 验证方式
+
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/quant_layer.py SCRN_BRECQ_app/scrn_brecq/cli/evaluate_quantized_scrn.py SCRN_BRECQ_app/scrn_brecq/cli/verify_quantized_scrn.py SCRN_BRECQ_app/scrn_brecq/cli/quantize_scrn.py`
+- W4A8 smoke：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn --n-bits-w 4 --n-bits-a 8 --act-quant --num-samples 2 --batch-size 1 --iters-w 1 --iters-a 1 --run-name smoke_w4a8_stage_fix --device cuda --gpus 0`
+  - 输出目录：`SCRN_BRECQ_app/scrn_brecq/runs/quant/20260429_172312_smoke_w4a8_stage_fix`
+- 真实性验证：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.verify_quantized_scrn --checkpoint SCRN_BRECQ_app/scrn_brecq/runs/quant/20260429_172312_smoke_w4a8_stage_fix/checkpoints/quantized_scrn_brecq.pth --output-json SCRN_BRECQ_app/scrn_brecq/runs/quant/20260429_172312_smoke_w4a8_stage_fix/verification.json --device cpu`
+  - `passed=true`，`activation_delta_count=52`，`activation_zero_point_count=52`，
+    `missing_activation_state_count=0`。
+- 重载一致性：
+  - run 内 `metrics.json` 的 `quant_post_recon_snr_db=7.8479`。
+  - `verify_quantized_scrn.py` 重载同一 checkpoint 后 `quant_snr_db=7.8386`。
+  - `evaluate_quantized_scrn.py` 重载同一 checkpoint 后 `quant_snr=7.8386`。
+  - 差异约 `0.009 dB`，已消除旧 checkpoint 因激活零点丢失导致的明显口径不一致。
+
+### 已知边界
+
+- 本次只修单卡 W+A checkpoint 和阶段评估口径；分布式 `--distributed --act-quant` 仍不支持。
+- W4A8 smoke 只用于链路验证，`iters_w=1`、`iters_a=1` 不代表正式精度。

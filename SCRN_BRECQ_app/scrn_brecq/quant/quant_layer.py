@@ -85,7 +85,9 @@ class UniformAffineQuantizer(nn.Module):
         self.n_bits = int(n_bits)
         self.n_levels = 2 ** self.n_bits
         self.delta: torch.Tensor | nn.Parameter | None = None
-        self.zero_point: torch.Tensor | None = None
+        # zero_point 需要进入 state_dict，否则 W+A checkpoint 重新加载时会用
+        # eval 输入重新初始化激活量化零点，导致 run 内指标和重载评估不一致。
+        self.register_buffer("zero_point", None)
         self.inited = False
         self.leaf_param = bool(leaf_param)
         self.channel_wise = bool(channel_wise)

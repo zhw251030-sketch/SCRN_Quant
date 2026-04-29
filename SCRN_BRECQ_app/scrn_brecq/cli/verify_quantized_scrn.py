@@ -65,6 +65,7 @@ def main() -> None:
         quant_model.disable_network_output_quantization()
 
     layer_report = inspect_weight_quantization(quant_model, max_offenders=int(args.max_offenders))
+    activation_report = inspect_activation_quantization(quant_model)
     clean, degraded = load_eval_arrays(clean_path, input_path)
     output_report = compare_fp32_and_quant_outputs(
         quant_model,
@@ -79,6 +80,7 @@ def main() -> None:
         "has_quant_modules": layer_report["quant_modules"] > 0,
         "no_level_offenders": layer_report["level_offender_count"] == 0,
         "output_changed_after_quantization": output_report["fp32_quant_max_abs_diff"] > 0.0,
+        "activation_quantizers_restored": (not act_quant) or activation_report["missing_activation_state_count"] == 0,
     }
     report = {
         "checkpoint": str(checkpoint_path),
@@ -94,6 +96,7 @@ def main() -> None:
         },
         "eval_paths": {"clean": str(clean_path), "input": str(input_path)},
         "layer_quantization": layer_report,
+        "activation_quantization": activation_report,
         "model_size": build_model_size_report(
             quant_model,
             source_checkpoint_path=checkpoint.get("source_checkpoint"),
@@ -107,6 +110,45 @@ def main() -> None:
     if args.output_json is not None:
         write_json(args.output_json, report)
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
+
+
+def inspect_activation_quantization(quant_model: torch.nn.Module) -> dict[str, Any]:
+    """检查 activation quantizer 的 delta/zero_point 是否从 checkpoint 恢复。"""
+    rows: list[dict[str, Any]] = []
+    initialized_count = 0
+    delta_count = 0
+    zero_point_count = 0
+    learnable_delta_count = 0
+    quant_modules = [(name, module) for name, module in quant_model.named_modules() if isinstance(module, QuantModule)]
+    for name, module in quant_modules:
+        quantizer = module.act_quantizer
+        delta = getattr(quantizer, "delta", None)
+        zero_point = getattr(quantizer, "zero_point", None)
+        has_delta = delta is not None
+        has_zero_point = zero_point is not None
+        is_inited = bool(getattr(quantizer, "inited", False))
+        if is_inited:
+            initialized_count += 1
+        if has_delta:
+            delta_count += 1
+        if has_zero_point:
+            zero_point_count += 1
+        if isinstance(delta, torch.nn.Parameter):
+            learnable_delta_count += 1
+        if has_delta and not has_zero_point:
+            rows.append({"name": name, "reason": "activation delta exists but zero_point is missing"})
+        elif has_delta and not is_inited:
+            rows.append({"name": name, "reason": "activation quantizer is not marked initialized"})
+
+    return {
+        "quant_modules": len(quant_modules),
+        "initialized_activation_quantizers": initialized_count,
+        "activation_delta_count": delta_count,
+        "activation_zero_point_count": zero_point_count,
+        "learnable_activation_delta_count": learnable_delta_count,
+        "missing_activation_state_count": len(rows),
+        "missing_activation_state": rows,
+    }
 
 
 def inspect_weight_quantization(quant_model: torch.nn.Module, *, max_offenders: int) -> dict[str, Any]:

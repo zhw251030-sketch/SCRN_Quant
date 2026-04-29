@@ -186,16 +186,28 @@ def restore_quantizer_state_shapes(quant_model: QuantModel, state_dict: Mapping[
         module.weight_quantizer = AdaRoundQuantizer(base_quantizer, module.weight.detach(), round_mode="learned_round_sigmoid")
         module.weight_quantizer.soft_targets = False
 
-    # Activation quantization checkpoints may contain learned delta parameters. The current
-    # checkpoint format does not store activation zero points, so these modules keep inited=False
-    # and will refresh zero points from the evaluation input on first forward.
+    modules = dict(quant_model.named_modules())
+
+    # 新 checkpoint 会把量化器 zero_point 作为 buffer 保存。加载前先创建同形状
+    # buffer，避免 strict=True 时把它识别为 unexpected key。
+    for zero_point_key in sorted(key for key in state_dict if key.endswith(".zero_point")):
+        quantizer_path = zero_point_key.removesuffix(".zero_point")
+        quantizer = modules.get(quantizer_path)
+        if quantizer is None or not hasattr(quantizer, "zero_point"):
+            continue
+        quantizer.zero_point = torch.zeros_like(state_dict[zero_point_key])
+
+    # Activation quantization checkpoints contain learned delta parameters and zero points.
+    # Older checkpoints did not save zero_point; those keep inited=False and retain the
+    # legacy behavior of refreshing activation zero points on first evaluation forward.
     for delta_key in sorted(key for key in state_dict if key.endswith(".act_quantizer.delta")):
         module_path = delta_key.removesuffix(".act_quantizer.delta")
         module = modules.get(module_path)
         if not isinstance(module, QuantModule):
             raise KeyError(f"State key {delta_key!r} does not point to a QuantModule.")
         module.act_quantizer.delta = nn.Parameter(torch.zeros_like(state_dict[delta_key]))
-        module.act_quantizer.inited = False
+        zero_point_key = f"{module_path}.act_quantizer.zero_point"
+        module.act_quantizer.inited = zero_point_key in state_dict
 
 
 def normalize_quant_config(raw_config: Mapping[str, Any]) -> dict[str, Any]:

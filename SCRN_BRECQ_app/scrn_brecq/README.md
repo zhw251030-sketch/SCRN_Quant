@@ -55,7 +55,7 @@ scrn_brecq/
 - `data/`: 从 `scrn_repro` clean patch 数据中收集 SCRN degraded calibration 输入。
 - `model/`: 将 SCRN 训练 checkpoint 恢复成 BRECQ 可处理的 FP32 `nn.Module`。
 - `quant/`: BRECQ 迁移核心，包括量化层、AdaRound、BN folding、QuantModel、SCRN block 适配和 layer/block reconstruction。
-- `cli/quantize_scrn.py`: 执行完整 SCRN-BRECQ 量化、重构、评估和 checkpoint 保存；会同时保存重建前与重建后的量化 checkpoint。
+- `cli/quantize_scrn.py`: 执行完整 SCRN-BRECQ 量化、重构、评估和 checkpoint 保存；W-only 输出 5 图，W+A 激活量化输出 7 图阶段对比。
 - `cli/evaluate_quantized_scrn.py`: 重新加载已保存的 `quantized_scrn_brecq.pth` 并评估量化模型。
 - `cli/evaluate_quantized_scrn_multi.py`: 对已保存量化 checkpoint 做多样本评估，输出逐样本 JSONL 和聚合泛化指标；可额外加载重建前 checkpoint 对比 BRECQ reconstruction 前后变化。
 - `cli/smoke_check.py`: 无权重依赖的快速结构检查，用合成输入验证 QuantModel 包装和量化前向。
@@ -95,6 +95,22 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 conda run -n quant torchrun --standalone --nproc_pe
   --iters-w 20000 \
   --run-name w4_recon_1024samples_20000iters_dist4 \
   --device cuda
+```
+
+单卡 W4A8 激活量化 smoke run:
+
+```bash
+conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn \
+  --n-bits-w 4 \
+  --n-bits-a 8 \
+  --act-quant \
+  --num-samples 2 \
+  --batch-size 1 \
+  --iters-w 1 \
+  --iters-a 1 \
+  --run-name smoke_w4a8 \
+  --device cuda \
+  --gpus 0
 ```
 
 重新评估已保存的量化 checkpoint:
@@ -148,10 +164,12 @@ conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.smoke_check --device 
 - `evaluate_quantized_scrn.py` 默认写入 `SCRN_BRECQ_app/scrn_brecq/runs/quant_eval/`。
 - `evaluate_quantized_scrn_multi.py` 默认写入 `SCRN_BRECQ_app/scrn_brecq/runs/generalization_eval/`。
 - 运行产物通常包括 `config.json`、`metrics.json`、`summary.md`、`prediction.npy`、可选 `comparison.png` 和 checkpoint。
-- `quantize_scrn.py` 在权重量化初始化后保存 `checkpoints/quantized_scrn_brecq_pre_recon.pth`，在 BRECQ reconstruction 后保存 `checkpoints/quantized_scrn_brecq.pth`。前者用于分析“只量化、不重建”的基线，后者是最终量化模型。
+- `quantize_scrn.py` 在权重量化初始化后保存 `checkpoints/quantized_scrn_brecq_pre_recon.pth`，在权重重建后保存 `checkpoints/quantized_scrn_brecq_weight_recon.pth`，在最终重建后保存 `checkpoints/quantized_scrn_brecq.pth`。W+A 激活量化还会保存 `checkpoints/quantized_scrn_brecq_pre_act_recon.pth`。
+- W4A8 等 W+A run 的 `comparison.png` 是 7 图：Ground Truth、Input、FP32、W-only 权重重建前、W-only 权重重建后、W+A 激活重建前、W+A 激活重建后。
 - 多样本评估产物包括 `config.json`、`metrics.json`、`summary.md`、`per_sample_metrics.jsonl` 和可选 `figures/`，默认不保存全部预测 `.npy`。
 - 多样本评估未传 `--pre-recon-checkpoint` 时，`quant_*` 旧字段和图中的 `Quant Post-Recon` 都表示最终重建后 checkpoint；传入后会额外输出 `quant_pre_recon_*`、`quant_post_recon_*` 和 `quant_post_minus_pre_*` 指标，并保存五图对比。
-- `metrics.json` 会记录推理耗时、BRECQ reconstruction 耗时、本次量化流程总耗时、checkpoint 文件大小、权重 bit 参数分布和理论打包模型大小。
+- `metrics.json` 会记录推理耗时、权重/激活 reconstruction 分段耗时、本次量化流程总耗时、checkpoint 文件大小、权重 bit 参数分布和理论打包模型大小。
+- W+A checkpoint 会保存 activation quantizer 的 `delta` 和 `zero_point`，重新加载评估时不应再依赖 eval 输入重新初始化激活量化状态。
 - 当前 `.pth` 是可恢复的 PyTorch checkpoint，不是 bit-packed 部署文件；真实 4bit 压缩收益应优先看 `model_size.estimated_storage`。
 - 正式 W4A32 重建建议从默认配置开始，即 `num_samples=1024`、`batch_size=16`、`iters_w=20000`、`act_quant=false`。
 - 分布式量化当前只支持 W-only；`--distributed` 与 `--act-quant` 同时使用会报错。
