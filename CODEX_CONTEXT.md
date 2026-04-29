@@ -1,85 +1,85 @@
-# Codex Shared Context for SCRN_BRECQ
+# SCRN_BRECQ Codex 共享上下文
 
-Last updated: 2026-04-29
+最后更新：2026-04-29
 
-This file is the fixed handoff context for different Codex/OpenAI accounts working on the same server user in this repository. Read this file first when starting a new Codex conversation, then inspect the current Git state because this document may lag behind the latest commits.
+本文件是在同一服务器、同一系统用户下，不同 Codex/OpenAI 账号协作时使用的固定交接上下文。开启新 Codex 对话时请先阅读本文件，再检查当前 Git 状态；因为本文件可能落后于最新提交。
 
-## Project
+## 项目概况
 
-- Repository root: `/home/data1/hanwen/project/Project/SCRN_Quant`
-- Goal: migrate and validate the BRECQ post-training quantization algorithm on the SCRN seismic reconstruction model.
-- Source reference repositories:
-  - `SCRN-main/`: original SCRN source and local data artifacts.
-  - `BRECQ-main/`: original BRECQ source.
-- Integration code:
-  - `SCRN_BRECQ_app/scrn_repro/`: SCRN reproduction code.
-  - `SCRN_BRECQ_app/scrn_brecq/`: BRECQ migration and SCRN quantization code.
-- Do not modify `SCRN-main/` or `BRECQ-main/` unless explicitly requested.
+- 仓库根目录：`/home/data1/hanwen/project/Project/SCRN_Quant`
+- 目标：将 BRECQ 后训练量化算法迁移并验证到 SCRN 地震重建模型上。
+- 原始参考仓库：
+  - `SCRN-main/`：原始 SCRN 源码和本地数据产物。
+  - `BRECQ-main/`：原始 BRECQ 源码。
+- 集成代码：
+  - `SCRN_BRECQ_app/scrn_repro/`：SCRN 复现代码。
+  - `SCRN_BRECQ_app/scrn_brecq/`：BRECQ 迁移和 SCRN 量化代码。
+- 除非用户明确要求，否则不要修改 `SCRN-main/` 或 `BRECQ-main/`。
 
-## Workflow Rules
+## 工作流规则
 
-- At the start of each task run:
+- 每次任务开始前执行：
   - `git status`
   - `git branch --show-current`
   - `git rev-parse --show-toplevel`
-- Prefer changes under `SCRN_BRECQ_app/`.
-- When modifying files under `SCRN_BRECQ_app/scrn_brecq/`, update `SCRN_BRECQ_app/scrn_brecq/DEVELOPMENT_LOG.md`.
-- Do not use `git add .`.
-- Do not commit datasets, weights, logs, caches, `.npy`, `.segy`, `.pth`, `.pt`, `.ckpt`, `__pycache__`, or `.ipynb_checkpoints`.
-- Before each commit show:
+- 优先在 `SCRN_BRECQ_app/` 下修改。
+- 修改 `SCRN_BRECQ_app/scrn_brecq/` 下文件时，同步更新 `SCRN_BRECQ_app/scrn_brecq/DEVELOPMENT_LOG.md`。
+- 不要使用 `git add .`。
+- 不要提交数据集、权重、日志、缓存、`.npy`、`.segy`、`.pth`、`.pt`、`.ckpt`、`__pycache__` 或 `.ipynb_checkpoints`。
+- 每次提交前展示：
   - `git status`
   - `git diff`
   - `git diff --staged`
-- Run a minimal check before committing, such as `py_compile`, `json.tool`, a CLI `--help`, or a small smoke run.
-- Do not run `git push` unless explicitly requested.
-- Avoid destructive commands such as `git reset --hard`, `git clean -fd`, `rm -rf` on data directories, or force push.
+- 提交前运行最小检查，例如 `py_compile`、`json.tool`、CLI `--help` 或小型 smoke run。
+- 除非用户明确要求，不要执行 `git push`。
+- 避免危险命令，例如 `git reset --hard`、`git clean -fd`、删除数据目录的 `rm -rf` 或 force push。
 
-## Current Code Capabilities
+## 当前代码能力
 
-- SCRN reproduction:
-  - Model implementation in `SCRN_BRECQ_app/scrn_repro/model/`.
-  - Clean patch dataset and online degradation in `SCRN_BRECQ_app/scrn_repro/data/`.
-  - Training and single-sample test CLIs in `SCRN_BRECQ_app/scrn_repro/cli/`.
-- BRECQ migration:
-  - SCRN loader in `SCRN_BRECQ_app/scrn_brecq/model/scrn_loader.py`.
-  - Calibration loader uses `SCRNPatchDataset` degraded inputs.
-  - Quantization modules, AdaRound, BN folding, QuantModel, and reconstruction are under `SCRN_BRECQ_app/scrn_brecq/quant/`.
-  - Main quantization CLI: `SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn`.
-  - Quantized checkpoint evaluation CLI: `SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn`.
-  - Quantization truth verification CLI: `SCRN_BRECQ_app.scrn_brecq.cli.verify_quantized_scrn`.
-  - Multi-sample generalization evaluation CLI: `SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi`.
-- Distributed BRECQ:
-  - `quantize_scrn.py` supports torchrun multi-GPU W-only reconstruction.
-  - Distributed activation quantization is intentionally unsupported for now.
+- SCRN 复现：
+  - 模型实现在 `SCRN_BRECQ_app/scrn_repro/model/`。
+  - clean patch 数据集和在线退化逻辑在 `SCRN_BRECQ_app/scrn_repro/data/`。
+  - 训练和单样本测试 CLI 在 `SCRN_BRECQ_app/scrn_repro/cli/`。
+- BRECQ 迁移：
+  - SCRN 加载器在 `SCRN_BRECQ_app/scrn_brecq/model/scrn_loader.py`。
+  - calibration loader 使用 `SCRNPatchDataset` 生成的 degraded 输入。
+  - 量化模块、AdaRound、BN folding、QuantModel 和 reconstruction 逻辑在 `SCRN_BRECQ_app/scrn_brecq/quant/`。
+  - 主量化 CLI：`SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn`。
+  - 量化 checkpoint 评估 CLI：`SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn`。
+  - 量化真实性验证 CLI：`SCRN_BRECQ_app.scrn_brecq.cli.verify_quantized_scrn`。
+  - 多样本泛化评估 CLI：`SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi`。
+- 分布式 BRECQ：
+  - `quantize_scrn.py` 支持使用 torchrun 做多 GPU W-only reconstruction。
+  - 分布式激活量化当前有意不支持。
 
-## Important Runs
+## 重要实验 run
 
-- Single-GPU W4A32 baseline:
+- 单卡 W4A32 基线：
   - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260427_152554_w4_recon_1024samples_20000iters`
-  - post-recon SNR `11.5909`, SSIM `0.8385`.
-- Four-GPU W4A32 global batch 64:
+  - post-recon SNR `11.5909`，SSIM `0.8385`。
+- 四卡 W4A32，全局 batch 64：
   - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260427_165123_w4_recon_1024samples_20000iters_dist4_compare`
-  - post-recon SNR `11.6952`, SSIM `0.8608`.
-- Four-GPU W4A32 global batch 128:
+  - post-recon SNR `11.6952`，SSIM `0.8608`。
+- 四卡 W4A32，全局 batch 128：
   - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260427_192819_w4_recon_1024samples_20000iters_dist4_bsz32_global128`
-  - post-recon SNR `11.7469`, SSIM `0.8675`.
-- Multi-sample generalization evaluation on 128 `scrn_quant_10750_0_patches` samples:
+  - post-recon SNR `11.7469`，SSIM `0.8675`。
+- 在 128 个 `scrn_quant_10750_0_patches` 样本上的多样本泛化评估：
   - `SCRN_BRECQ_app/scrn_brecq/runs/generalization_eval/20260427_222925_global128_quant10750_eval128`
-  - FP32 mean SNR `6.0901`, quant mean SNR `4.8802`, mean SNR gap `-1.2099 dB`.
-  - FP32 mean SSIM `0.7562`, quant mean SSIM `0.7161`, mean SSIM gap `-0.0401`.
+  - FP32 平均 SNR `6.0901`，量化平均 SNR `4.8802`，平均 SNR gap `-1.2099 dB`。
+  - FP32 平均 SSIM `0.7562`，量化平均 SSIM `0.7161`，平均 SSIM gap `-0.0401`。
 
-## Model Size Interpretation
+## 模型大小指标解释
 
-- Current `quantized_scrn_brecq.pth` is a recoverable PyTorch checkpoint, not a bit-packed deployment file.
-- Actual quant checkpoint size is about `5.07 MiB`, close to the FP32 checkpoint.
-- Theoretical packed model size is about `0.2427 MiB`.
-- Estimated model compression ratio is about `6.77x`.
-- Estimated quantized-weight compression ratio is about `7.98x`.
-- Typical W4A32 bit distribution is `{"4": 50, "8": 2}`.
+- 当前 `quantized_scrn_brecq.pth` 是可恢复的 PyTorch checkpoint，不是 bit-packed 部署文件。
+- 实际量化 checkpoint 大小约为 `5.07 MiB`，接近 FP32 checkpoint。
+- 理论 packed 模型大小约为 `0.2427 MiB`。
+- 估算模型压缩率约为 `6.77x`。
+- 估算量化权重压缩率约为 `7.98x`。
+- 典型 W4A32 bit 分布为 `{"4": 50, "8": 2}`。
 
-## Useful Commands
+## 常用命令
 
-Run W4A32 four-GPU reconstruction:
+运行 W4A32 四卡 reconstruction：
 
 ```bash
 CUDA_VISIBLE_DEVICES=0,1,2,3 conda run -n quant torchrun --standalone --nproc_per_node=4 \
@@ -92,7 +92,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 conda run -n quant torchrun --standalone --nproc_pe
   --device cuda
 ```
 
-Verify a quantized checkpoint:
+验证量化 checkpoint：
 
 ```bash
 conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.verify_quantized_scrn \
@@ -101,7 +101,7 @@ conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.verify_quantized_scrn
   --device cpu
 ```
 
-Run multi-sample generalization evaluation:
+运行多样本泛化评估：
 
 ```bash
 conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi \
@@ -111,17 +111,17 @@ conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_sc
   --device auto
 ```
 
-## Handoff Notes
+## 交接备注
 
-- Latest notable commits at the time this file was created:
+- 创建本文件时最近的重要提交：
   - `be85cbc Add multi-sample quantized SCRN evaluation`
   - `b938329 Add quantized model size metrics`
   - `ced6c09 Add quantization runtime metrics`
   - `34a9ad1 Add distributed BRECQ reconstruction support`
-- The local branch may be ahead of `origin/main`; do not push unless requested.
-- For future cross-account handoff, update this file with:
-  - new commit hashes,
-  - important run directories,
-  - key metrics,
-  - unresolved questions,
-  - next recommended task.
+- 本地分支可能领先 `origin/main`；除非用户明确要求，不要 push。
+- 之后跨账号交接时，请更新本文件中的：
+  - 新提交 hash，
+  - 重要 run 目录，
+  - 关键指标，
+  - 未解决问题，
+  - 下一步建议任务。

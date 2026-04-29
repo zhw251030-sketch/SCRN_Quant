@@ -1,16 +1,16 @@
-# Codex Chat Archive
+# Codex 聊天归档
 
-This file is for manually saving important Codex conversation records across accounts.
+本文件用于在不同账号之间手动保存重要的 Codex 对话记录。
 
-Use `CODEX_CONTEXT.md` for the short handoff context. Use this file for longer copied chat records, important Q&A, experiment reasoning, and decisions that may be useful later.
+`CODEX_CONTEXT.md` 用于保存短交接上下文；本文件用于保存更长的复制聊天记录、重要问答、实验分析过程和后续可能需要回看的决策依据。
 
-## How To Use
+## 使用方式
 
-- Paste copied conversation content under a dated section.
-- Keep the newest section near the top if you want faster review.
-- Do not paste API keys, OAuth tokens, passwords, private credentials, or unrelated personal data.
-- If a section is only a summary rather than exact transcript, label it clearly as a summary.
+- 将复制出来的对话内容粘贴到对应日期小节下面。
+- 如果希望之后更快查看，可以把最新小节放在前面。
+- 不要粘贴 API key、OAuth token、密码、私有凭据或无关个人信息。
+- 如果某一节不是逐字记录，而只是摘要，请明确标注为“摘要”。
 
 ## 2026-04-29
 
-Paste chat records here.
+在这里粘贴聊天记录。
