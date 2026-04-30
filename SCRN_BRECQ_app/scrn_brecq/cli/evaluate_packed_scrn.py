@@ -217,8 +217,8 @@ def quant_label_from_config(quant_config: Mapping[str, Any]) -> str:
     """Return W/A label for a packed deployment artifact."""
     w_bits = int(quant_config["n_bits_w"])
     if bool(quant_config.get("act_quant", False)):
-        return f"W{w_bits}A{int(quant_config['n_bits_a'])}"
-    return f"W{w_bits}A32"
+        return f"W{w_bits} weights / A{int(quant_config['n_bits_a'])} activations"
+    return f"W{w_bits} weights / FP32 activations"
 
 
 def build_run_config(

@@ -847,8 +847,8 @@
   - activation `delta/zero_point` 在 manifest 中是标量 shape `[]`，读取时需要恢复为 0 维 tensor。
   - `leaf_param=True` 的 activation `delta` 注册为 `nn.Parameter`，恢复时需保持 Parameter 类型。
 - 更新 `cli/evaluate_packed_scrn.py` 的五图标题标签：
-  - W-only artifact 显示 `W4A32`。
-  - W+A artifact 显示实际 activation bit，例如 `W4A8`。
+  - W-only artifact 显示 `W4 weights / FP32 activations`。
+  - W+A artifact 显示实际 activation bit，例如 `W4 weights / A8 activations`。
 - 更新测试：
   - `tests/test_packed_deployment.py` 覆盖标量 activation quantizer 状态恢复。
   - `tests/test_evaluate_packed_scrn.py` 覆盖 W/A 标签生成。
@@ -874,3 +874,34 @@
 - W4A8 packed artifact 能恢复 activation quantizer 状态并完成五图评估。
 - 指标层面 packed restored 与 checkpoint final 对齐，SNR 差约 `0.0003 dB`；
   逐像素差异大于 W4A32，但不改变此前结论：W4A8 的主要问题是激活量化本身导致精度明显下降。
+
+## 2026-04-30 W4 dist4 compare packed deployment 五图验证
+
+### 修改内容
+
+- 将 `cli/evaluate_packed_scrn.py` 的五图标题从短标签 `W4A32/W4A8`
+  泛化为 `W{bits} weights / FP32 activations` 或
+  `W{bits} weights / A{bits} activations`，避免后续 A12/A16 或其他组合时标题含义不清。
+- 更新 `tests/test_evaluate_packed_scrn.py`，覆盖新的泛化标题标签。
+
+### 验证方式
+
+- 对 W4 dist4 compare run 导出 packed deployment：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.export_quantized_scrn --checkpoint SCRN_BRECQ_app/scrn_brecq/runs/quant/20260427_165123_w4_recon_1024samples_20000iters_dist4_compare/checkpoints/quantized_scrn_brecq.pth`
+  - 输出目录：`SCRN_BRECQ_app/scrn_brecq/runs/quant/20260427_165123_w4_recon_1024samples_20000iters_dist4_compare/packed_deployment`
+  - `raw_deployment_payload_mib=0.242702`，`raw_payload_to_estimated_packed_ratio=1.0`。
+- 运行 packed 五图评估：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_packed_scrn --packed-dir SCRN_BRECQ_app/scrn_brecq/runs/quant/20260427_165123_w4_recon_1024samples_20000iters_dist4_compare/packed_deployment --run-name w4_dist4_compare_packed_five_panel_eval --device cpu --save-figure`
+  - 输出目录：`SCRN_BRECQ_app/scrn_brecq/runs/packed_eval/20260430_223157_w4_dist4_compare_packed_five_panel_eval`
+  - 生成 `comparison.png`、`prediction.npy`、`metrics.json`、`config.json`、`summary.md`。
+  - `packed_snr=11.6951`，`packed_ssim=0.8610`。
+  - `checkpoint_final_snr_db=11.6952`，`checkpoint_final_ssim=0.8608`。
+  - `restored_activation_quantizers=0`，`restored_quantized_layers=52`。
+  - `packed_vs_checkpoint_mse=3.29e-09`，
+    `packed_vs_checkpoint_mean_abs_diff=3.92e-05`，
+    `packed_vs_checkpoint_max_abs_diff=4.69e-04`。
+
+### 结论
+
+- W4 dist4 compare 的 packed artifact 和前两个 run 一样能恢复并完成五图评估。
+- packed restored 与 checkpoint final 对齐，说明 W-only packed 导出/恢复链路稳定。
