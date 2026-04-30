@@ -9,6 +9,7 @@ from SCRN_BRECQ_app.scrn_brecq.cli.evaluate_packed_scrn import (
     checkpoint_like_from_manifest,
     find_quant_run_dir_from_manifest,
     load_deployment_reference_predictions,
+    quant_label_from_config,
 )
 
 
@@ -59,6 +60,10 @@ class EvaluatePackedScrnTest(unittest.TestCase):
         self.assertAlmostEqual(metrics["packed_vs_checkpoint_mse"], 2.5)
         self.assertAlmostEqual(metrics["packed_vs_checkpoint_mean_abs_diff"], 1.5)
         self.assertAlmostEqual(metrics["packed_vs_checkpoint_max_abs_diff"], 2.0)
+
+    def test_quant_label_from_config_uses_a_bits_only_when_activation_quantized(self) -> None:
+        self.assertEqual(quant_label_from_config({"n_bits_w": 4, "n_bits_a": 8, "act_quant": True}), "W4A8")
+        self.assertEqual(quant_label_from_config({"n_bits_w": 4, "n_bits_a": 8, "act_quant": False}), "W4A32")
 
 
 if __name__ == "__main__":

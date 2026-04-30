@@ -93,7 +93,7 @@ def restore_packed_deployment(model: torch.nn.Module, packed_dir: str | Path) ->
 
         if layer.get("activation_delta") is not None:
             act_delta = _read_aux_tensor(aux_path, layer["activation_delta"]).to(device=module.weight.device)
-            if isinstance(module.act_quantizer.delta, nn.Parameter):
+            if isinstance(module.act_quantizer.delta, nn.Parameter) or "delta" in module.act_quantizer._parameters:
                 module.act_quantizer.delta = nn.Parameter(act_delta)
             else:
                 module.act_quantizer.delta = act_delta
@@ -168,7 +168,10 @@ def _read_aux_tensor(aux_path: Path, entry: Mapping[str, Any]) -> torch.Tensor:
     if len(payload) != num_bytes:
         raise ValueError(f"Aux tensor payload for {entry.get('name')!r} is truncated.")
     tensor = torch.frombuffer(bytearray(payload), dtype=torch.float32).clone()
-    return tensor.view(*[int(dim) for dim in entry["shape"]]).contiguous()
+    shape = [int(dim) for dim in entry["shape"]]
+    if not shape:
+        return tensor.reshape(()).contiguous()
+    return tensor.view(*shape).contiguous()
 
 
 def _unpack_uint2(values: torch.Tensor, *, num_values: int) -> torch.Tensor:

@@ -213,6 +213,14 @@ def build_packed_checkpoint_diff_metrics(packed_prediction: np.ndarray, checkpoi
     }
 
 
+def quant_label_from_config(quant_config: Mapping[str, Any]) -> str:
+    """Return W/A label for a packed deployment artifact."""
+    w_bits = int(quant_config["n_bits_w"])
+    if bool(quant_config.get("act_quant", False)):
+        return f"W{w_bits}A{int(quant_config['n_bits_a'])}"
+    return f"W{w_bits}A32"
+
+
 def build_run_config(
     *,
     packed_dir: Path,
@@ -266,7 +274,7 @@ def save_deployment_alignment_figure(
     except ModuleNotFoundError as exc:
         raise ModuleNotFoundError("Saving comparison figures requires installing matplotlib.") from exc
 
-    label = f"W{int(quant_config['n_bits_w'])}A32"
+    label = quant_label_from_config(quant_config)
     panels = [
         (clean, "Ground Truth"),
         (degraded, f"Input\nSNR={metrics['input_snr_db']:.2f}dB SSIM={metrics['input_ssim']:.3f}"),

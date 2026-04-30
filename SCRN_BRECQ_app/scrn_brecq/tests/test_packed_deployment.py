@@ -56,6 +56,33 @@ class PackedDeploymentTest(unittest.TestCase):
             self.assertTrue(torch.allclose(module[0].org_bias, torch.tensor([0.25, -0.25])))
             self.assertFalse(module[0].use_weight_quant)
 
+    def test_restore_packed_deployment_handles_scalar_activation_quantizer_state(self) -> None:
+        conv = nn.Conv2d(1, 1, kernel_size=1, bias=False)
+        with torch.no_grad():
+            conv.weight.fill_(1.0)
+        module = nn.Sequential(
+            QuantModule(
+                conv,
+                weight_quant_params={"n_bits": 4, "channel_wise": True, "scale_method": "max"},
+                act_quant_params={"n_bits": 8, "channel_wise": False, "scale_method": "max", "leaf_param": True},
+            )
+        )
+        module[0].set_quant_state(True, True)
+        with torch.no_grad():
+            _ = module(torch.ones(1, 1, 1, 1))
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            export_packed_deployment(module, Path(tmp_dir))
+            module[0].act_quantizer.delta = None
+            module[0].act_quantizer.zero_point = None
+
+            restored = restore_packed_deployment(module, Path(tmp_dir))
+
+            self.assertEqual(restored["restored_activation_quantizers"], 1)
+            self.assertEqual(tuple(module[0].act_quantizer.delta.shape), ())
+            self.assertEqual(tuple(module[0].act_quantizer.zero_point.shape), ())
+            self.assertTrue(module[0].act_quantizer.inited)
+
 
 if __name__ == "__main__":
     unittest.main()

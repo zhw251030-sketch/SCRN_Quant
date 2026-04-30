@@ -838,3 +838,39 @@
 ### 已知边界
 
 - 五图验证仍是 packed 文件可恢复性的 PyTorch 反量化评估，不是 INT4 runtime kernel。
+
+## 2026-04-30 W4A8 packed deployment 五图验证
+
+### 修改内容
+
+- 修复 `utils/packed_deployment.py` 的 W4A8 restore 问题：
+  - activation `delta/zero_point` 在 manifest 中是标量 shape `[]`，读取时需要恢复为 0 维 tensor。
+  - `leaf_param=True` 的 activation `delta` 注册为 `nn.Parameter`，恢复时需保持 Parameter 类型。
+- 更新 `cli/evaluate_packed_scrn.py` 的五图标题标签：
+  - W-only artifact 显示 `W4A32`。
+  - W+A artifact 显示实际 activation bit，例如 `W4A8`。
+- 更新测试：
+  - `tests/test_packed_deployment.py` 覆盖标量 activation quantizer 状态恢复。
+  - `tests/test_evaluate_packed_scrn.py` 覆盖 W/A 标签生成。
+
+### 验证方式
+
+- 先运行 W4A8 packed eval 触发标量 activation 状态 restore 失败。
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_packed_deployment SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_packed_scrn`
+  - `Ran 8 tests ... OK`
+- W4A8 packed 五图评估：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_packed_scrn --packed-dir SCRN_BRECQ_app/scrn_brecq/runs/quant/20260429_194908_w4a8_1024samples_w20000_a5000/packed_deployment --run-name w4a8_packed_five_panel_eval --device cpu --save-figure`
+  - 输出目录：`SCRN_BRECQ_app/scrn_brecq/runs/packed_eval/20260430_222334_w4a8_packed_five_panel_eval`
+  - 生成 `comparison.png`、`prediction.npy`、`metrics.json`、`config.json`、`summary.md`。
+  - `packed_snr=5.2274`，`packed_ssim=0.6626`。
+  - `checkpoint_final_snr_db=5.2277`，`checkpoint_final_ssim=0.6618`。
+  - `restored_activation_quantizers=52`，`restored_quantized_layers=52`。
+  - `packed_vs_checkpoint_mse=5.26e-05`，
+    `packed_vs_checkpoint_mean_abs_diff=5.78e-03`，
+    `packed_vs_checkpoint_max_abs_diff=2.79e-02`。
+
+### 结论
+
+- W4A8 packed artifact 能恢复 activation quantizer 状态并完成五图评估。
+- 指标层面 packed restored 与 checkpoint final 对齐，SNR 差约 `0.0003 dB`；
+  逐像素差异大于 W4A32，但不改变此前结论：W4A8 的主要问题是激活量化本身导致精度明显下降。
