@@ -8,6 +8,7 @@ SCRN-main/trained_model/
 SCRN_BRECQ_app/scrn_repro/runs/
 SCRN_BRECQ_app/scrn_brecq/runs/quant/
 SCRN_BRECQ_app/scrn_brecq/runs/quant_eval/
+SCRN_BRECQ_app/scrn_brecq/runs/packed_eval/
 SCRN_BRECQ_app/scrn_brecq/runs/generalization_eval/*
 !SCRN_BRECQ_app/scrn_brecq/runs/generalization_eval/README.md
 

@@ -761,3 +761,43 @@
   - `raw_deployment_payload_mib=0.243099`，理论 `estimated_packed_model_size_mib=0.242702`，
     `raw_payload_to_estimated_packed_ratio=1.001635`。
   - 包含 JSON manifest/summary 后，`total_export_file_size_mib=0.360579`。
+
+## 2026-04-30 增加 packed deployment 验证型评估脚本
+
+### 修改内容
+
+- 新增 `utils/packed_deployment.py`，支持读取 packed deployment 目录：
+  - 解包 `uint4_lownibble_first`、`uint2_lownibble_first` 和 `uint8` 权重 payload。
+  - 从 `aux_fp32.bin` 按 manifest offset/shape 读取 FP32 `delta`、`zero_point`、bias 和未量化参数。
+  - 将 packed 整数权重反量化为 FP32 后写回 `QuantModule.weight/org_weight`，
+    并关闭 weight quant 前向路径，用于验证 packed 文件能否复现 checkpoint 量化输出。
+  - 若 manifest 中存在 activation quantizer 状态，则恢复 activation `delta/zero_point`。
+- 新增 `cli/evaluate_packed_scrn.py`：
+  - 输入 `--packed-dir`，从 `manifest.json` 的 `checkpoint_metadata` 重建 SCRN/QuantModel。
+  - 调用 packed loader 恢复权重后，复用单样本评估逻辑输出 `prediction.npy`、`metrics.json`、
+    `config.json`、`summary.md` 和可选 `comparison.png`。
+  - 明确这是验证型 PyTorch 反量化评估，不是 INT4/INT8 kernel 部署 runtime。
+- 更新 `.gitignore`，忽略 `SCRN_BRECQ_app/scrn_brecq/runs/packed_eval/` 产物目录。
+- 更新 `utils/__init__.py` 导出 packed deployment loader 公共函数。
+- 新增测试：
+  - `tests/test_packed_deployment.py` 覆盖 uint4 解包和最小 QuantModule 的 packed restore。
+  - `tests/test_evaluate_packed_scrn.py` 覆盖 manifest 到 checkpoint-like metadata 的转换。
+
+### 验证方式
+
+- 先运行测试确认缺少 `utils.packed_deployment` / `cli.evaluate_packed_scrn` 时失败。
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_packed_scrn SCRN_BRECQ_app.scrn_brecq.tests.test_packed_deployment`
+  - `Ran 3 tests ... OK`
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/utils/packed_deployment.py SCRN_BRECQ_app/scrn_brecq/cli/evaluate_packed_scrn.py SCRN_BRECQ_app/scrn_brecq/tests/test_packed_deployment.py SCRN_BRECQ_app/scrn_brecq/tests/test_evaluate_packed_scrn.py SCRN_BRECQ_app/scrn_brecq/utils/__init__.py`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_packed_scrn --help`
+- 对 W4A32 global128 packed deployment 执行：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_packed_scrn --packed-dir SCRN_BRECQ_app/scrn_brecq/runs/quant/20260427_192819_w4_recon_1024samples_20000iters_dist4_bsz32_global128/packed_deployment --run-name w4_global128_packed_eval --device cpu --no-save-figure`
+  - 输出目录：`SCRN_BRECQ_app/scrn_brecq/runs/packed_eval/20260430_215420_w4_global128_packed_eval`
+  - `packed_snr=11.7469`，`packed_ssim=0.8675`，与该 W4A32 checkpoint 的重载评估指标对齐。
+  - `restored_quantized_layers=52`，`restored_non_quantized_tensors=70`，
+    `restored_activation_quantizers=0`，符合 W-only packed artifact 预期。
+
+### 已知边界
+
+- 当前 loader 会把 packed 整数权重反量化回 FP32 后交给 PyTorch Conv/Linear 评估；
+  它验证文件完整性和数值一致性，但不提供真正的 INT4/INT8 算子部署加速。

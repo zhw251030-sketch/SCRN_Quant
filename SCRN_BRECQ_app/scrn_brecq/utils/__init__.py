@@ -6,12 +6,14 @@
 
 from .io import load_json, load_torch_checkpoint, require_file
 from .model_size import build_checkpoint_file_size_report, build_model_size_report, refresh_checkpoint_file_sizes
+from .packed_deployment import load_packed_manifest, restore_packed_deployment, unpack_uint4, unpack_unsigned_values
 from .packed_export import export_packed_deployment, pack_uint4, pack_unsigned_values, quantized_weight_int
 
 __all__ = [
     "build_checkpoint_file_size_report",
     "build_model_size_report",
     "export_packed_deployment",
+    "load_packed_manifest",
     "load_json",
     "load_torch_checkpoint",
     "pack_uint4",
@@ -19,4 +21,7 @@ __all__ = [
     "quantized_weight_int",
     "refresh_checkpoint_file_sizes",
     "require_file",
+    "restore_packed_deployment",
+    "unpack_uint4",
+    "unpack_unsigned_values",
 ]
