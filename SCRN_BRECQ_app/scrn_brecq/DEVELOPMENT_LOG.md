@@ -728,3 +728,36 @@
 
 - 本次只修单卡 W+A checkpoint 和阶段评估口径；分布式 `--distributed --act-quant` 仍不支持。
 - W4A8 smoke 只用于链路验证，`iters_w=1`、`iters_a=1` 不代表正式精度。
+
+## 2026-04-29 增加 packed deployment 导出工具
+
+### 修改内容
+
+- 新增 `utils/packed_export.py`，将可恢复量化 checkpoint 中的权重导出为部署视角的紧凑格式：
+  - `weights.bin` 保存按 bitwidth 打包后的整数权重，W4 使用两个 4-bit 值合并到一个 `uint8`。
+  - `aux_fp32.bin` 保存权重量化 `delta`/`zero_point`、activation quantizer 状态和少量未量化 FP32 参数。
+  - `manifest.json` 保存每层权重 shape、bitwidth、二进制 offset、Conv/Linear 参数和量化元数据。
+  - `summary.json` 汇总原始 payload 大小、导出目录实际文件大小，以及与 `model_size.estimated_storage`
+    的理论 packed 大小对比。
+- 新增 `cli/export_quantized_scrn.py`，从 `quantized_scrn_brecq.pth` 恢复 `QuantModel` 后导出
+  `<run_dir>/packed_deployment/`；也可用 `--output-dir` 指定目录。
+- 更新 `utils/__init__.py` 导出 packed export 公共函数。
+- 新增 `tests/test_packed_export.py`，用标准库 `unittest` 覆盖 uint4 打包和最小 QuantModule 导出。
+- 真实 W4A8 checkpoint 中 `model.head` 是跳过 AdaRound 的 8bit Uniform 层；旧 checkpoint
+  没有保存该层 weight `delta`。导出工具会仅对这种缺少权重量化状态的 Uniform 层按当前权重
+  重新计算 deterministic scale，并在 `summary.json` 中记录 `recomputed_weight_quantizer_count`。
+
+### 验证方式
+
+- 先运行测试确认缺少 `utils.packed_export` 时失败。
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_packed_export`
+  - `Ran 3 tests ... OK`
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/utils/packed_export.py SCRN_BRECQ_app/scrn_brecq/cli/export_quantized_scrn.py SCRN_BRECQ_app/scrn_brecq/utils/__init__.py SCRN_BRECQ_app/scrn_brecq/tests/test_packed_export.py`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.export_quantized_scrn --help`
+- 对正式 W4A8 run 执行：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.export_quantized_scrn --checkpoint SCRN_BRECQ_app/scrn_brecq/runs/quant/20260429_194908_w4a8_1024samples_w20000_a5000/checkpoints/quantized_scrn_brecq.pth`
+  - 输出目录：`SCRN_BRECQ_app/scrn_brecq/runs/quant/20260429_194908_w4a8_1024samples_w20000_a5000/packed_deployment`
+  - `weights.bin=213632 bytes`，`aux_fp32.bin=41276 bytes`，`manifest.json=120476 bytes`，`summary.json=2737 bytes`。
+  - `raw_deployment_payload_mib=0.243099`，理论 `estimated_packed_model_size_mib=0.242702`，
+    `raw_payload_to_estimated_packed_ratio=1.001635`。
+  - 包含 JSON manifest/summary 后，`total_export_file_size_mib=0.360579`。
