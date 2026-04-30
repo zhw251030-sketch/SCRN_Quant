@@ -801,3 +801,40 @@
 
 - 当前 loader 会把 packed 整数权重反量化回 FP32 后交给 PyTorch Conv/Linear 评估；
   它验证文件完整性和数值一致性，但不提供真正的 INT4/INT8 算子部署加速。
+
+## 2026-04-30 增强 W4A32 packed deployment 五图验证
+
+### 修改内容
+
+- 增强 `cli/evaluate_packed_scrn.py`：
+  - `--save-figure` 时从 manifest 的 `quant_checkpoint` 推导原量化 run 目录。
+  - 强制读取原 run 下 `fp32_prediction.npy` 和 `quant_post_recon_prediction.npy`；
+    若缺失则报错，不降级成三图。
+  - 输出部署对齐五图 `comparison.png`：
+    Ground Truth、Input、FP32 SCRN、W4A32 Checkpoint Final、W4A32 Packed Restored。
+  - `metrics.json` 新增 packed restored 与 checkpoint final 的差异指标：
+    `packed_vs_checkpoint_mse`、`packed_vs_checkpoint_mean_abs_diff`、
+    `packed_vs_checkpoint_max_abs_diff`。
+- 更新 `tests/test_evaluate_packed_scrn.py`，覆盖：
+  - 从 `quant_checkpoint` 推导原 run 目录。
+  - 五图所需 `.npy` 文件缺失时报错。
+  - packed/checkpoint final 差异指标计算。
+
+### 验证方式
+
+- 先运行测试确认新增 helper 缺失时失败。
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_packed_scrn SCRN_BRECQ_app.scrn_brecq.tests.test_packed_deployment`
+  - `Ran 6 tests ... OK`
+- W4A32 global128 packed 五图评估：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_packed_scrn --packed-dir SCRN_BRECQ_app/scrn_brecq/runs/quant/20260427_192819_w4_recon_1024samples_20000iters_dist4_bsz32_global128/packed_deployment --run-name w4_global128_packed_five_panel_eval --device cpu --save-figure`
+  - 输出目录：`SCRN_BRECQ_app/scrn_brecq/runs/packed_eval/20260430_220931_w4_global128_packed_five_panel_eval`
+  - 生成 `comparison.png`、`prediction.npy`、`metrics.json`、`config.json`、`summary.md`。
+  - `packed_snr=11.7469`，`packed_ssim=0.8675`。
+  - `checkpoint_final_snr_db=11.7469`，`checkpoint_final_ssim=0.8675`。
+  - `packed_vs_checkpoint_mse=3.47e-09`，
+    `packed_vs_checkpoint_mean_abs_diff=4.01e-05`，
+    `packed_vs_checkpoint_max_abs_diff=4.66e-04`。
+
+### 已知边界
+
+- 五图验证仍是 packed 文件可恢复性的 PyTorch 反量化评估，不是 INT4 runtime kernel。
