@@ -1022,3 +1022,38 @@
 
 - 本次只更新 `.gitignore` 和 Markdown 日志。
 - 提交前执行 `git diff --check` 和 `git diff --check --cached`。
+
+## 2026-05-04 E001a 补齐激活量化诊断指标
+
+### 修改内容
+
+- 扩展 `quant/activation_diagnostics.py` 的 activation row 字段：
+  - 新增 per-channel absmax 统计：`per_channel_absmax_max`、`per_channel_absmax_median`、`per_channel_absmax_ratio`、`per_channel_count`。
+  - 对不支持 per-channel 统计的 activation shape 写入 `per_channel_absmax_skip_reason`。
+- 扩展 summary 输出：
+  - `top_outlier_layers`
+  - `lowest_effective_level_layers`
+  - `worst_fake_quant_mse_layers`
+  - `worst_relative_mse_layers`
+  - `top_per_channel_imbalance_layers`
+- 新增结构分组统计：
+  - `branch_summary`
+  - `stage_summary`
+  - `role_summary`
+  - `module_type_summary`
+- 更新 `tests/test_activation_diagnostics.py`，覆盖 4D activation per-channel ratio、top-k 摘要和 branch/role 分组统计。
+- 同步更新 `ACTIVATION_QUANTIZATION_LOG.md`，明确 E001a 只补齐工具指标，正式 baseline 留给 E001b。
+
+### 设计原因
+
+- 原 E001 验收标准要求 per-channel absmax 差异和 CNN branch vs Transformer branch 等结构分组统计，第一版诊断工具只完成了部分字段。
+- E001a 只补齐工具能力，不运行正式 checkpoint 诊断，避免把工具开发和实验结论混在一起。
+
+### 验证方式
+
+- TDD 红灯：
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`
+  - 初始失败字段：`per_channel_count`、`top_outlier_layers`。
+- 修复测试输入后，`conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`
+  - `Ran 5 tests ... OK`
+- 提交前继续执行 `py_compile`、CLI `--help`、`git diff --check` 和 `git diff --check --cached`。

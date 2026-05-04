@@ -8,6 +8,7 @@ from SCRN_BRECQ_app.scrn_brecq.quant.activation_diagnostics import (
     build_activation_diagnostics_report,
     collect_activation_stats,
     collect_quantizer_rows,
+    summarize_activation_stats,
     summarize_activation_quantizers,
 )
 
@@ -69,6 +70,71 @@ class ActivationDiagnosticsTest(unittest.TestCase):
         self.assertGreater(stats[0]["absmax_over_p99"], 1.0)
         self.assertGreaterEqual(stats[0]["effective_int_levels"], 3)
         self.assertIn("fake_quant_mse", stats[0])
+
+    def test_collect_activation_stats_reports_per_channel_absmax_ratio_for_4d_outputs(self) -> None:
+        module = QuantModule(
+            nn.Conv2d(1, 3, kernel_size=1, bias=False),
+            weight_quant_params={"n_bits": 4, "channel_wise": True, "scale_method": "max"},
+            act_quant_params={"n_bits": 8, "channel_wise": False, "scale_method": "max", "leaf_param": True},
+        )
+        with torch.no_grad():
+            module.weight.copy_(torch.tensor([[[[1.0]]], [[[2.0]]], [[[10.0]]]]))
+            module.org_weight.copy_(module.weight)
+        model = nn.Sequential(module)
+        model.set_quant_state = lambda weight_quant, act_quant: module.set_quant_state(weight_quant, act_quant)
+        inputs = torch.ones(1, 1, 2, 2)
+        module.set_quant_state(False, True)
+        with torch.no_grad():
+            _ = model(inputs)
+
+        stats = collect_activation_stats(model, inputs, weight_quant=False)
+
+        self.assertEqual(stats[0]["per_channel_count"], 3)
+        self.assertAlmostEqual(stats[0]["per_channel_absmax_max"], 10.0)
+        self.assertAlmostEqual(stats[0]["per_channel_absmax_median"], 2.0)
+        self.assertAlmostEqual(stats[0]["per_channel_absmax_ratio"], 5.0)
+        self.assertIsNone(stats[0]["per_channel_absmax_skip_reason"])
+
+    def test_summarize_activation_stats_reports_top_layers_and_group_summaries(self) -> None:
+        rows = [
+            {
+                "index": 0,
+                "name": "model.stage1.0.block.conv_branch.0",
+                "stage": "stage1",
+                "branch": "cnn",
+                "role": "conv",
+                "module_type": "Conv2d",
+                "absmax_over_p99": 2.0,
+                "fake_quant_mse": 0.01,
+                "fake_quant_relative_mse": 0.1,
+                "effective_int_levels": 128,
+                "per_channel_absmax_ratio": 1.5,
+            },
+            {
+                "index": 1,
+                "name": "model.stage4.0.block.trans_branch.attn.proj",
+                "stage": "stage4",
+                "branch": "transformer",
+                "role": "attention_proj",
+                "module_type": "Linear",
+                "absmax_over_p99": 10.0,
+                "fake_quant_mse": 0.02,
+                "fake_quant_relative_mse": 0.4,
+                "effective_int_levels": 17,
+                "per_channel_absmax_ratio": 8.0,
+            },
+        ]
+
+        summary = summarize_activation_stats(rows)
+
+        self.assertEqual(summary["top_outlier_layers"][0]["name"], "model.stage4.0.block.trans_branch.attn.proj")
+        self.assertEqual(summary["lowest_effective_level_layers"][0]["effective_int_levels"], 17)
+        self.assertEqual(summary["worst_fake_quant_mse_layers"][0]["branch"], "transformer")
+        self.assertEqual(summary["worst_relative_mse_layers"][0]["fake_quant_relative_mse"], 0.4)
+        self.assertEqual(summary["top_per_channel_imbalance_layers"][0]["per_channel_absmax_ratio"], 8.0)
+        self.assertEqual(summary["branch_summary"]["cnn"]["count"], 1)
+        self.assertEqual(summary["branch_summary"]["transformer"]["effective_int_levels_min"], 17)
+        self.assertEqual(summary["role_summary"]["attention_proj"]["fake_quant_mse_max"], 0.02)
 
     def test_build_activation_diagnostics_report_combines_rows_and_stats(self) -> None:
         module = QuantModule(

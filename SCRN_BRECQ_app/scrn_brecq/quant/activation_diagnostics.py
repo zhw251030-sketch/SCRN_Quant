@@ -161,15 +161,6 @@ def summarize_activation_stats(rows: Iterable[dict[str, Any]]) -> dict[str, Any]
     mse_values = [float(row["fake_quant_mse"]) for row in materialized if row["fake_quant_mse"] is not None]
     level_values = [int(row["effective_int_levels"]) for row in materialized if row["effective_int_levels"] is not None]
     outlier_values = [float(row["absmax_over_p99"]) for row in materialized if row["absmax_over_p99"] is not None]
-    worst_mse = sorted(
-        (
-            {"index": row["index"], "name": row["name"], "fake_quant_mse": row["fake_quant_mse"]}
-            for row in materialized
-            if row["fake_quant_mse"] is not None
-        ),
-        key=lambda row: float(row["fake_quant_mse"]),
-        reverse=True,
-    )[:10]
     return {
         "activation_stat_count": len(materialized),
         "fake_quant_mse_max": max(mse_values) if mse_values else None,
@@ -177,7 +168,15 @@ def summarize_activation_stats(rows: Iterable[dict[str, Any]]) -> dict[str, Any]
         "effective_int_levels_min": min(level_values) if level_values else None,
         "effective_int_levels_max": max(level_values) if level_values else None,
         "absmax_over_p99_max": max(outlier_values) if outlier_values else None,
-        "worst_fake_quant_mse_layers": worst_mse,
+        "top_outlier_layers": _ranked_layer_rows(materialized, "absmax_over_p99", reverse=True),
+        "lowest_effective_level_layers": _ranked_layer_rows(materialized, "effective_int_levels", reverse=False),
+        "worst_fake_quant_mse_layers": _ranked_layer_rows(materialized, "fake_quant_mse", reverse=True),
+        "worst_relative_mse_layers": _ranked_layer_rows(materialized, "fake_quant_relative_mse", reverse=True),
+        "top_per_channel_imbalance_layers": _ranked_layer_rows(materialized, "per_channel_absmax_ratio", reverse=True),
+        "branch_summary": _group_activation_stats(materialized, "branch"),
+        "stage_summary": _group_activation_stats(materialized, "stage"),
+        "role_summary": _group_activation_stats(materialized, "role"),
+        "module_type_summary": _group_activation_stats(materialized, "module_type"),
     }
 
 
@@ -275,6 +274,7 @@ def _activation_value_stats(tensor: torch.Tensor) -> dict[str, Any]:
         "absmax": absmax,
         "absmax_over_p99": _safe_ratio(absmax, p99_abs),
         "absmax_over_p99_9": _safe_ratio(absmax, p999_abs),
+        **_per_channel_absmax_stats(tensor),
     }
 
 
@@ -326,6 +326,116 @@ def _skipped_fake_quant_stats(reason: str) -> dict[str, Any]:
         "int_min": None,
         "int_max": None,
     }
+
+
+def _per_channel_absmax_stats(tensor: torch.Tensor) -> dict[str, Any]:
+    channel_dim = _activation_channel_dim(tensor.ndim)
+    if channel_dim is None:
+        return _skipped_per_channel_stats("unsupported_shape")
+    if tensor.shape[channel_dim] <= 0:
+        return _skipped_per_channel_stats("empty_channel_dim")
+
+    values = tensor.detach().float().abs()
+    per_channel = torch.movedim(values, channel_dim, 0).reshape(values.shape[channel_dim], -1).max(dim=1).values
+    if per_channel.numel() == 0:
+        return _skipped_per_channel_stats("empty_channel_values")
+    max_value = float(per_channel.max().item())
+    median_value = float(torch.median(per_channel).item())
+    return {
+        "per_channel_axis": int(channel_dim),
+        "per_channel_count": int(per_channel.numel()),
+        "per_channel_absmax_max": max_value,
+        "per_channel_absmax_median": median_value,
+        "per_channel_absmax_ratio": _safe_ratio(max_value, median_value),
+        "per_channel_absmax_skip_reason": None,
+    }
+
+
+def _activation_channel_dim(ndim: int) -> int | None:
+    if ndim == 4:
+        return 1
+    if ndim == 3:
+        return 2
+    if ndim == 2:
+        return 1
+    return None
+
+
+def _skipped_per_channel_stats(reason: str) -> dict[str, Any]:
+    return {
+        "per_channel_axis": None,
+        "per_channel_count": None,
+        "per_channel_absmax_max": None,
+        "per_channel_absmax_median": None,
+        "per_channel_absmax_ratio": None,
+        "per_channel_absmax_skip_reason": reason,
+    }
+
+
+def _ranked_layer_rows(
+    rows: Iterable[dict[str, Any]],
+    metric: str,
+    *,
+    reverse: bool,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    ranked = sorted(
+        (row for row in rows if row.get(metric) is not None),
+        key=lambda row: float(row[metric]),
+        reverse=reverse,
+    )[:limit]
+    return [_layer_summary_row(row, metric) for row in ranked]
+
+
+def _layer_summary_row(row: dict[str, Any], metric: str) -> dict[str, Any]:
+    summary = {
+        "index": row.get("index"),
+        "name": row.get("name"),
+        "stage": row.get("stage"),
+        "branch": row.get("branch"),
+        "role": row.get("role"),
+        "module_type": row.get("module_type"),
+    }
+    summary[metric] = row.get(metric)
+    return summary
+
+
+def _group_activation_stats(rows: Iterable[dict[str, Any]], group_key: str) -> dict[str, dict[str, Any]]:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        groups.setdefault(str(row.get(group_key) or "unknown"), []).append(row)
+    return {name: _summarize_activation_group(group_rows) for name, group_rows in sorted(groups.items())}
+
+
+def _summarize_activation_group(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    fake_quant_mse = _numeric_values(rows, "fake_quant_mse")
+    relative_mse = _numeric_values(rows, "fake_quant_relative_mse")
+    effective_levels = _numeric_values(rows, "effective_int_levels")
+    outlier_ratio = _numeric_values(rows, "absmax_over_p99")
+    channel_ratio = _numeric_values(rows, "per_channel_absmax_ratio")
+    return {
+        "count": len(rows),
+        "fake_quant_mse_mean": _mean(fake_quant_mse),
+        "fake_quant_mse_max": max(fake_quant_mse) if fake_quant_mse else None,
+        "fake_quant_relative_mse_mean": _mean(relative_mse),
+        "fake_quant_relative_mse_max": max(relative_mse) if relative_mse else None,
+        "effective_int_levels_min": min(effective_levels) if effective_levels else None,
+        "effective_int_levels_mean": _mean(effective_levels),
+        "absmax_over_p99_mean": _mean(outlier_ratio),
+        "absmax_over_p99_max": max(outlier_ratio) if outlier_ratio else None,
+        "per_channel_absmax_ratio_mean": _mean(channel_ratio),
+        "per_channel_absmax_ratio_max": max(channel_ratio) if channel_ratio else None,
+    }
+
+
+def _numeric_values(rows: Iterable[dict[str, Any]], key: str) -> list[float]:
+    return [float(row[key]) for row in rows if row.get(key) is not None]
+
+
+def _mean(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return sum(values) / len(values)
 
 
 @contextmanager

@@ -417,6 +417,7 @@ SCRN 是连续值恢复任务，不是分类任务。分类模型中间 feature 
 | A000 | 2026-05-04 | 整理用户初步总结并形成实验路线 | 追加 Codex 深度分析 | 不涉及运行 | 后续实验按 E001-E006 推进 |
 | P000 | 2026-05-04 | 正式实验前建立目录规范 | 新增激活量化配置目录和运行产物目录 | 不涉及运行 | 后续配置和实验产物分开存放 |
 | E001 | 2026-05-04 | 建立 activation diagnostics 工具 | 新增诊断模块、CLI、默认配置和单元测试 | 2-sample smoke 复现 52 个 activation quantizers、2 个负 delta | 可进入正式 64/1024 样本诊断和 E002 正 scale 修复 |
+| E001a | 2026-05-04 | 补齐 activation diagnostics 指标 | 增加 per-channel、top-k 和结构分组统计 | 不运行正式 baseline | 工具指标覆盖 E001 验收标准，下一步进入 E001b |
 
 ## 实验目录约定
 
@@ -566,3 +567,61 @@ runs/activation_quantization/
   - 用默认 `e001_diagnostics.json` 跑 64 样本正式诊断，必要时再跑 1024 样本诊断。
   - 对比 final checkpoint 与 `quantized_scrn_brecq_pre_act_recon.pth`，确认负 `delta` 只在 activation reconstruction 后出现。
   - 进入 E002：实现正 scale 约束最小修复，并用 E001 工具验证 `non_positive_delta_count` 是否归零。
+
+### E001a：补齐 activation diagnostics 指标
+
+- 日期：2026-05-04
+- 负责人：Codex
+- 代码状态：
+  - branch：`main`
+  - commit：提交前记录，目标提交信息为 `Complete activation diagnostics metrics`
+  - dirty files：`quant/activation_diagnostics.py`、`tests/test_activation_diagnostics.py`、`DEVELOPMENT_LOG.md`、`ACTIVATION_QUANTIZATION_LOG.md`
+- 实验目的：补齐 E001 诊断工具的指标覆盖，使其能输出 per-channel 差异、top-k 问题层和结构分组统计。
+- 假设：正式 E001 baseline 前应先保证诊断工具字段完整，否则即使跑出 run 产物，也无法满足“哪些层有离群值、哪些层有效 level 极低、CNN vs Transformer 差异如何”的验收标准。
+- 相关候选问题：A2、A6、A11。
+- 代码/配置改动：
+  - 在 activation stats row 中新增：
+    - `per_channel_axis`
+    - `per_channel_count`
+    - `per_channel_absmax_max`
+    - `per_channel_absmax_median`
+    - `per_channel_absmax_ratio`
+    - `per_channel_absmax_skip_reason`
+  - 在 summary 中新增：
+    - `top_outlier_layers`
+    - `lowest_effective_level_layers`
+    - `worst_fake_quant_mse_layers`
+    - `worst_relative_mse_layers`
+    - `top_per_channel_imbalance_layers`
+  - 在 summary 中新增结构分组统计：
+    - `branch_summary`
+    - `stage_summary`
+    - `role_summary`
+    - `module_type_summary`
+- 命令：
+  - 本步骤不运行正式 checkpoint 诊断，不生成正式实验产物。
+- 输入 checkpoint / packed artifact：
+  - 不涉及。
+- 输出目录：
+  - 不涉及。
+- 最小检查：
+  - TDD 红灯：新增测试后，`per_channel_count` 和 `top_outlier_layers` 字段缺失。
+  - 单元测试转绿：`conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`。
+- 关键指标：
+  - FP32：不涉及。
+  - W-only pre weight recon：不涉及。
+  - W-only post weight recon：不涉及。
+  - W+A pre act recon：不涉及。
+  - W+A post act recon：不涉及。
+  - packed/checkpoint 对齐：不涉及。
+- Activation quantizer 诊断：
+  - 本步骤只补齐诊断字段，不对真实 checkpoint 产生新的诊断结论。
+- 现象：
+  - 原 E001 工具第一版只能输出部分 top-k 和 tensor-level outlier 指标，缺少 per-channel 差异和结构分组统计。
+  - E001a 后，后续 `summary.json` 和 `activation_stats.jsonl` 将能直接支持 CNN branch vs Transformer branch、stage/role/module type 聚合分析。
+- 结论：
+  - E001a 是 E001 baseline 的前置工具补齐，不等价于正式 E001 实验。
+  - 正式实验结论仍需 E001b 在项目内运行 final W4A8 checkpoint 的 64 样本 baseline 后写入。
+- 下一步：
+  - E001b：使用默认 `e001_diagnostics.json` 在项目内 run 目录运行 final W4A8 checkpoint 64 样本正式 baseline。
+  - E001c：用同一诊断工具对 `quantized_scrn_brecq_pre_act_recon.pth` 做对照。
