@@ -1191,3 +1191,33 @@ checkpoint 固定了 `checkpoint_parameters`，但不同 `input_sample` 会触�
 - E002 第一阶段不先扩大到 full calibration。
 - E002 第一阶段不把 post-step clamp 直接视为最终算法创新，只把它作为合法性修复和因果验证工具。
 - 每次代码或实验变更都必须同步记录在 `DEVELOPMENT_LOG.md` 和本日志中，并按 Git 工作流提交。
+
+### E002a：activation delta post-step clamp 最小修复
+
+- 日期：2026-05-04
+- 负责人：Codex
+- 实验/开发性质：代码最小修复，不运行正式 W4A8 reconstruction，不生成新 checkpoint。
+
+#### 修改内容
+
+- 在 activation reconstruction 的优化步骤后，对 learnable activation `delta` 执行正值投影。
+- 新增最小下界 `ACTIVATION_DELTA_MIN = 1e-8`，与当前 quantizer 初始化中的小 scale 下界保持一致。
+- 新增 `_project_activation_delta_params_positive(...)`，只对传入的 activation delta 参数做 `clamp_(min=eps)`。
+- 在 block reconstruction 和 layer reconstruction 的 `act_quant=True` 路径中调用该投影。
+- `act_quant=False` 的 AdaRound 权重量化路径不受影响。
+- 不修改 `UniformAffineQuantizer.forward()`，因此历史 checkpoint 加载和普通推理路径的语义不被额外改变。
+
+#### 设计判断
+
+- E002a 只解决 activation scale 合法性问题：activation reconstruction 后不应留下非正 `delta`。
+- 该修复不声称解决所有 W4A8 精度损失；如果 optimizer 仍持续把某些层推向极小 scale，后续还需要 E002c 的 delta ratio 限制、log-scale/softplus 参数化或 attention 层策略。
+- 选择 post-step clamp 而不是立即重构 quantizer 参数化，是为了保持最小改动和 checkpoint 兼容性，先验证负 scale 对最终 SNR 的影响。
+
+#### 验证计划
+
+- 新增 `test_activation_scale_constraints.py`，直接验证：
+  - 负数和 0 的 activation `delta` 会被 clamp 到正数。
+  - 已经大于 `eps` 的正 `delta` 不被改变。
+  - `eps <= 0` 会报错。
+- 本步骤完成后只运行单元测试、诊断测试和 py_compile。
+- E002b 再重新生成 W4A8 checkpoint，并用 E001 诊断验证 `non_positive_delta_count=0` 和最终 SNR 是否恢复。

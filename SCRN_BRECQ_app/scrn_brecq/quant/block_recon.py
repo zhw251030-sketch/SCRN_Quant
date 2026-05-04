@@ -18,6 +18,9 @@ from SCRN_BRECQ_app.scrn_brecq.quant.quant_layer import QuantModule, StraightThr
 from SCRN_BRECQ_app.scrn_brecq.quant.quant_model import QuantModel
 
 
+ACTIVATION_DELTA_MIN = 1e-8
+
+
 def block_reconstruction(
     model: QuantModel,
     block: BaseQuantBlock,
@@ -99,6 +102,8 @@ def block_reconstruction(
             err.backward()
             _sync_parameter_gradients(opt_params, multi_gpu=multi_gpu)
             optimizer.step()
+            if act_quant:
+                _project_activation_delta_params_positive(opt_params)
             if scheduler is not None:
                 scheduler.step()
     finally:
@@ -322,6 +327,19 @@ def _collect_activation_delta_params(modules: list[QuantModule]) -> list[nn.Para
             "Construct QuantModel with act_quant_params['leaf_param']=True and initialize activation quantization."
         )
     return opt_params
+
+
+def _project_activation_delta_params_positive(
+    params: list[nn.Parameter],
+    eps: float = ACTIVATION_DELTA_MIN,
+) -> None:
+    """Project learnable activation scales back to the valid positive range."""
+    eps_value = float(eps)
+    if eps_value <= 0:
+        raise ValueError(f"eps must be positive, got {eps}")
+    with torch.no_grad():
+        for param in params:
+            param.clamp_(min=eps_value)
 
 
 def _set_adaround_soft_targets(modules: list[QuantModule], *, enabled: bool) -> None:

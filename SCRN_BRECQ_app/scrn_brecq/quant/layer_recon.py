@@ -17,6 +17,7 @@ from SCRN_BRECQ_app.scrn_brecq.quant.block_recon import (
     _empty_cuda_cache_if_needed,
     _initialize_activation_quantizers,
     _prepare_adaround_params,
+    _project_activation_delta_params_positive,
     _rounding_regularizer,
     _sample_indices,
     _sync_parameter_gradients,
@@ -107,6 +108,8 @@ def layer_reconstruction(
             err.backward()
             _sync_parameter_gradients(opt_params, multi_gpu=multi_gpu)
             optimizer.step()
+            if act_quant:
+                _project_activation_delta_params_positive(opt_params)
             if scheduler is not None:
                 scheduler.step()
     finally:

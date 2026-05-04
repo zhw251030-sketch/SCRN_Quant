@@ -1227,3 +1227,25 @@
 
 - 本步骤只更新 Markdown 日志。
 - 提交前执行 `git diff --check` 和 `git diff --check --cached`。
+
+## 2026-05-04 E002a activation delta 正值投影最小修复
+
+### 修改内容
+
+- 在 `block_recon.py` 增加 `ACTIVATION_DELTA_MIN = 1e-8` 和 `_project_activation_delta_params_positive(...)`。
+- 在 block/layer activation reconstruction 的 `optimizer.step()` 后，对 learnable activation `delta` 执行 post-step clamp。
+- 新增 `test_activation_scale_constraints.py`，覆盖负/零 delta clamp、正 delta 保持不变、非法 eps 报错。
+- 同步更新 `ACTIVATION_QUANTIZATION_LOG.md`，记录 E002a 只做合法性最小修复，正式 W4A8 复现实验留给 E002b。
+
+### 设计原因
+
+- E001b/E001c 已证明 final W4A8 的负 `delta` 由 activation reconstruction 引入。
+- activation scale 必须为正，因此优化后投影是最小合法性修复；暂不修改 quantizer forward 或 checkpoint 结构，降低兼容性风险。
+
+### 验证方式
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_scale_constraints`
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/block_recon.py SCRN_BRECQ_app/scrn_brecq/quant/layer_recon.py`
+- `git diff --check`
+- `git diff --check --cached`
