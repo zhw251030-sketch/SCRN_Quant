@@ -1005,3 +1005,20 @@
   - `non_positive_delta_count=2`
   - `activation_stat_count=52`
   - `fake_quant_mse_max=0.003358484013006091`
+
+## 2026-05-04 约束激活量化实验产物位置
+
+### 修改内容
+
+- 更新仓库根目录 `.gitignore`，忽略 `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/*`。
+- 保留 `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/README.md` 继续纳入 Git，用于说明该目录用途和产物不提交规则。
+
+### 设计原因
+
+- 激活量化实验结果必须保存在 `/home/data1/hanwen/project/Project/SCRN_Quant` 项目内的约定 run 目录中，不应再写入 `/tmp` 或其他项目外路径。
+- 通过 `.gitignore` 明确保护后，后续正式 E001/E002 run 可以放回项目目录，同时避免误提交 JSON、CSV、JSONL、图片、checkpoint 等产物。
+
+### 验证方式
+
+- 本次只更新 `.gitignore` 和 Markdown 日志。
+- 提交前执行 `git diff --check` 和 `git diff --check --cached`。

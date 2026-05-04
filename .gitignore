@@ -11,6 +11,8 @@ SCRN_BRECQ_app/scrn_brecq/runs/quant_eval/
 SCRN_BRECQ_app/scrn_brecq/runs/packed_eval/
 SCRN_BRECQ_app/scrn_brecq/runs/generalization_eval/*
 !SCRN_BRECQ_app/scrn_brecq/runs/generalization_eval/README.md
+SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/*
+!SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/README.md
 
 # Dataset and model artifact files
 *.npy

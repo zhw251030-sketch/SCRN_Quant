@@ -445,6 +445,16 @@ runs/activation_quantization/
 `.segy`、日志、缓存和运行产物。若某次实验需要长期保留结果，应优先把小型
 文本摘要写入本日志或单独的 Markdown summary，而不是提交完整 run 目录。
 
+补充约束（2026-05-04）：
+
+- 激活量化实验结果只能写入
+  `/home/data1/hanwen/project/Project/SCRN_Quant/SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/`
+  及其子目录，不再写入 `/tmp` 或其他项目外路径。
+- 仓库根目录 `.gitignore` 已忽略 `runs/activation_quantization/*`，并仅保留
+  `runs/activation_quantization/README.md` 可跟踪。
+- 后续若需要保存正式诊断结果，应让 CLI 默认输出到上述项目内目录；Git 只记录日志中的
+  关键摘要，不提交 run 目录中的具体产物文件。
+
 ## 实验记录模板
 
 复制以下模板到“实验详细记录”中使用。
