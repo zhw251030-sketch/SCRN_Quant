@@ -1206,3 +1206,24 @@
 
 - 本步骤只更新 Markdown 日志。
 - 提交前执行 `git diff --check` 和 `git diff --check --cached`。
+
+## 2026-05-04 记录 E002 正 scale 约束初步计划
+
+### 修改内容
+
+- 在 `ACTIVATION_QUANTIZATION_LOG.md` 追加 E002 初步计划，明确正 scale 约束是必要的合法性修复，但不一定充分解释全部 W4A8 精度损失。
+- 将 E002 拆分为：
+  - E002a：post-step clamp 最小修复。
+  - E002b：修复后 W4A8 复现实验。
+  - E002c：若 clamp 后仍差，再进入 delta ratio 限制、log-scale/softplus 参数化、学习率/迭代数调整和 attention 层选择性冻结等方向。
+- 本步骤只整理计划，不修改量化算法、不运行新实验、不生成 run 产物。
+
+### 设计原因
+
+- E001b/E001c 已经证明负 `delta` 是 activation reconstruction 后引入的确定问题。
+- 但 optimizer 能把 scale 推到负数，说明仅有合法性约束可能不足以解决全部精度问题；E002 需要用最小修复先建立因果验证闭环。
+
+### 验证方式
+
+- 本步骤只更新 Markdown 日志。
+- 提交前执行 `git diff --check` 和 `git diff --check --cached`。

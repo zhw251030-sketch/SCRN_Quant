@@ -1114,3 +1114,80 @@ checkpoint 固定了 `checkpoint_parameters`，但不同 `input_sample` 会触�
   - 负 `delta` 是 activation reconstruction 后引入这一核心判断。
 
 因此，E001b/E001c 的 64-sample 诊断足够支持 E002 的方向：先修 activation reconstruction 中的 `delta` 正值约束。1024-sample 或 full calibration 更适合放在 E002 修复后，用来验证修复趋势是否稳定，而不是在已经发现 checkpoint 参数非法时继续扩大诊断。
+
+### E002：正 scale 约束最小修复初步计划
+
+- 日期：2026-05-04
+- 负责人：Codex
+- 阶段定位：E002 是修复阶段的第一步，但仍然保持最小变量控制；先修掉 activation quantizer 的非法状态，再判断负 `delta` 对最终 W4A8 SNR 的影响。
+
+#### 核心判断
+
+直接增加正 scale 约束是必要的，但不一定充分。
+
+- 必要性：
+  - activation `delta` 是量化 scale，数学上必须为正。
+  - E001b 已经证明 final W4A8 checkpoint 中存在 2 个负 `delta`。
+  - E001c 已经证明 pre-act-recon checkpoint 中 `non_positive_delta_count=0`，因此非法 scale 是 activation reconstruction 后引入。
+  - 只要 checkpoint 中存在负 scale，后续 fake-quant 行为、effective int level 和输出质量评估都混入了非法量化器状态。
+- 不充分性：
+  - 如果 optimizer 会把 `delta` 推到负数，说明当前 reconstruction loss、学习率、activation 分布、层结构或参数化方式之间可能存在更深的优化冲突。
+  - 正约束只能阻止 scale 进入非法区域；如果优化器持续把某些层推向 0 附近，量化器仍可能出现有效 int level 崩塌。
+  - 因此 E002 不能只看 `non_positive_delta_count=0`，还必须继续观察 transformer/Linear 的 effective level、relative MSE 和最终 SNR。
+
+#### E002a：post-step clamp 最小修复
+
+目标：只在 activation reconstruction 的优化步骤后，对 learnable activation `delta` 做正值投影，不改变量化公式、不改 packed deployment、不改 calibration 数据。
+
+计划内容：
+
+- 在 layer/block activation reconstruction 的 `optimizer.step()` 后，对收集到的 activation delta 执行 `clamp_min_(eps)`。
+- `eps` 使用一个很小的正数，只用于保证合法性，不主动改变正常正 scale。
+- 添加最小测试，验证 activation reconstruction 优化后不能留下非正 `delta`。
+- 记录 clamp 前后的最小 `delta`，后续如有必要再增加 clamp hit count 或 delta trajectory 诊断。
+
+验收标准：
+
+- 修复后的 activation reconstruction 产物用 E001 工具诊断时，`non_positive_delta_count=0`。
+- offender layers 为空。
+- 如果最终 W4A8 SNR 明显恢复，说明负 scale 是主因之一。
+- 如果最终 W4A8 SNR 仍很差，说明负 scale 是必须修的合法性问题，但不是唯一主瓶颈。
+
+#### E002b：修复后 W4A8 复现实验
+
+目标：用与失败 run 尽量一致的设置重新生成 W4A8 checkpoint，单独评估“正 scale 约束”这一变量的影响。
+
+计划内容：
+
+- 先跑小规模 smoke，确认新 checkpoint 不再出现非正 activation `delta`。
+- smoke 通过后，再考虑复跑与当前失败 run 对齐的 W4A8 activation reconstruction。
+- 所有实验产物只能写入项目目录内的 `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E002_positive_scale/` 或对应 quant run 目录，不写 `/tmp`。
+
+重点对比：
+
+- final W4A8 SNR。
+- `non_positive_delta_count`。
+- transformer/Linear effective int level min。
+- attention projection/qkv 的 fake-quant MSE 和 relative MSE。
+- 是否还有层被 clamp 到接近 `eps`。
+
+#### E002c：如果 clamp 后仍然不好
+
+如果正 scale clamp 消除了非法状态但 SNR 仍明显偏低，下一步不应继续盲目扩大样本，而应定位是否存在更深优化问题。
+
+候选方向：
+
+- 限制 `delta` 相对初始化值的变化幅度，例如 `min_ratio * init_delta <= delta <= max_ratio * init_delta`。
+- 对 `log(delta / init_delta)` 增加正则，防止 scale 被优化到极端范围。
+- 降低 `activation_lr` 或缩短 `iters_a`，判断当前学习率/迭代数是否过激。
+- 改为 log-scale 或 `softplus(raw_delta) + eps` 参数化，从参数空间上保证 scale 为正。
+- 对 attention projection/qkv 做选择性冻结或单独策略，判断 transformer/Linear 是否是有害重构路径。
+- 重新评估 `asym=False` 的 activation reconstruction 设定是否和真实量化输入分布不一致。
+
+#### E002 的边界
+
+- E002 第一阶段不修改 `SCRN-main/` 和 `BRECQ-main/`。
+- E002 第一阶段不先做 packed deployment 修复。
+- E002 第一阶段不先扩大到 full calibration。
+- E002 第一阶段不把 post-step clamp 直接视为最终算法创新，只把它作为合法性修复和因果验证工具。
+- 每次代码或实验变更都必须同步记录在 `DEVELOPMENT_LOG.md` 和本日志中，并按 Git 工作流提交。
