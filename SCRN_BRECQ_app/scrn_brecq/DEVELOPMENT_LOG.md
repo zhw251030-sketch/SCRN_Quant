@@ -972,3 +972,36 @@
 
 - 本次只新增和更新 Markdown 文档，不涉及 Python 代码。
 - 提交前执行 `git diff --check` 和 `git diff --check --cached` 检查 Markdown 空白格式。
+
+## 2026-05-04 E001 激活量化诊断工具
+
+### 修改内容
+
+- 新增 `quant/activation_diagnostics.py`，提供 activation quantizer 状态扫描、结构标签推断、forward hook 分布统计、fake-quant MSE 和有效 int level 统计。
+- 新增 `cli/diagnose_activation_quantization.py`，复用已保存 checkpoint 的 QuantModel 重建和 quantizer state restore 逻辑，输出 E001 诊断 run。
+- 新增 `configs/activation_quantization/e001_diagnostics.json`，默认使用当前 W4A8 final checkpoint，采用 CPU、64 个 calibration 样本的小规模诊断配置。
+- 更新 `quant/__init__.py`，导出激活量化诊断公共函数。
+- 新增 `tests/test_activation_diagnostics.py`，用小型 `QuantModule` 验证 quantizer row、负 delta offender、activation stats 和有效 int level。
+- 同步更新 `ACTIVATION_QUANTIZATION_LOG.md`，记录 E001 smoke 结果和后续实验入口。
+
+### 设计原因
+
+- 当前 W4A8 失败需要先建立可复现诊断证据，而不是直接修改 `delta` 或启动长时间 reconstruction。
+- 诊断工具只读取模型状态和 forward hook 输出，不改变量化算法行为。
+- 输出文件拆分为 `summary.json`、`quantizers.csv`、`activation_stats.jsonl`、`offender_layers.json`，便于后续按层排序、筛选和跨 checkpoint 对比。
+
+### 验证方式
+
+- TDD 红灯：
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`
+  - 初始失败原因为缺少 `SCRN_BRECQ_app.scrn_brecq.quant.activation_diagnostics`。
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/activation_diagnostics.py SCRN_BRECQ_app/scrn_brecq/cli/diagnose_activation_quantization.py`
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`
+  - `Ran 3 tests ... OK`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.diagnose_activation_quantization --help`
+- E001 2-sample CPU smoke，输出放到 `/tmp`，避免提交 run 产物：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.diagnose_activation_quantization --num-samples 2 --batch-size 1 --device cpu --run-name smoke_e001 --run-root /tmp/scrn_brecq_e001_diagnostics`
+  - `activation_quantizers=52`
+  - `non_positive_delta_count=2`
+  - `activation_stat_count=52`
+  - `fake_quant_mse_max=0.003358484013006091`

@@ -5,6 +5,12 @@
 """
 
 from .adaptive_rounding import AdaRoundQuantizer
+from .activation_diagnostics import (
+    build_activation_diagnostics_report,
+    collect_activation_stats,
+    collect_quantizer_rows,
+    summarize_activation_quantizers,
+)
 from .block_recon import BlockLossFunction, LinearTempDecay, block_reconstruction, reconstruction_loss
 from .data_utils import (
     DataSaverHook,
@@ -26,6 +32,9 @@ __all__ = [
     "AdaRoundQuantizer",
     "BaseQuantBlock",
     "BlockLossFunction",
+    "build_activation_diagnostics_report",
+    "collect_activation_stats",
+    "collect_quantizer_rows",
     "DataSaverHook",
     "GetLayerGrad",
     "GetLayerInpOut",
@@ -50,4 +59,5 @@ __all__ = [
     "save_grad_data",
     "save_inp_oup_data",
     "specials",
+    "summarize_activation_quantizers",
 ]

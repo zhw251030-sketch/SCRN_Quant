@@ -1,0 +1,11 @@
+{
+  "checkpoint": "SCRN_BRECQ_app/scrn_brecq/runs/quant/20260429_194908_w4a8_1024samples_w20000_a5000/checkpoints/quantized_scrn_brecq.pth",
+  "run_root": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E001_diagnostics",
+  "run_name": "e001_diagnostics",
+  "device": "cpu",
+  "calibration_dataset_dir": "SCRN_BRECQ_app/scrn_repro/datasets/scrn_quant_10750_0_patches",
+  "num_samples": 64,
+  "batch_size": 16,
+  "num_workers": 0,
+  "seed": 1005
+}

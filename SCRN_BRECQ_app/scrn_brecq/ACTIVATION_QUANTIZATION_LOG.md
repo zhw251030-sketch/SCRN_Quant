@@ -395,8 +395,8 @@ SCRN 是连续值恢复任务，不是分类任务。分类模型中间 feature 
 
 | 编号 | 候选问题 | 当前证据 | 优先级 | 状态 |
 | --- | --- | --- | --- | --- |
-| A1 | Activation `delta` 缺少正值约束，优化后出现非法 scale | final W4A8 checkpoint 有 2 个负 delta | 最高 | 已观察，待修复验证 |
-| A2 | Transformer/Swin attention 分支存在 activation outlier，tensor-wise A8 被极值主导 | 负 delta 位于 stage4/stage5 attention proj | 高 | 待统计分布 |
+| A1 | Activation `delta` 缺少正值约束，优化后出现非法 scale | E001 smoke 在 final W4A8 checkpoint 复现 2 个负 delta | 最高 | 已复现，待 E002 修复验证 |
+| A2 | Transformer/Swin attention 分支存在 activation outlier，tensor-wise A8 被极值主导 | 负 delta 位于 stage4/stage5 attention proj；E001 smoke 的 `absmax_over_p99_max=44.54` | 高 | 已有初步诊断，待正式 E001 64/1024 样本统计 |
 | A3 | 只优化 `delta`，`zero_point` 固定导致 asymmetric range 不稳定 | 当前 activation reconstruction 只收集 delta 参数 | 高 | 待验证 |
 | A4 | Activation reconstruction 局部 MSE 目标与最终 SNR/SSIM 不一致 | A8 init 后大幅掉点，act recon 只恢复约 0.207 dB | 高 | 待验证 |
 | A5 | Calibration 数据覆盖不足或与 eval/部署输入分布不一致 | activation scale 依赖输入分布 | 中 | 待验证 |
@@ -405,7 +405,7 @@ SCRN 是连续值恢复任务，不是分类任务。分类模型中间 feature 
 | A8 | Activation 初始化只用 `init_batch_size=64`，可能不足以覆盖深层 activation range | `zero_point` 固定，初始化样本对最终范围影响大 | 高 | 待验证 |
 | A9 | Activation reconstruction 使用 `asym=False`，可能没有模拟前序量化误差累积 | 代码中 activation 阶段硬编码 `asym=False` | 高 | 待验证 |
 | A10 | 教师模型使用 FP32 可能与 W4A8 阶段目标不匹配 | 激活量化叠加在 W4 权重模型之后 | 中 | 待验证 |
-| A11 | 当前量化器位置过密，可能在 FFB 内部多次量化造成误差累积 | QuantModel 递归替换每个 Conv/Linear | 高 | 待绘制位置图 |
+| A11 | 当前量化器位置过密，可能在 FFB 内部多次量化造成误差累积 | E001 smoke 已输出 52 个 activation quantizer 的结构位置 | 高 | 已具备诊断工具，待完整统计 |
 | A12 | 当前 2-8 bit 限制不支持直接 A16 fallback | `UniformAffineQuantizer` 限制 `2 <= n_bits <= 8` | 中 | 待设计 fallback |
 | A13 | Activation LR 可能过大，导致 scale 参数越界或震荡 | `activation_lr=4e-4`，最终出现负 delta | 中 | 待 sweep |
 
@@ -416,6 +416,7 @@ SCRN 是连续值恢复任务，不是分类任务。分类模型中间 feature 
 | E000 | 2026-05-04 | 建立激活量化研究日志 | 新增本文档 | 不涉及实验 | 后续实验从 E001 开始记录 |
 | A000 | 2026-05-04 | 整理用户初步总结并形成实验路线 | 追加 Codex 深度分析 | 不涉及运行 | 后续实验按 E001-E006 推进 |
 | P000 | 2026-05-04 | 正式实验前建立目录规范 | 新增激活量化配置目录和运行产物目录 | 不涉及运行 | 后续配置和实验产物分开存放 |
+| E001 | 2026-05-04 | 建立 activation diagnostics 工具 | 新增诊断模块、CLI、默认配置和单元测试 | 2-sample smoke 复现 52 个 activation quantizers、2 个负 delta | 可进入正式 64/1024 样本诊断和 E002 正 scale 修复 |
 
 ## 实验目录约定
 
@@ -492,3 +493,66 @@ runs/activation_quantization/
 - 目的：为 W4A8 激活量化失败问题建立独立研究日志，便于记录潜在原因、修复方案和每次实验。
 - 改动：新增 `ACTIVATION_QUANTIZATION_LOG.md`，并要求后续激活量化相关内容同时记录到 `DEVELOPMENT_LOG.md` 和本文档。
 - 结论：本文档只建立记录框架，不涉及代码修复或量化实验。
+
+### E001：Activation diagnostics 工具与 smoke
+
+- 日期：2026-05-04
+- 负责人：Codex
+- 代码状态：
+  - branch：`main`
+  - commit：提交前记录，目标提交信息为 `Add activation quantization diagnostics`
+  - dirty files：E001 诊断源码、CLI、配置、测试、开发日志和激活量化日志
+- 实验目的：建立不改变模型行为的激活量化诊断入口，先看清 W4A8 final checkpoint 中 activation quantizer 的合法性、结构位置、分布、fake-quant 局部误差和有效 int level。
+- 假设：W4A8 失败至少包含 activation scale 合法性问题；负 `delta` 应能被诊断工具稳定复现，并映射到具体 SCRN 结构位置。
+- 相关候选问题：A1、A2、A3、A8、A11、A13。
+- 代码/配置改动：
+  - 新增 `quant/activation_diagnostics.py`。
+  - 新增 `cli/diagnose_activation_quantization.py`。
+  - 新增 `configs/activation_quantization/e001_diagnostics.json`。
+  - 新增 `tests/test_activation_diagnostics.py`。
+  - 更新 `quant/__init__.py`。
+- 命令：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.diagnose_activation_quantization --num-samples 2 --batch-size 1 --device cpu --run-name smoke_e001 --run-root /tmp/scrn_brecq_e001_diagnostics`
+- 输入 checkpoint / packed artifact：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260429_194908_w4a8_1024samples_w20000_a5000/checkpoints/quantized_scrn_brecq.pth`
+- 输出目录：
+  - `/tmp/scrn_brecq_e001_diagnostics/20260504_193842_smoke_e001`
+  - 输出放在 `/tmp`，避免将 smoke run 产物留在 Git 工作区。
+- 最小检查：
+  - TDD 红灯：初始单元测试因缺少 `activation_diagnostics` 模块失败。
+  - `py_compile` 诊断模块和 CLI。
+  - `unittest` 运行 `test_activation_diagnostics`，`Ran 3 tests ... OK`。
+  - CLI `--help` 正常输出参数。
+- 关键指标：
+  - FP32：不涉及。
+  - W-only pre weight recon：不涉及。
+  - W-only post weight recon：不涉及。
+  - W+A pre act recon：不涉及。
+  - W+A post act recon：本 smoke 读取 final W4A8 checkpoint。
+  - packed/checkpoint 对齐：不涉及。
+- Activation quantizer 诊断：
+  - delta_count：52
+  - zero_point_count：52
+  - delta_min：`-0.0031369472853839397`
+  - delta_max：`0.043170016258955`
+  - non_positive_delta_count：2
+  - non_positive_delta_elements：2
+  - activation_stat_count：52
+  - effective_int_levels_min：17
+  - effective_int_levels_max：256
+  - absmax_over_p99_max：`44.540536475105085`
+  - fake_quant_mse_max：`0.003358484013006091`
+  - offender_layers：
+    - `model.stage4.0.block.trans_branch.attn.proj`
+    - `model.stage5.0.block.trans_branch.attn.proj`
+- 现象：
+  - E001 smoke 稳定复现 final W4A8 checkpoint 中 52 个 activation quantizer 均已恢复，且 2 个 activation `delta` 为负。
+  - 两个负 `delta` 均位于 transformer branch 的 attention projection，进一步支持 FFB-S 深层注意力投影是优先诊断区域。
+  - 2 样本 smoke 已观察到较高 outlier ratio，`absmax_over_p99_max=44.54`；该值只是 smoke 信号，正式结论需要 64/1024 样本诊断。
+- 结论：
+  - E001 工具已能把“负 delta”从手动 checkpoint 检查升级为可复现、可结构定位、可扩展的诊断流程。
+  - 当前不应把 smoke 的分布统计当成最终实验结论，但它已经证明 E001 能服务于后续正式诊断和 E002 修复验证。
+- 下一步：
+  - 用默认 `e001_diagnostics.json` 跑 64 样本正式诊断，必要时再跑 1024 样本诊断。
+  - 对比 final checkpoint 与 `quantized_scrn_brecq_pre_act_recon.pth`，确认负 `delta` 只在 activation reconstruction 后出现。
+  - 进入 E002：实现正 scale 约束最小修复，并用 E001 工具验证 `non_positive_delta_count` 是否归零。
