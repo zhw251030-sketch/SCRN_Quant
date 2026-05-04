@@ -1221,3 +1221,100 @@ checkpoint 固定了 `checkpoint_parameters`，但不同 `input_sample` 会触�
   - `eps <= 0` 会报错。
 - 本步骤完成后只运行单元测试、诊断测试和 py_compile。
 - E002b 再重新生成 W4A8 checkpoint，并用 E001 诊断验证 `non_positive_delta_count=0` 和最终 SNR 是否恢复。
+
+### E002b：positive-scale W4A8 复现实验
+
+- 日期：2026-05-04
+- 负责人：Codex
+- 实验目的：在 E002a post-step clamp 已合入后，重新生成 W4A8 checkpoint，验证正 scale 合法性修复是否能显著恢复最终 SNR。
+- 实验边界：不修改代码；不切换学习率、样本数或 reconstruction loss；只改变当前代码中已经存在的 activation `delta` 正值投影。
+
+#### 运行记录
+
+- smoke quant run：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260504_221053_e002b_smoke_positive_scale`
+  - 命令：W4A8、`num_samples=2`、`iters_w=1`、`iters_a=1`、`device=cuda`、`gpus=0`。
+  - run 内 `post_recon_snr=7.8397 dB`。
+- smoke diagnostics：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E002_positive_scale/diagnostics/20260504_221230_e002b_smoke_diagnostics`
+  - `activation_quantizers=52`
+  - `non_positive_delta_count=0`
+  - `fake_quant_mse_max=0.0006604313966818154`
+- formal quant run：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260504_221242_e002b_w4a8_positive_scale_1024samples_w20000_a5000`
+  - 命令：W4A8、`num_samples=1024`、`batch_size=16`、`iters_w=20000`、`iters_a=5000`、`device=cuda`、`gpus=0`。
+- formal diagnostics：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E002_positive_scale/diagnostics/20260504_232451_e002b_final_diagnostics`
+- formal single-sample reload eval：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E002_positive_scale/eval/20260504_232504_e002b_final_single_eval`
+
+#### 正式 run 指标
+
+- run 内阶段指标：
+  - `quant_post_weight_recon_snr_db=11.696099054461113`
+  - `quant_pre_act_recon_snr_db=4.9874515693637465`
+  - `quant_post_act_recon_snr_db=5.236280200086368`
+  - `quant_act_recon_snr_gain_db=0.2488286307226213`
+  - `activation_reconstruction_seconds=1323.0121958255768`
+- checkpoint reload 单样本评估：
+  - `quant_snr_db=5.230110892430229`
+  - `quant_ssim=0.6613561048695519`
+
+#### 正式诊断指标
+
+- `activation_quantizers=52`
+- `non_positive_delta_count=0`
+- offender layers：空。
+- `effective_int_levels_min=30`
+- `fake_quant_mse_max=0.008150355890393257`
+- `fake_quant_mse_mean=0.00018797567968744142`
+- transformer / Linear：
+  - effective level min：30
+  - relative MSE max：`0.010542650171161586`
+  - fake-quant MSE max：`0.008150355890393257`
+- attention projection：
+  - effective level min：30
+  - effective level mean：65.4
+  - relative MSE max：`0.002503253427257536`
+- attention qkv：
+  - effective level min：131
+  - fake-quant MSE max：`0.008150355890393257`
+  - relative MSE max：`0.010542650171161586`
+- activation `delta` 最小值：
+  - 最小正 delta 为 `0.000576426915358752`，位于 `model.stage4.0.block.trans_branch.mlp.2`。
+  - `eps=1e-8` 边界命中数为 0，说明最终 checkpoint 没有 layer 被 clamp 卡在极小下界。
+
+#### 与 E001b final W4A8 baseline 对比
+
+- 非法 scale：
+  - E001b final：`non_positive_delta_count=2`
+  - E002b final：`non_positive_delta_count=0`
+  - 结论：E002a 正 scale 投影成功消除了 final checkpoint 中的负 `delta`。
+- 单样本 SNR：
+  - E001b final run 内 `quant_post_act_recon_snr_db=5.227702998470372`
+  - E002b final run 内 `quant_post_act_recon_snr_db=5.236280200086368`
+  - 提升约 `0.0086 dB`，不构成实质性精度恢复。
+- transformer / Linear：
+  - E001b effective level min：17
+  - E002b effective level min：30
+  - E001b relative MSE max：`0.020646367816721696`
+  - E002b relative MSE max：`0.010542650171161586`
+  - 结论：正 scale 修复让部分局部指标改善，但 transformer/Linear 仍然是主要劣化区域。
+- fake-quant MSE：
+  - E001b fake_quant_mse_max：`0.003323915181681514`
+  - E002b fake_quant_mse_max：`0.008150355890393257`
+  - E002b worst layer 仍是 `model.stage1.0.block.trans_branch.attn.qkv`。
+
+#### E002b 结论
+
+E002b 证明：E002a 的 post-step clamp 能修掉 final checkpoint 中的非法 activation scale，且正式 checkpoint 中没有任何 activation `delta` 停在 `1e-8` 下界；因此“负 delta”确实是一个必须修复的合法性问题。
+
+但 E002b 同时证明：只修正 scale 正值约束几乎不能恢复 W4A8 的最终 SNR。W4A8 仍从 W4A32 weight recon 的约 11.7 dB 掉到约 5.23 dB，说明当前主要精度瓶颈更可能来自 activation quantization 本身的初始化/范围选择、局部 reconstruction 目标、attention qkv/proj 敏感性、tensor-wise activation scale 或学习率/迭代策略，而不只是负 scale。
+
+下一步应进入 E002c / E003 方向：
+
+- 记录 activation delta 变化幅度，判断是否有 scale 被优化到极端但仍为正。
+- 做 `activation_lr` sweep，例如 `4e-4 / 1e-4 / 4e-5`。
+- 比较 `asym=False` vs `asym=True` 的 activation reconstruction 输入口径。
+- 针对 attention qkv/proj 做冻结或单独策略对照。
+- 考虑 delta ratio 约束、log-scale / softplus 参数化，或 activation clipping / range 学习。

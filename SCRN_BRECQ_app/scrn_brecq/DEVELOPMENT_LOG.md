@@ -1249,3 +1249,67 @@
 - `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/block_recon.py SCRN_BRECQ_app/scrn_brecq/quant/layer_recon.py`
 - `git diff --check`
 - `git diff --check --cached`
+
+## 2026-05-04 E002b positive-scale W4A8 复现实验记录
+
+### 修改内容
+
+- 运行 E002b smoke，确认 E002a 修复后的 W4A8 小样本链路可生成 checkpoint，且 smoke diagnostics 中 `non_positive_delta_count=0`。
+- 运行正式 W4A8 复现实验：
+  - `num_samples=1024`
+  - `batch_size=16`
+  - `iters_w=20000`
+  - `iters_a=5000`
+  - `device=cuda`
+  - `gpus=0`
+- 对正式 checkpoint 运行 64-sample activation diagnostics，并做单样本 checkpoint reload eval。
+- 本步骤不修改代码，只更新开发日志和激活量化日志；run 产物不纳入 Git。
+
+### 关键产物
+
+- smoke quant run：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260504_221053_e002b_smoke_positive_scale`
+- smoke diagnostics：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E002_positive_scale/diagnostics/20260504_221230_e002b_smoke_diagnostics`
+- formal quant run：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260504_221242_e002b_w4a8_positive_scale_1024samples_w20000_a5000`
+- formal diagnostics：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E002_positive_scale/diagnostics/20260504_232451_e002b_final_diagnostics`
+- formal reload eval：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E002_positive_scale/eval/20260504_232504_e002b_final_single_eval`
+
+### 结论摘要
+
+- E002b formal checkpoint：
+  - `activation_quantizers=52`
+  - `non_positive_delta_count=0`
+  - offender layers 为空
+  - 最小 activation `delta=0.000576426915358752`
+  - `eps=1e-8` 边界命中数为 0
+- 正式 run 内 SNR：
+  - `quant_post_weight_recon_snr_db=11.696099054461113`
+  - `quant_pre_act_recon_snr_db=4.9874515693637465`
+  - `quant_post_act_recon_snr_db=5.236280200086368`
+  - `quant_act_recon_snr_gain_db=0.2488286307226213`
+- checkpoint reload 单样本评估：
+  - `quant_snr_db=5.230110892430229`
+  - `quant_ssim=0.6613561048695519`
+- 与 E001b old final 对比：
+  - 非正 delta 从 2 降到 0。
+  - final run 内 SNR 仅从 `5.227702998470372` 到 `5.236280200086368`，提升约 `0.0086 dB`。
+  - transformer / Linear effective level min 从 17 到 30，但仍然很低。
+  - transformer / Linear relative MSE max 从 `0.020646367816721696` 到 `0.010542650171161586`，局部指标改善但未带来最终 SNR 恢复。
+
+### 设计判断
+
+- E002a 的正 scale 投影是必要修复，已经成功消除非法 checkpoint 状态。
+- 但 E002b 表明负 `delta` 不是 W4A8 低 SNR 的唯一或主要瓶颈；后续应继续分析 activation range、learning rate、attention qkv/proj 敏感性和 reconstruction 目标。
+
+### 验证方式
+
+- E002b smoke quantize。
+- E002b smoke diagnostics。
+- E002b formal quantize。
+- E002b formal 64-sample diagnostics。
+- E002b formal single-sample reload eval。
+- 提交前执行 `git diff --check` 和 `git diff --check --cached`。
