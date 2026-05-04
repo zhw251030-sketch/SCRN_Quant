@@ -925,3 +925,29 @@
 
 - 本次只新增和更新 Markdown 文档，不涉及 Python 代码。
 - 后续提交前应执行 `git diff --check` 检查 Markdown 空白格式，并用 `git status`、`git diff` 确认仅包含本次文档改动。
+
+## 2026-05-04 深度整理激活量化失败原因与实验路线
+
+### 修改内容
+
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，在用户初步总结之后追加 Codex 深度分析。
+- 将 W4A8 激活量化失败拆解为量化器合法性、离群值与量化粒度、量化插入位置、`zero_point` 固定、混合精度、重建目标、校准覆盖和工程约束等问题层。
+- 明确后续实验路线：
+  - E001：activation diagnostics 工具与基线报告。
+  - E002：正 scale 约束最小修复。
+  - E003：初始化覆盖与 activation learning rate sweep。
+  - E004：量化插入位置与敏感性图谱。
+  - E005：离群值处理和结构化量化粒度实验。
+  - E006：重建目标与教师模型实验。
+- 扩展激活量化候选问题池，新增初始化覆盖、`asym=False`、教师模型选择、量化位置过密、A16 fallback 限制和 activation learning rate 等候选问题。
+
+### 设计原因
+
+- 用户已经在激活量化日志中写入初步判断，需要转化成可执行、可验证、可复盘的实验路线。
+- W4A8 失败可能成为本工作的创新点，因此需要把“现象描述”升级为“假设-诊断-实验-结论”的研究记录。
+- 当前不应直接启动长实验，应先补齐诊断工具和合法性闭环。
+
+### 验证方式
+
+- 本次只更新 Markdown 文档，不涉及 Python 代码。
+- 待提交前执行 `git diff --check`，并检查 `git status`、`git diff`、`git diff --staged`。
