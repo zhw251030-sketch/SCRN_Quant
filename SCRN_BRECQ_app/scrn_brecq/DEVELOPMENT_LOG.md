@@ -905,3 +905,23 @@
 
 - W4 dist4 compare 的 packed artifact 和前两个 run 一样能恢复并完成五图评估。
 - packed restored 与 checkpoint final 对齐，说明 W-only packed 导出/恢复链路稳定。
+
+## 2026-05-04 建立激活量化研究日志
+
+### 修改内容
+
+- 新增 `ACTIVATION_QUANTIZATION_LOG.md`，专门记录 SCRN-BRECQ 中 W4A8 激活量化失败问题的分析、修复设计和实验过程。
+- 在激活量化研究日志中预留用户填写区，用于先记录潜在原因、潜在解决方案和优先验证方向。
+- 明确后续规则：凡是涉及 activation quantization 的代码、配置、诊断、实验或结论，除继续更新本开发日志外，也必须在 `ACTIVATION_QUANTIZATION_LOG.md` 中追加更细的实验记录。
+- 在激活量化研究日志中记录当前基线事实、候选问题池、实验索引和实验记录模板，为后续小范围诊断和正式实验提供统一记录格式。
+
+### 设计原因
+
+- W4A8 当前已确认不是 packed/export/restore 链路主导问题，而是 activation quantization 本身导致明显掉点。
+- 激活量化修复过程可能形成后续工作的创新点，需要比普通开发日志更细地记录每次假设、实验、指标和结论。
+- 当前已观察到 final W4A8 checkpoint 中存在非法负 activation `delta`，后续修复需要保留完整证据链。
+
+### 验证方式
+
+- 本次只新增和更新 Markdown 文档，不涉及 Python 代码。
+- 后续提交前应执行 `git diff --check` 检查 Markdown 空白格式，并用 `git status`、`git diff` 确认仅包含本次文档改动。
