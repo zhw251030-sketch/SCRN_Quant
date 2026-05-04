@@ -1188,3 +1188,21 @@
 
 - 本步骤只更新 Markdown 日志。
 - 提交前执行 `git diff --check` 和 `git diff --check --cached`。
+
+## 2026-05-04 记录 E001 诊断指标与样本数关系
+
+### 修改内容
+
+- 在 `ACTIVATION_QUANTIZATION_LOG.md` 追加 E001 方法澄清，记录 checkpoint 固定参数与 calibration 样本统计指标的区别。
+- 说明为什么 64/1024/full calibration 会影响 activation 分布、fake-quant MSE、effective int level 和 top-k 排名，但不会改变 checkpoint 本身是否存在负 `delta`。
+- 本步骤不修改代码、不运行新 checkpoint、不生成新 run 产物。
+
+### 设计原因
+
+- 之前容易误解为“W4A8 checkpoint 已经包含所有 activation 分布和误差统计”。
+- 实际上 checkpoint 固定的是模型权重和 quantizer 参数；activation 分布和基于 activation 的误差指标需要在给定输入样本上 forward 后统计。
+
+### 验证方式
+
+- 本步骤只更新 Markdown 日志。
+- 提交前执行 `git diff --check` 和 `git diff --check --cached`。

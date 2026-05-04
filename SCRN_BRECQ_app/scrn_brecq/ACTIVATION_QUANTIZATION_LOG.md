@@ -1038,3 +1038,79 @@ runs/activation_quantization/
   - 不先改 calibration 数据。
   - 不先扩大正式长实验。
   - 先修 activation reconstruction 中 `delta` 的正值约束，并用 E001 诊断闭环验证。
+
+### E001e：checkpoint 固定指标与 calibration 样本统计指标的区别
+
+- 日期：2026-05-04
+- 负责人：Codex
+- 记录目的：澄清此前对 E001 诊断指标的一个误解，即“做完一次 W4A8 量化后，每层 activation 分布、fake-quant MSE、effective int level 和 top-k 问题层是否已经完全固定在 checkpoint 文件里”。
+- 结论：W4A8 checkpoint 固定的是模型参数和量化器参数，但不固定所有可能输入下的 activation 分布；activation 分布和基于 activation 计算出的误差指标必须依赖具体输入样本统计。
+
+#### checkpoint 中已经固定的内容
+
+- 模型权重。
+- weight quantizer 状态。
+- activation quantizer 的 `delta`。
+- activation quantizer 的 `zero_point`。
+- activation quantizer 的 `inited/disabled` 等状态。
+- final quant state。
+
+因此，以下诊断结论不依赖 calibration 样本数：
+
+- activation quantizer 总数。
+- 每个 quantizer 的结构位置。
+- 每个 quantizer 的 `delta/zero_point/inited/disabled`。
+- `delta` 是否为负。
+- final W4A8 checkpoint 中哪些层存在非正 `delta`。
+
+这也是为什么 E001b 中 `non_positive_delta_count=2` 是 checkpoint 本身的硬错误；即使用 1 个样本、64 个样本、1024 个样本，甚至只读 checkpoint 不跑 forward，也能发现该问题。
+
+#### checkpoint 中没有直接固定的内容
+
+以下指标不是 checkpoint 文件里保存好的固定表格，而是把输入样本送进模型后，在每层 hook 到 activation 再统计得到：
+
+- 每层 activation 分布：`min/max/p99/p99.9/absmax`。
+- `absmax/p99` 和 `absmax/p99.9`。
+- per-channel absmax 差异。
+- fake-quant MSE / MAE / relative MSE。
+- effective int level。
+- top outlier / worst fake-quant MSE / worst relative MSE 排名。
+
+形式上可以理解为：
+
+```text
+activation = layer_output(input_sample, checkpoint_parameters)
+```
+
+checkpoint 固定了 `checkpoint_parameters`，但不同 `input_sample` 会触发不同 activation。因此，activation 分布和由 activation 推导出的 fake-quant MSE、effective int level、top-k 排名都和所选 calibration 样本集合有关。
+
+#### 64 / 1024 / full calibration 的区别
+
+- 64-sample：
+  - 适合快速诊断和定位明显问题。
+  - 足够发现 checkpoint 参数级硬错误，例如 final checkpoint 的负 `delta`。
+  - 对极端 outlier、p99.9、top-k 排名的稳定性有限。
+- 1024-sample：
+  - activation 分布、fake-quant MSE、effective int level 和 top-k 排名更稳定。
+  - 更接近原量化 calibration 范围。
+  - 适合在 E002 修复后验证趋势是否稳定。
+- full calibration：
+  - 统计最完整，适合最终报告或论文级补充验证。
+  - 成本最高，不适合作为发现非法 scale 后的第一优先级。
+
+#### 对 E001 结论的影响
+
+- 样本数会影响：
+  - activation 分布数值。
+  - outlier ratio。
+  - per-channel imbalance 统计。
+  - fake-quant MSE / relative MSE。
+  - effective int level。
+  - top outlier 和 worst MSE 的具体排序。
+- 样本数不会改变：
+  - final checkpoint 是否包含负 `delta`。
+  - pre-act-recon checkpoint 是否包含负 `delta`。
+  - final 有 2 个负 `delta` 而 pre-act-recon 为 0 这一对照事实。
+  - 负 `delta` 是 activation reconstruction 后引入这一核心判断。
+
+因此，E001b/E001c 的 64-sample 诊断足够支持 E002 的方向：先修 activation reconstruction 中的 `delta` 正值约束。1024-sample 或 full calibration 更适合放在 E002 修复后，用来验证修复趋势是否稳定，而不是在已经发现 checkpoint 参数非法时继续扩大诊断。
