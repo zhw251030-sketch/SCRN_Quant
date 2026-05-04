@@ -1124,3 +1124,43 @@
   - 输出：`activation_quantizers=52 non_positive_delta_count=2 activation_stat_count=52 fake_quant_mse_max=0.003323915181681514`
 - 确认 run 产物被 `.gitignore` 忽略：
   - `git check-ignore -v SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E001_diagnostics/20260504_203753_e001_diagnostics/summary.json`
+
+## 2026-05-04 E001c 运行 pre-act-recon 64 样本激活诊断
+
+### 修改内容
+
+- 运行 E001c pre-act-recon 64-sample baseline，输出目录：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E001_diagnostics/20260504_205237_e001c_pre_act_recon`
+- 使用同一诊断工具和同一 calibration 配置，对比 E001b final W4A8 baseline。
+- 本步骤不修改量化算法和诊断工具代码，只更新开发日志和激活量化日志。
+
+### 设计原因
+
+- E001b 已证明 final checkpoint 存在 2 个非法 activation `delta`。
+- E001c 用 activation reconstruction 前的 checkpoint 做对照，用来判断非法 `delta` 是初始化/权重量化阶段已经存在，还是 activation reconstruction 优化后引入。
+
+### E001b vs E001c 关键对比
+
+- E001b final：
+  - non-positive delta count：2
+  - fake quant MSE max：`0.003323915181681514`
+  - fake quant MSE mean：`0.00010568322308295127`
+  - effective int levels min：17
+  - transformer effective int levels min：17
+  - transformer relative MSE max：`0.020646367816721696`
+- E001c pre-act-recon：
+  - non-positive delta count：0
+  - fake quant MSE max：`0.00011542496213223785`
+  - fake quant MSE mean：`0.000033345033807013605`
+  - effective int levels min：188
+  - transformer effective int levels min：202
+  - transformer relative MSE max：`0.00021580944014857998`
+- 结论：非法 activation `delta` 和 transformer/Linear 的有效 level 崩塌出现在 activation reconstruction 之后。
+
+### 验证方式
+
+- E001c 正式诊断：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.diagnose_activation_quantization --config SCRN_BRECQ_app/scrn_brecq/configs/activation_quantization/e001_diagnostics.json --checkpoint SCRN_BRECQ_app/scrn_brecq/runs/quant/20260429_194908_w4a8_1024samples_w20000_a5000/checkpoints/quantized_scrn_brecq_pre_act_recon.pth --run-name e001c_pre_act_recon`
+  - 输出：`activation_quantizers=52 non_positive_delta_count=0 activation_stat_count=52 fake_quant_mse_max=0.00011542496213223785`
+- 确认 run 产物被 `.gitignore` 忽略：
+  - `git check-ignore -v SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E001_diagnostics/20260504_205237_e001c_pre_act_recon/summary.json`
