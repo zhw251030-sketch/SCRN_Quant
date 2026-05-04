@@ -1057,3 +1057,70 @@
 - 修复测试输入后，`conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`
   - `Ran 5 tests ... OK`
 - 提交前继续执行 `py_compile`、CLI `--help`、`git diff --check` 和 `git diff --check --cached`。
+
+## 2026-05-04 E001b 运行 final W4A8 64 样本激活诊断
+
+### 修改内容
+
+- 运行 E001b final W4A8 64-sample baseline，输出目录：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E001_diagnostics/20260504_203753_e001_diagnostics`
+- 修复 E001b 首次正式运行暴露出的诊断工具问题：
+  - `torch.quantile` 在大 tensor 上报错 `RuntimeError: quantile() input tensor is too large`。
+  - `quant/activation_diagnostics.py` 对超过 16,000,000 个元素的 tensor 使用 `torch.kthvalue` fallback 计算分位数。
+  - 小 tensor 仍使用原 `torch.quantile` 路径，保持原测试语义。
+- 更新 `tests/test_activation_diagnostics.py`，新增大 tensor 分位数回归测试。
+- 同步更新 `ACTIVATION_QUANTIZATION_LOG.md`，记录 E001b 正式 baseline 结果。
+
+### 设计原因
+
+- 64 个 `128x128` calibration 输入经过 SCRN head 后形成约 67M 个 activation 值，超过当前 PyTorch `torch.quantile` 单 tensor 限制。
+- 该修复只改变诊断统计实现，不修改模型、量化算法、checkpoint 或 reconstruction 行为。
+- E001b 的正式产物保存在项目内 run 目录，且受 `.gitignore` 保护，不纳入 Git。
+
+### E001b 关键结果
+
+- activation quantizers：52
+- activation delta count：52
+- activation zero point count：52
+- non-positive delta count：2
+- offender layers：
+  - `model.stage4.0.block.trans_branch.attn.proj`
+  - `model.stage5.0.block.trans_branch.attn.proj`
+- activation stat count：52
+- fake quant MSE max：`0.003323915181681514`
+- fake quant MSE mean：`0.00010568322308295127`
+- effective int levels：min `17`，max `256`
+- absmax over p99 max：`34.627632811323394`
+
+### 结构诊断摘要
+
+- `transformer` branch：
+  - count：20
+  - effective int levels min：`17`
+  - fake quant MSE max：`0.003323915181681514`
+  - relative MSE max：`0.020646367816721696`
+- `cnn` branch：
+  - count：15
+  - effective int levels min：`231`
+  - fake quant MSE max：`0.0001195866207126528`
+  - relative MSE max：`0.0003560360421608271`
+- `Linear` module：
+  - effective int levels min：`17`
+  - relative MSE max：`0.020646367816721696`
+- `Conv2d` module：
+  - effective int levels min：`188`
+  - relative MSE max：`0.014584982809199652`
+
+### 验证方式
+
+- TDD 红灯：
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`
+  - 新增测试触发 `RuntimeError: quantile() input tensor is too large`。
+- 单元测试转绿：
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`
+  - `Ran 6 tests ... OK`
+- E001b 正式诊断：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.diagnose_activation_quantization --config SCRN_BRECQ_app/scrn_brecq/configs/activation_quantization/e001_diagnostics.json`
+  - 输出：`activation_quantizers=52 non_positive_delta_count=2 activation_stat_count=52 fake_quant_mse_max=0.003323915181681514`
+- 确认 run 产物被 `.gitignore` 忽略：
+  - `git check-ignore -v SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E001_diagnostics/20260504_203753_e001_diagnostics/summary.json`

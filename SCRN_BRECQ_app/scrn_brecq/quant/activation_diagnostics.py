@@ -18,6 +18,7 @@ from SCRN_BRECQ_app.scrn_brecq.quant.quant_layer import QuantModule
 
 
 EPS = 1e-12
+TORCH_QUANTILE_MAX_EXACT_VALUES = 16_000_000
 
 
 def collect_quantizer_rows(model: nn.Module) -> list[dict[str, Any]]:
@@ -497,6 +498,10 @@ def _row_min_max(row: dict[str, Any], prefix: str) -> list[float]:
 def _quantile(values: torch.Tensor, q: float) -> float | None:
     if values.numel() == 0:
         return None
+    if values.numel() > TORCH_QUANTILE_MAX_EXACT_VALUES:
+        kth = int(round(q * (values.numel() - 1))) + 1
+        kth = max(1, min(kth, values.numel()))
+        return float(torch.kthvalue(values.reshape(-1), kth).values.item())
     return float(torch.quantile(values, q).item())
 
 

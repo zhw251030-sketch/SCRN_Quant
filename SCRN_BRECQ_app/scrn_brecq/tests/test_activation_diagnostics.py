@@ -5,6 +5,7 @@ from torch import nn
 
 from SCRN_BRECQ_app.scrn_brecq.quant import QuantModule
 from SCRN_BRECQ_app.scrn_brecq.quant.activation_diagnostics import (
+    _quantile,
     build_activation_diagnostics_report,
     collect_activation_stats,
     collect_quantizer_rows,
@@ -94,6 +95,14 @@ class ActivationDiagnosticsTest(unittest.TestCase):
         self.assertAlmostEqual(stats[0]["per_channel_absmax_median"], 2.0)
         self.assertAlmostEqual(stats[0]["per_channel_absmax_ratio"], 5.0)
         self.assertIsNone(stats[0]["per_channel_absmax_skip_reason"])
+
+    def test_quantile_handles_tensors_over_torch_quantile_limit(self) -> None:
+        values = torch.arange(17_000_000, dtype=torch.float32)
+
+        result = _quantile(values, 0.99)
+
+        self.assertIsNotNone(result)
+        self.assertGreater(result, 16_000_000.0)
 
     def test_summarize_activation_stats_reports_top_layers_and_group_summaries(self) -> None:
         rows = [

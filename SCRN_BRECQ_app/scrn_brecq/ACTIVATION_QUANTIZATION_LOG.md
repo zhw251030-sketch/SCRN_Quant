@@ -625,3 +625,153 @@ runs/activation_quantization/
 - 下一步：
   - E001b：使用默认 `e001_diagnostics.json` 在项目内 run 目录运行 final W4A8 checkpoint 64 样本正式 baseline。
   - E001c：用同一诊断工具对 `quantized_scrn_brecq_pre_act_recon.pth` 做对照。
+
+### E001b：final W4A8 checkpoint 64 样本正式 activation diagnostics baseline
+
+- 日期：2026-05-04
+- 负责人：Codex
+- 代码状态：
+  - branch：`main`
+  - commit：提交前记录，目标提交信息为 `Record E001b activation diagnostics baseline`
+  - dirty files：`quant/activation_diagnostics.py`、`tests/test_activation_diagnostics.py`、`DEVELOPMENT_LOG.md`、`ACTIVATION_QUANTIZATION_LOG.md`
+- 实验目的：在项目内正式运行 final W4A8 checkpoint 的 64-sample activation diagnostics baseline，得到可追溯的结构化诊断结果。
+- 假设：如果 W4A8 的主要问题来自 activation reconstruction 后的非法 scale 和局部 activation 分布失配，那么 final checkpoint 的正式 64 样本诊断应稳定复现非正 `delta`，并指出 transformer/attention 相关层的量化劣化信号。
+- 相关候选问题：A1、A2、A3、A6、A8、A11、A13。
+- 代码/配置改动：
+  - 首次运行 E001b 时，`torch.quantile` 在 SCRN head 大 activation tensor 上报错：`RuntimeError: quantile() input tensor is too large`。
+  - 根因：64 个 `128x128` calibration 输入经过 `dim=64` 的 SCRN head 后，单层 activation 约 67M 元素，超过当前 PyTorch `torch.quantile` 的限制。
+  - 修复：`quant/activation_diagnostics.py` 对元素数超过 16,000,000 的 tensor 使用 `torch.kthvalue` fallback 计算分位数；小 tensor 保持原 `torch.quantile` 路径。
+  - 测试：`tests/test_activation_diagnostics.py` 新增大 tensor quantile 回归测试。
+- 命令：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.diagnose_activation_quantization --config SCRN_BRECQ_app/scrn_brecq/configs/activation_quantization/e001_diagnostics.json`
+- 输入 checkpoint / packed artifact：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260429_194908_w4a8_1024samples_w20000_a5000/checkpoints/quantized_scrn_brecq.pth`
+- calibration 数据：
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_quant_10750_0_patches`
+  - num_samples：64
+  - batch_size：16
+  - seed：1005
+  - device：CPU
+- 输出目录：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E001_diagnostics/20260504_203753_e001_diagnostics`
+  - `config.json`
+  - `summary.json`
+  - `summary.md`
+  - `quantizers.csv`
+  - `activation_stats.jsonl`
+  - `offender_layers.json`
+- Git 产物规则：
+  - run 产物位于项目内，不在 `/tmp`。
+  - `git check-ignore -v` 确认 `summary.json` 被 `.gitignore` 的 `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/*` 规则忽略。
+- 最小检查：
+  - TDD 红灯：新增大 tensor quantile 测试后，单元测试失败于 `RuntimeError: quantile() input tensor is too large`。
+  - 单元测试转绿：`conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`，`Ran 6 tests ... OK`。
+  - 正式诊断完成：`activation_quantizers=52 non_positive_delta_count=2 activation_stat_count=52 fake_quant_mse_max=0.003323915181681514`。
+- 关键指标：
+  - FP32：不涉及。
+  - W-only pre weight recon：不涉及。
+  - W-only post weight recon：不涉及。
+  - W+A pre act recon：不涉及，本步骤只读取 final W4A8。
+  - W+A post act recon：读取 final W4A8 checkpoint。
+  - packed/checkpoint 对齐：不涉及。
+- Activation quantizer 总览：
+  - activation_quantizers：52
+  - activation_delta_count：52
+  - activation_zero_point_count：52
+  - non_positive_delta_count：2
+  - activation_stat_count：52
+  - fake_quant_mse_max：`0.003323915181681514`
+  - fake_quant_mse_mean：`0.00010568322308295127`
+  - effective_int_levels_min：17
+  - effective_int_levels_max：256
+  - absmax_over_p99_max：`34.627632811323394`
+- 非正 delta offender layers：
+  - `model.stage4.0.block.trans_branch.attn.proj`
+    - stage：`stage4`
+    - branch：`transformer`
+    - role：`attention_proj`
+    - index：37
+    - delta：`-0.0031369472853839397`
+  - `model.stage5.0.block.trans_branch.attn.proj`
+    - stage：`stage5`
+    - branch：`transformer`
+    - role：`attention_proj`
+    - index：47
+    - delta：`-0.002051445422694087`
+- Top outlier layers，按 `absmax_over_p99`：
+  - `model.head`：`34.627632811323394`
+  - `model.tail`：`24.92000569877867`
+  - `model.stage2.0.block.trans_branch.mlp.0`：`4.598540554106423`
+  - `model.stage2.0.block.conv_branch.6`：`4.571042050421725`
+  - `model.stage5.0.block.conv_branch.6`：`4.252737760437427`
+- Lowest effective int level layers：
+  - `model.stage2.0.block.trans_branch.attn.proj`：17
+  - `model.stage4.0.block.trans_branch.attn.proj`：23
+  - `model.stage5.0.block.trans_branch.attn.proj`：38
+  - `model.stage3.0.block.trans_branch.attn.proj`：49
+  - `model.stage5.0.block.trans_branch.mlp.0`：143
+- Worst fake-quant MSE layers：
+  - `model.stage1.0.block.trans_branch.attn.qkv`：`0.003323915181681514`
+  - `model.stage4.0.block.trans_branch.attn.qkv`：`0.00038254939136095345`
+  - `model.stage2.0.block.conv_branch.6`：`0.0001195866207126528`
+  - `model.stage3.0.block.conv_branch.3`：`0.00009796844096854329`
+  - `model.stage5.0.block.trans_branch.attn.qkv`：`0.00009043353929882869`
+- Worst relative MSE layers：
+  - `model.stage4.0.block.trans_branch.attn.qkv`：`0.020646367816721696`
+  - `model.tail`：`0.014584982809199652`
+  - `model.head`：`0.012885225747812064`
+  - `model.stage2.0.block.trans_branch.attn.proj`：`0.007135294640276089`
+  - `model.stage4.0.block.trans_branch.attn.proj`：`0.005390653549703427`
+- Top per-channel imbalance layers：
+  - `model.stage5.0.block.conv_branch.6`：`7.788059729177248`
+  - `model.stage2.0.block.conv_branch.6`：`3.3941267855532167`
+  - `model.stage1.0.block.trans_branch.mlp.2`：`3.219494744568011`
+  - `model.stage1.0.block.split_proj`：`2.803273019473079`
+  - `model.stage2.1`：`2.573026767960425`
+- Branch summary：
+  - `transformer`
+    - count：20
+    - effective_int_levels_min：17
+    - fake_quant_mse_max：`0.003323915181681514`
+    - fake_quant_relative_mse_max：`0.020646367816721696`
+    - absmax_over_p99_max：`4.598540554106423`
+  - `cnn`
+    - count：15
+    - effective_int_levels_min：231
+    - fake_quant_mse_max：`0.0001195866207126528`
+    - fake_quant_relative_mse_max：`0.0003560360421608271`
+    - absmax_over_p99_max：`4.571042050421725`
+  - `head`
+    - count：1
+    - absmax_over_p99_max：`34.627632811323394`
+    - fake_quant_relative_mse_max：`0.012885225747812064`
+  - `tail`
+    - count：1
+    - absmax_over_p99_max：`24.92000569877867`
+    - fake_quant_relative_mse_max：`0.014584982809199652`
+- Module type summary：
+  - `Linear`
+    - count：20
+    - effective_int_levels_min：17
+    - fake_quant_mse_max：`0.003323915181681514`
+    - fake_quant_relative_mse_max：`0.020646367816721696`
+  - `Conv2d`
+    - count：32
+    - effective_int_levels_min：188
+    - fake_quant_mse_max：`0.0001195866207126528`
+    - fake_quant_relative_mse_max：`0.014584982809199652`
+- 现象：
+  - final W4A8 checkpoint 在 64 样本正式诊断下稳定复现 2 个非法 activation `delta`，位置与早期手动检查和 2-sample smoke 一致。
+  - 非正 delta 层均是深层 transformer attention projection，但最低有效 int level 还包括 stage2/stage3/stage4/stage5 的 attention projection，说明问题不只局限于两个负 scale 层。
+  - transformer/Linear 的局部量化误差和有效 int level 明显更差：`Linear` effective level min 为 17，而 `Conv2d` min 为 188；`transformer` relative MSE max 为 `0.020646367816721696`，远高于 `cnn` 的 `0.0003560360421608271`。
+  - head/tail 的 outlier ratio 很高，但 fake-quant absolute MSE 很小，说明它们更像分布离群诊断信号，不是当前最大局部 MSE 来源。
+  - per-channel imbalance 最强的层来自 CNN conv branch，尤其是 stage5/stage2 的 `conv_branch.6`，后续如果只处理 transformer 仍可能遗漏 channel 不均衡问题。
+- 结论：
+  - E001b 正式 baseline 已完成，且在项目内形成有效实验产物。
+  - 当前最确定的首要修复方向仍是 activation `delta` 正值约束，因为 final checkpoint 存在明确非法 scale。
+  - 第二优先级是 attention projection 的有效 level 崩塌和 transformer/Linear 局部误差；这可能需要对称/非对称策略、per-channel/per-token 策略或 reconstruction 参数进行后续对照实验。
+  - 第三优先级是 head/tail outlier 与 CNN per-channel imbalance，它们更适合作为 E002 修复后的残余误差分析方向。
+- 下一步：
+  - E001c：用同一诊断工具运行 `quantized_scrn_brecq_pre_act_recon.pth` 对照，确认负 `delta` 是否只由 activation reconstruction 引入。
+  - E002：实现 activation scale 正值约束或优化后 clamp 的最小修复，并用 E001 工具验证 `non_positive_delta_count` 是否归零。
+  - E003/E004：围绕 attention projection 的有效 int level 过低，继续设计 clipping、asym、per-channel 或重建目标对照实验。
