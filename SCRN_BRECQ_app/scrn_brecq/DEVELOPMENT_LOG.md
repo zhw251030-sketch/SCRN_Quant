@@ -1164,3 +1164,27 @@
   - 输出：`activation_quantizers=52 non_positive_delta_count=0 activation_stat_count=52 fake_quant_mse_max=0.00011542496213223785`
 - 确认 run 产物被 `.gitignore` 忽略：
   - `git check-ignore -v SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E001_diagnostics/20260504_205237_e001c_pre_act_recon/summary.json`
+
+## 2026-05-04 E001d 汇总激活量化诊断结论
+
+### 修改内容
+
+- 汇总 E001 smoke、E001a、E001b 和 E001c 的诊断阶段结论。
+- 在 `ACTIVATION_QUANTIZATION_LOG.md` 追加可读性结论，明确 W4A8 激活量化失败的当前证据链和下一步 E002 修复方向。
+- 本步骤不修改代码、不运行新 checkpoint、不生成新 run 产物。
+
+### 结论摘要
+
+- final W4A8 checkpoint 中有 2 个 activation `delta` 为负，均位于 transformer branch 的 attention projection：
+  - `model.stage4.0.block.trans_branch.attn.proj`
+  - `model.stage5.0.block.trans_branch.attn.proj`
+- pre-act-recon checkpoint 中 `non_positive_delta_count=0`，说明非法 `delta` 是 activation reconstruction 阶段引入。
+- activation reconstruction 后，transformer/Linear 的有效 int level 和局部误差明显恶化：
+  - transformer effective level min 从 202 降到 17。
+  - transformer relative MSE max 从 `0.00021580944014857998` 升到 `0.020646367816721696`。
+- E002 应优先实现 activation `delta` 正值约束，再用 E001 工具复核 `non_positive_delta_count=0` 以及 transformer/Linear 指标是否恢复。
+
+### 验证方式
+
+- 本步骤只更新 Markdown 日志。
+- 提交前执行 `git diff --check` 和 `git diff --check --cached`。

@@ -921,3 +921,120 @@ runs/activation_quantization/
 - 下一步：
   - E002：实现 activation reconstruction 的正 scale 约束最小修复，并复跑 E001 final 诊断检查 `non_positive_delta_count=0`。
   - E002 后继续比较 attention projection/qkv 的 effective level 和 relative MSE，确认修复是否只消除非法 scale，还是同步改善 W4A8 输出质量。
+
+### E001d：E001 诊断阶段综合结论
+
+- 日期：2026-05-04
+- 负责人：Codex
+- 代码状态：
+  - branch：`main`
+  - commit：提交前记录，目标提交信息为 `Summarize E001 activation diagnostics conclusions`
+  - dirty files：`DEVELOPMENT_LOG.md`、`ACTIVATION_QUANTIZATION_LOG.md`
+- 实验目的：不再运行新实验，而是把 E001 smoke、E001a、E001b 和 E001c 的证据链整理成可读结论，为 E002 修复提供明确入口。
+- 相关候选问题：A1、A2、A3、A8、A11、A13。
+- 代码/配置改动：
+  - 不修改量化算法。
+  - 不修改诊断工具。
+  - 不创建新的 tracked 文档。
+  - 只在激活量化日志和开发日志中沉淀 E001 总结。
+- 命令：
+  - 不运行新 checkpoint 诊断。
+- 输入 checkpoint / packed artifact：
+  - E001b final：
+    - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260429_194908_w4a8_1024samples_w20000_a5000/checkpoints/quantized_scrn_brecq.pth`
+  - E001c pre-act-recon：
+    - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260429_194908_w4a8_1024samples_w20000_a5000/checkpoints/quantized_scrn_brecq_pre_act_recon.pth`
+- 输出目录：
+  - 不生成新 run。
+  - 本总结引用已有 E001b/E001c 产物：
+    - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E001_diagnostics/20260504_203753_e001_diagnostics`
+    - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E001_diagnostics/20260504_205237_e001c_pre_act_recon`
+- 最小检查：
+  - 本步骤只更新 Markdown 日志，提交前使用 `git diff --check` 和 `git diff --check --cached` 检查。
+
+#### 一句话结论
+
+当前 W4A8 激活量化失败的首要确定问题是：activation reconstruction 把部分 activation quantizer 的 `delta` 优化成了非法负 scale，并且这个过程伴随 transformer/Linear 层有效 int level 崩塌和局部 fake-quant 误差显著放大。
+
+#### 证据链
+
+- E001 工具层证据：
+  - 已能恢复并扫描 52 个 activation quantizer。
+  - 已能输出 `delta/zero_point/inited/disabled`、activation 分布、fake-quant MSE、relative MSE、effective int level、per-channel imbalance 和结构分组统计。
+  - 诊断不改模型行为，只读取 checkpoint 和 calibration forward hook 结果。
+- E001b final W4A8 证据：
+  - `activation_quantizers=52`
+  - `non_positive_delta_count=2`
+  - `effective_int_levels_min=17`
+  - `fake_quant_mse_max=0.003323915181681514`
+  - transformer relative MSE max：`0.020646367816721696`
+  - attention qkv MSE max：`0.003323915181681514`
+  - 两个非法 `delta` 层：
+    - `model.stage4.0.block.trans_branch.attn.proj`
+    - `model.stage5.0.block.trans_branch.attn.proj`
+- E001c pre-act-recon 对照证据：
+  - `non_positive_delta_count=0`
+  - `effective_int_levels_min=188`
+  - transformer effective level min：`202`
+  - transformer relative MSE max：`0.00021580944014857998`
+  - attention projection effective level min：`247`
+- 对照结论：
+  - 负 `delta` 在 pre-act-recon 中不存在，在 final 中出现，因此不是 activation quantizer 初始化阶段固有问题。
+  - activation reconstruction 后 transformer effective level min 从 202 降到 17。
+  - activation reconstruction 后 transformer relative MSE max 从 `0.00021580944014857998` 升到 `0.020646367816721696`。
+  - attention projection 的有效 int level 从 pre-act-recon 最低 247 降到 final 最低 17，说明 attention projection 是最直接的异常结构位置。
+
+#### 可以弱化或暂时排除的解释
+
+- activation quantizer state 丢失不是当前主因：
+  - E001b/E001c 都恢复了 52 个 activation quantizer、52 个 delta 和 52 个 zero point。
+  - 问题不是“没有加载 activation quantizer”，而是 final checkpoint 中部分 loaded `delta` 本身非法。
+- packed restore 不是当前 E001 主因：
+  - E001 直接诊断 checkpoint，不依赖 packed deployment。
+  - 负 `delta` 在 checkpoint 层面已经存在，packed 路径即使正确恢复也会继承这个非法状态。
+- activation outlier 是背景风险，但不是“负 delta 出现”的直接证据：
+  - E001b 和 E001c 的 top outlier layers 排名一致，说明 outlier 分布主要来自模型 activation 本身。
+  - final/pre 的 outlier 排名一致，但只有 final 出现负 `delta`，因此负 scale 更直接指向 activation reconstruction 的 `delta` 优化约束问题。
+- CNN/Conv2d 不是当前首要劣化路径：
+  - E001b final 的 CNN effective level min 为 231，E001c pre-act-recon 也是 231。
+  - CNN relative MSE max 从 `0.00034364585636106383` 到 `0.0003560360421608271`，变化很小。
+  - per-channel imbalance 在 CNN 中存在，但它更像 E002 后的残余误差分析方向，而不是解释 final 负 `delta` 的主因。
+
+#### 结构定位
+
+- 最确定的非法 scale 层：
+  - `model.stage4.0.block.trans_branch.attn.proj`
+  - `model.stage5.0.block.trans_branch.attn.proj`
+- 最需要后续跟踪的结构组：
+  - `attention_proj`：
+    - effective level min 从 pre-act-recon 的 247 降到 final 的 17。
+  - `attention_qkv`：
+    - final 中 fake-quant MSE max 达到 `0.003323915181681514`。
+  - `Linear` / `transformer`：
+    - Linear effective level min 从 202 降到 17。
+    - Linear relative MSE max 从 `0.00021580944014857998` 升到 `0.020646367816721696`。
+- 需要继续观察但不是第一修复对象的结构：
+  - `head` / `tail`：
+    - outlier ratio 高，但 final/pre 一致，更像固定 activation 分布风险。
+  - CNN `conv_branch.6`：
+    - per-channel imbalance 高，后续可能需要 channel-wise 或 clipping 分析，但不是负 scale 的直接来源。
+
+#### E002 修复验收方向
+
+- 第一验收指标：正 scale 合法性。
+  - activation reconstruction 后重新保存 final checkpoint。
+  - 用 E001 诊断复核 `non_positive_delta_count=0`。
+  - offender layers 应为空。
+- 第二验收指标：transformer/Linear 是否恢复到接近 pre-act-recon。
+  - transformer effective level min 不应再接近 17。
+  - Linear effective level min 不应再接近 17。
+  - attention projection effective level min 应显著高于 final 的 17。
+  - transformer/Linear relative MSE max 应显著低于 final 的 `0.020646367816721696`。
+- 第三验收指标：输出质量。
+  - 在修正正 scale 后，重新评估 W4A8 推理质量。
+  - 如果 `non_positive_delta_count=0` 但 dB 仍低，再进入 clipping、asym、per-channel/per-token 或 reconstruction loss 方向。
+- E002 的最小优先级：
+  - 不先改 packed deployment。
+  - 不先改 calibration 数据。
+  - 不先扩大正式长实验。
+  - 先修 activation reconstruction 中 `delta` 的正值约束，并用 E001 诊断闭环验证。
