@@ -21,6 +21,7 @@ runs/quant/20260426_120000_w4a4_example/
 - `runs/quant/`: 完整量化、重建、评估和 checkpoint 保存。
 - `runs/quant_eval/`: 已保存量化 checkpoint 的单样本评估。
 - `runs/generalization_eval/`: 已保存量化 checkpoint 的多样本泛化评估。
+- `runs/activation_quantization/`: W4A8 激活量化诊断、小范围 smoke 和后续 E001-E006 实验产物。
 
 量化 run 中的 checkpoint 约定：
 

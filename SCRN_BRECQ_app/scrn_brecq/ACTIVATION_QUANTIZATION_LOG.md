@@ -415,6 +415,34 @@ SCRN 是连续值恢复任务，不是分类任务。分类模型中间 feature 
 | --- | --- | --- | --- | --- | --- |
 | E000 | 2026-05-04 | 建立激活量化研究日志 | 新增本文档 | 不涉及实验 | 后续实验从 E001 开始记录 |
 | A000 | 2026-05-04 | 整理用户初步总结并形成实验路线 | 追加 Codex 深度分析 | 不涉及运行 | 后续实验按 E001-E006 推进 |
+| P000 | 2026-05-04 | 正式实验前建立目录规范 | 新增激活量化配置目录和运行产物目录 | 不涉及运行 | 后续配置和实验产物分开存放 |
+
+## 实验目录约定
+
+后续激活量化相关配置、诊断和实验产物统一放在现有
+`SCRN_BRECQ_app/scrn_brecq/` 内，不在仓库根目录或 `SCRN_BRECQ_app/`
+外另建项目。
+
+- `configs/activation_quantization/`: 保存可复现的文本配置，例如 E001 诊断配置、
+  E002 正 scale 约束配置、E003 初始化样本数和学习率 sweep 配置。
+- `runs/activation_quantization/`: 保存运行产物，例如诊断报告、summary、CSV/JSONL
+  统计、图片和临时对比结果。该目录原则上只提交 README，不提交实验输出。
+
+建议按实验编号继续分组：
+
+```text
+runs/activation_quantization/
+  E001_diagnostics/
+  E002_positive_scale/
+  E003_init_lr_sweep/
+  E004_sensitivity/
+  E005_outlier_granularity/
+  E006_reconstruction_target/
+```
+
+需要继续遵守 Git 规则：不提交 checkpoint、`.npy`、`.pth`、`.pt`、`.ckpt`、
+`.segy`、日志、缓存和运行产物。若某次实验需要长期保留结果，应优先把小型
+文本摘要写入本日志或单独的 Markdown summary，而不是提交完整 run 目录。
 
 ## 实验记录模板
 

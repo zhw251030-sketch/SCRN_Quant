@@ -951,3 +951,24 @@
 
 - 本次只更新 Markdown 文档，不涉及 Python 代码。
 - 待提交前执行 `git diff --check`，并检查 `git status`、`git diff`、`git diff --staged`。
+
+## 2026-05-04 建立激活量化实验目录规范
+
+### 修改内容
+
+- 新增 `configs/activation_quantization/`，用于保存后续激活量化诊断和实验的可复现文本配置。
+- 新增 `runs/activation_quantization/`，用于保存后续 E001-E006 激活量化诊断、smoke 和实验产物。
+- 在两个目录中分别添加 `README.md`，说明目录用途、建议分组和禁止提交的运行产物类型。
+- 更新 `runs/README.md`，将 `runs/activation_quantization/` 纳入当前约定的 run 根目录。
+- 同步更新 `ACTIVATION_QUANTIZATION_LOG.md`，把目录结构作为正式实验前的工程准备项记录下来。
+
+### 设计原因
+
+- 后续 W4A8 激活量化修复会产生诊断报告、配置、统计表、图、checkpoint 和对比摘要，提前隔离配置与运行产物可以避免和既有 `runs/quant/`、`runs/quant_eval/` 混杂。
+- Git 不能直接跟踪空目录，因此用小型 README 固定目录结构；真正的实验输出仍按规则不纳入 Git。
+- 当前只建立最小目录骨架，不提前创建 E001-E006 的具体代码文件，避免过早框架化。
+
+### 验证方式
+
+- 本次只新增和更新 Markdown 文档，不涉及 Python 代码。
+- 提交前执行 `git diff --check` 和 `git diff --check --cached` 检查 Markdown 空白格式。
