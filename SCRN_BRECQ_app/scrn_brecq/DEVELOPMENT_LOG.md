@@ -1632,3 +1632,23 @@
 - CUDA index smoke：
   - `--device cuda --cuda-device-index 1`
   - run 成功记录 `device: cuda:1` 和 `cuda_device_index: 1`。
+
+## 2026-05-05 E004 follow-up route after group sensitivity
+
+### 修改内容
+
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，记录 E004d 之后的 E004 后续路线重规划。
+- 本步骤只整理实验路线，不修改代码、不运行新实验、不生成 tracked 产物。
+
+### 核心判断
+
+- E004b sentinel 单点关闭最大只恢复 `+0.2920 dB`。
+- E004d 关闭全部 `module_type=Conv2d` activation quantizers 恢复 `+11.6314 dB`。
+- E004d 关闭全部 `module_type=Linear` 或 `branch=transformer` 只恢复 `+0.0209 dB`。
+- 因此，E004 后续不应把完整 52 层单点关闭 sweep 作为主线，而应转向 Conv2d 子组定位。
+
+### 后续路线
+
+- E004e：Conv2d 子组关闭细分，包括 stage、fusion、cnn、split_proj、merge_proj、unknown、head、stage5 等。
+- E004f：如 E004e 发现强子组，再做 Conv2d-only reopen / leave-one-out 验证。
+- E004g：汇总 sensitivity vs resource benefit 策略表，为 E005 Conv2d activation range / clipping / calibration 提供输入。

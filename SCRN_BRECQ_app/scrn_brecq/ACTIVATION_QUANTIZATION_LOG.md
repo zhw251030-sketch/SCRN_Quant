@@ -2532,3 +2532,128 @@ E004d 期间发现：
 
 - 这仍然是“单个 run 单卡”，但可以让多个独立 run 分别指定 `cuda:1/2/3` 并行执行。
 - 后续若要稳定多进程并行，需要在调度脚本中按 run 分配不同 `--cuda-device-index`，不要再用 `CUDA_VISIBLE_DEVICES=<id>`。
+
+### E004 后续路线重规划：从全层 sweep 转向 Conv2d 子组定位
+
+- 日期：2026-05-05
+- 负责人：用户 / Codex
+- 状态：规划完成，准备执行 E004e。
+
+#### 重新判断
+
+结合 E001-E003 与 E004b/E004d，E004 的重点已经发生变化。
+
+原始 E004 设想是通过单点开启/关闭 52 个 activation quantizers，寻找最敏感层。但当前证据显示：
+
+- E004b 的 12 个 sentinel 单点关闭中，最大恢复只有 `+0.2920 dB`。
+- E004d 关闭全部 `module_type=Conv2d` activation quantizers 后，SNR mean 从 `-7.1021 dB` 恢复到 `4.5293 dB`，恢复 `+11.6314 dB`。
+- E004d 关闭全部 `module_type=Linear` 或 `branch=transformer` 后，只恢复 `+0.0209 dB`。
+
+因此，当前 W4A8 A8 init 崩坏不是单个 quantizer 主导，也不是 transformer/Linear 主导，而是 Conv2d activation quantization 的结构组累积误差。
+
+这意味着：E004 后续不应继续把完整 52 层单点关闭 sweep 作为主线。完整 sweep 成本高，而且大概率只会重复 E004b 的结论：单层效应弱、组效应强。
+
+#### E004e：Conv2d 子组关闭细分
+
+目标：把 E004d 的“Conv2d 是主因”拆成更可操作的结构结论。
+
+固定口径：
+
+- checkpoint：继续使用 A8 init n=64 / pre-act-recon checkpoint。
+- eval：128 samples，seed `20260427`，batch size 16。
+- baseline：沿用 E004b/E004d 的 `all_on` 与 `all_off`。
+- device：优先 CUDA，使用 `--device cuda --cuda-device-index 1/2/3` 避开 0 卡。
+
+建议测试的 Conv2d 子组：
+
+- `stage=stage1/2/3/4/5 + module_type=Conv2d`
+- `branch=fusion + module_type=Conv2d`
+- `branch=cnn + module_type=Conv2d`
+- `role=split_proj`
+- `role=merge_proj`
+- `role=unknown`
+- `name contains=head`
+- `stage5 Conv2d`
+- stage transition / downsample-like Conv2d modules，即当前 `role=unknown` 的五个模块。
+
+记录指标：
+
+- selected quantizer count
+- selected quantizer names
+- SNR mean / median / min / max
+- SSIM mean
+- `delta_snr_mean` vs `all_on`
+- recovery ratio：`delta_snr_mean / (all_off_snr_mean - all_on_snr_mean)`
+
+验收标准：
+
+- 如果少数 Conv2d 子组解释大部分恢复，E005 优先对这些子组做 range / clipping / calibration。
+- 如果所有 Conv2d 子组都只能恢复一小段，而全部 Conv2d 关闭才恢复，说明是 Conv2d activation 量化的全局累积问题，E005 应优先改 Conv2d activation range 策略，而不是只挑层保留 FP32。
+
+#### E004f：Conv2d-only reopen / leave-one-out 验证
+
+目标：验证 E004e 找到的 Conv2d 子组是否真的决定恢复能力。
+
+建议优先做“从 Conv2d 全关状态重新打开某些子组”，而不是继续从 all-on 状态单点关闭。
+
+原因：
+
+- E004b 已经说明单点关闭效果很弱。
+- E004d 说明全部 Conv2d 关闭几乎恢复 W4A32。
+- 从“全部 Conv2d 关闭”的强恢复状态出发，重新开启某个 Conv2d 子组，可以更清楚地看到哪个子组一量化就把 SNR 拉低。
+
+候选实验：
+
+- 全部 Conv2d 关闭，只重新开启 `merge_proj`。
+- 全部 Conv2d 关闭，只重新开启 `role=unknown`。
+- 全部 Conv2d 关闭，只重新开启 `stage5 Conv2d`。
+- 全部 Conv2d 关闭，只重新开启 `fusion Conv2d`。
+- 全部 Conv2d 关闭，只重新开启 `cnn branch Conv2d` 作为对照。
+
+如果当前工具暂不支持“全关 Conv2d 后重新开启子组”的组合模式，可先记录为 E004f-tooling 或 E005 前置工具需求，不强行用现有 `enable_group` 语义替代。
+
+#### E004g：策略表收束
+
+目标：把 E004 变成后续 E005/E006 的输入，而不是无限延长 sensitivity 实验。
+
+需要输出一张策略表，至少包含：
+
+- 结构组
+- quantizer 数量
+- 关闭后 SNR 恢复
+- recovery ratio
+- activation-volume proxy
+- 是否建议优先修复
+- 候选策略
+
+预期策略方向：
+
+- 优先修复：
+  - fusion Conv2d
+  - merge projection
+  - stage transition / downsample-like Conv2d
+  - stage5 Conv2d
+- 暂不主攻：
+  - Linear / transformer / attention qkv/proj 的 A8 init
+- 保留对照：
+  - Linear / transformer 仍作为后续 E005/E006 的 sanity check，避免修复 Conv2d 后引入新的 transformer 劣化。
+
+#### E004 与 E005 的边界
+
+E004 只回答“哪里敏感、哪里值得保留高精度或单独处理”。
+
+E004 不直接修改量化算法，也不直接引入：
+
+- percentile clipping
+- MSE scale calibration
+- per-channel activation quantization
+- mixed precision deployment 策略
+- Conv2d 专用 quantizer 参数化
+
+这些修复实验应进入 E005。
+
+#### 当前下一步
+
+下一步执行 E004e。
+
+E004e 应先做 Conv2d 子组关闭细分，而不是完整 52 层单点关闭 sweep。若 E004e 形成明确子组 ranking，再决定是否需要 E004f reopen / leave-one-out；如果 E004e 已足够清楚，可直接进入 E004g 策略表并转入 E005。
