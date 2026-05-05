@@ -2657,3 +2657,139 @@ E004 不直接修改量化算法，也不直接引入：
 下一步执行 E004e。
 
 E004e 应先做 Conv2d 子组关闭细分，而不是完整 52 层单点关闭 sweep。若 E004e 形成明确子组 ranking，再决定是否需要 E004f reopen / leave-one-out；如果 E004e 已足够清楚，可直接进入 E004g 策略表并转入 E005。
+
+### E004e：Conv2d 子组关闭细分
+
+- 日期：2026-05-05
+- 负责人：用户 / Codex
+- 状态：完成。
+
+#### 实验目的
+
+E004d 已经证明 W4A8 A8 init 崩坏主要来自 Conv2d activation quantization 的结构组累积误差。
+
+E004e 的目的不是再次证明 Conv2d 有问题，而是把 Conv2d 进一步拆开，回答：
+
+- 哪些 Conv2d 子组最值得优先修复？
+- 这个问题是否由某个 stage、fusion projection、stage transition / downsample-like module 主导？
+- 是否还需要继续完整 52 层单点 sweep？
+
+#### 实验口径
+
+- checkpoint：A8 init n=64 / pre-act-recon checkpoint。
+- eval：128 samples。
+- seed：`20260427`。
+- batch size：16。
+- device：CUDA，使用 `--cuda-device-index 1/2/3` 分批并行，避开 0 卡。
+- run root：
+  `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E004_sensitivity/e004e_conv2d_subgroups/`
+- 所有 run 产物位于 `.gitignore` 保护的 `runs/activation_quantization/*` 下，不纳入 Git。
+
+Baseline：
+
+- `all_on`：SNR mean `-7.1021 dB`，SSIM mean `0.1945`。
+- `all_off`：SNR mean `4.7973 dB`，SSIM mean `0.7049`。
+- 可恢复总 gap：`11.8993 dB`。
+
+#### 结果表
+
+`delta_snr_mean` 均相对 `all_on` 计算；`recovery` 为相对 `all_on -> all_off` gap 的恢复比例。
+
+| group | selected | SNR mean | SNR median | delta SNR | recovery | SSIM mean |
+|---|---:|---:|---:|---:|---:|---:|
+| all_off | 51 | 4.7973 | 4.3093 | +11.8993 | 100.0% | 0.7049 |
+| `role=unknown + Conv2d` | 5 | -4.2108 | -4.7328 | +2.8913 | 24.3% | 0.2638 |
+| `stage5 + Conv2d` | 6 | -5.0410 | -5.6906 | +2.0611 | 17.3% | 0.2378 |
+| `branch=fusion + Conv2d` | 10 | -5.4061 | -6.0024 | +1.6960 | 14.3% | 0.1533 |
+| `role=merge_proj + Conv2d` | 5 | -5.7532 | -6.3747 | +1.3489 | 11.3% | 0.1626 |
+| `model.stage5.1` | 1 | -6.0764 | -6.7730 | +1.0256 | 8.6% | 0.2114 |
+| `stage4 + Conv2d` | 6 | -6.3013 | -7.0370 | +0.8008 | 6.7% | 0.2091 |
+| `stage1 + Conv2d` | 6 | -6.3991 | -7.1354 | +0.7030 | 5.9% | 0.2024 |
+| `stage2 + Conv2d` | 6 | -6.5327 | -7.2929 | +0.5693 | 4.8% | 0.2140 |
+| `branch=cnn + Conv2d` | 15 | -6.6676 | -7.4043 | +0.4345 | 3.7% | 0.1999 |
+| `model.stage1.1` | 1 | -6.7106 | -7.4556 | +0.3915 | 3.3% | 0.2084 |
+| `model.stage4.1` | 1 | -6.7239 | -7.4885 | +0.3782 | 3.2% | 0.1983 |
+| `stage3 + Conv2d` | 6 | -6.7667 | -7.5072 | +0.3354 | 2.8% | 0.1968 |
+| `role=split_proj + Conv2d` | 5 | -6.7977 | -7.5796 | +0.3044 | 2.6% | 0.1805 |
+| `model.stage2.1` | 1 | -6.8101 | -7.4760 | +0.2920 | 2.5% | 0.1995 |
+| `model.stage3.1` | 1 | -6.9486 | -7.6839 | +0.1535 | 1.3% | 0.1942 |
+| `role=head + Conv2d` | 1 | -6.9833 | -7.8740 | +0.1188 | 1.0% | 0.1961 |
+| all_on | 51 | -7.1021 | -7.8500 | +0.0000 | 0.0% | 0.1945 |
+
+#### 关键子组内容
+
+`role=unknown + Conv2d` 包含：
+
+- `model.stage1.1`
+- `model.stage2.1`
+- `model.stage3.1`
+- `model.stage4.1`
+- `model.stage5.1`
+
+该组是 E004e 最强子组，关闭 5 个 quantizers 即恢复 `+2.8913 dB`，占全部可恢复 gap 的 `24.3%`。
+
+`stage5 + Conv2d` 包含：
+
+- `model.stage5.0.block.split_proj`
+- `model.stage5.0.block.merge_proj`
+- `model.stage5.0.block.conv_branch.0`
+- `model.stage5.0.block.conv_branch.3`
+- `model.stage5.0.block.conv_branch.6`
+- `model.stage5.1`
+
+该组恢复 `+2.0611 dB`，其中单独关闭 `model.stage5.1` 恢复 `+1.0256 dB`，说明 stage5 的 stage transition / downsample-like Conv2d 是一个强敏感点。
+
+`branch=fusion + Conv2d` 包含 5 个 `split_proj` 和 5 个 `merge_proj`。
+
+- fusion overall 恢复 `+1.6960 dB`。
+- `merge_proj` 恢复 `+1.3489 dB`。
+- `split_proj` 只恢复 `+0.3044 dB`。
+
+因此 fusion 中的主要问题更偏向 merge projection，而不是 split projection。
+
+#### 结论
+
+E004e 进一步确认：Conv2d activation quantization 的问题不是普通 CNN branch 单独主导。
+
+更具体地说：
+
+1. 最优先关注 `role=unknown` 的 stage transition / downsample-like Conv2d modules。
+
+   - 5 个模块恢复 `+2.8913 dB`。
+   - 单个最强是 `model.stage5.1`，恢复 `+1.0256 dB`。
+
+2. stage5 Conv2d 是最敏感 stage。
+
+   - `stage5 + Conv2d` 恢复 `+2.0611 dB`，明显强于 stage1-stage4。
+   - stage5 既包含 late-stage fusion/conv branch，又包含强敏感的 `stage5.1`。
+
+3. fusion branch 中 `merge_proj` 明显比 `split_proj` 更敏感。
+
+   - `merge_proj` 恢复 `+1.3489 dB`。
+   - `split_proj` 恢复 `+0.3044 dB`。
+
+4. `branch=cnn + Conv2d` 不是主因。
+
+   - 关闭 15 个 CNN branch Conv2d 只恢复 `+0.4345 dB`。
+   - 说明问题更集中在 fusion/merge/stage transition/stage5，而不是普通 CNN conv branch。
+
+5. 仍然不存在单点完全主导。
+
+   - 单点最强 `model.stage5.1` 只恢复 `+1.0256 dB`。
+   - 全部 Conv2d 关闭恢复 `+11.6314 dB`。
+   - 说明当前 A8 init 崩坏依然是 Conv2d 多点累积误差，而不是单个层可以解释。
+
+#### 对后续路线的影响
+
+E004e 已经足够支持进入 E005，不建议再做完整 52 层单点关闭 sweep。
+
+如果继续在 E004 内补充，应只做一个很小的 E004f 工具/验证：
+
+- 从“全部 Conv2d 关闭”的强恢复状态出发，重新开启 `role=unknown`、`stage5`、`merge_proj`、`fusion` 等子组。
+- 观察哪个子组重新 A8 化后会显著拉低 SNR。
+- 当前工具尚不支持“Conv2d 全关后 reopen 子组”的组合语义，因此这属于 E004f-tooling，而不是必须立即完成的实验。
+
+下一阶段主线建议进入 E005：
+
+- 优先对 `role=unknown`、`stage5`、`merge_proj`、`fusion` 的 Conv2d activation 做 range / clipping / calibration 策略。
+- `branch=cnn` 和 Linear / transformer 继续作为对照，不作为第一优先修复对象。

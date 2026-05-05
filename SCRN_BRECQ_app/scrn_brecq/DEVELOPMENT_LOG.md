@@ -1652,3 +1652,37 @@
 - E004e：Conv2d 子组关闭细分，包括 stage、fusion、cnn、split_proj、merge_proj、unknown、head、stage5 等。
 - E004f：如 E004e 发现强子组，再做 Conv2d-only reopen / leave-one-out 验证。
 - E004g：汇总 sensitivity vs resource benefit 策略表，为 E005 Conv2d activation range / clipping / calibration 提供输入。
+
+## 2026-05-05 E004e Conv2d subgroup sensitivity
+
+### 修改内容
+
+- 使用 E004a 工具完成 Conv2d 子组关闭细分实验。
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，记录 E004e run 口径、结果表、关键子组和后续判断。
+- 本步骤不修改代码、不生成 tracked 产物。
+
+### 实验设置
+
+- checkpoint：E002c A8 init n=64 / pre-act-recon checkpoint。
+- eval：128 samples，batch size 16，seed `20260427`。
+- device：CUDA，使用 `--cuda-device-index 1/2/3` 分批并行。
+- run root：
+  `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E004_sensitivity/e004e_conv2d_subgroups/`
+
+### 关键结果
+
+- `all_on`：SNR mean `-7.1021 dB`。
+- `all_off`：SNR mean `4.7973 dB`。
+- `role=unknown + Conv2d`：5 个 quantizers，SNR mean `-4.2108 dB`，恢复 `+2.8913 dB`。
+- `stage5 + Conv2d`：6 个 quantizers，SNR mean `-5.0410 dB`，恢复 `+2.0611 dB`。
+- `branch=fusion + Conv2d`：10 个 quantizers，SNR mean `-5.4061 dB`，恢复 `+1.6960 dB`。
+- `role=merge_proj + Conv2d`：5 个 quantizers，SNR mean `-5.7532 dB`，恢复 `+1.3489 dB`。
+- 单点最强 `model.stage5.1`：SNR mean `-6.0764 dB`，恢复 `+1.0256 dB`。
+- `branch=cnn + Conv2d`：15 个 quantizers，SNR mean `-6.6676 dB`，只恢复 `+0.4345 dB`。
+
+### 结论摘要
+
+- E004e 进一步把 Conv2d 问题定位到 stage transition / downsample-like modules、stage5、fusion 和 merge projection。
+- 普通 CNN branch Conv2d 不是当前 A8 init 崩坏的主因。
+- 仍不存在单点完全主导；当前问题是 Conv2d 多点累积误差。
+- 后续可直接进入 E005 Conv2d activation range / clipping / calibration；若继续 E004，应只做 Conv2d 全关后的 reopen 子组验证，而不是完整 52 层 sweep。
