@@ -1522,3 +1522,28 @@
 - 第一轮优先使用 A8 init / pre-act-recon checkpoint，避免把 activation reconstruction 的二次影响混入插入位置敏感性分析。
 - 所有正式 ranking 必须使用固定 multi-sample eval subset，并记录 sample list hash。
 - E004 只回答“哪里敏感”和“保留高精度是否值得”；percentile clipping、scale_method 改造和 mixed precision 修复应留到 E005/E006。
+
+## 2026-05-05 E004a activation sensitivity tool
+
+### 修改内容
+
+- 新增 `quant/activation_sensitivity.py`，提供 activation quantizer selector 和临时开关 context。
+- 新增 `cli/evaluate_activation_sensitivity.py`，对已保存 checkpoint 做选择性 activation quantizer multi-sample eval。
+- 新增 `tests/test_activation_sensitivity.py`，覆盖 selector、模式开关、默认排除最终输出 quantizer 和状态恢复。
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，记录 E004a 工具能力、smoke 结果和 E004b 入口。
+
+### Smoke 结果
+
+- `all_on`：4-sample CUDA smoke，51 个候选 quantizer，SNR mean `-9.4503 dB`。
+- `all_off`：4-sample CUDA smoke，51 个候选 quantizer，SNR mean `3.2151 dB`。
+- `disable_one --index 1`：CSV 只选中 1 个 quantizer，SNR mean `-9.3920 dB`。
+- `disable_group --branch transformer`：CSV 选中 20 个 transformer quantizers，SNR mean `-9.4168 dB`。
+
+### 验证方式
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_sensitivity`
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_quantized_scrn_multi`
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/activation_sensitivity.py SCRN_BRECQ_app/scrn_brecq/cli/evaluate_activation_sensitivity.py`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_activation_sensitivity --help`
+- E004a CUDA smoke runs under ignored `runs/activation_quantization/E004_sensitivity/e004a_tool_smoke/`.

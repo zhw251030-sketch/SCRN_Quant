@@ -2181,3 +2181,67 @@ E004 不应直接混入以下修复策略：
 3. 通过测试和 smoke 后再进入 E004b sentinel 实验。
 
 暂时不要直接运行完整 52 层 sweep；在工具语义没有验证前，完整 sweep 的结果风险较高。
+
+### E004a：选择性 activation quantizer 开关工具
+
+- 日期：2026-05-05
+- 负责人：Codex
+- 状态：工具实现与 smoke 完成；未运行完整 52 层 sensitivity sweep。
+
+#### 实现内容
+
+- 新增 `quant/activation_sensitivity.py`：
+  - 支持按 index、name substring、stage、branch、role、module type 选择 activation quantizer。
+  - 支持 `all_on`、`all_off`、`disable_one`、`enable_one`、`disable_group`、`enable_group`。
+  - 默认排除最后一个网络输出 activation quantizer，并在 sensitivity 模式下保持其关闭。
+  - 使用 context manager 保存并恢复每个 `QuantModule.disable_act_quant`，避免一次评估污染后续模型状态。
+  - 为 selected rows 补充 `weight_shape` 和 `activation_numel` proxy 字段；当前 `activation_numel` 先保留为 `null`。
+- 新增 `cli/evaluate_activation_sensitivity.py`：
+  - 默认 checkpoint 使用 E002c A8 init n=64 / pre-act-recon：
+    `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E002c_init_sensitivity/quant/20260505_150842_e002c_init_n0064/checkpoints/quantized_scrn_brecq_pre_act_recon.pth`
+  - 默认 eval 口径沿用 E003a：
+    `num_eval_samples=128`、`batch_size=16`、`seed=20260427`。
+  - 输出到：
+    `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E004_sensitivity/e004a_tool_smoke/`
+  - 每次 run 写入 `config.json`、`metrics.json`、`summary.md`、`selected_quantizers.csv`、`per_sample_metrics.jsonl`。
+- 新增 `tests/test_activation_sensitivity.py`：
+  - 覆盖 selector、默认排除 output quantizer、`all_on/all_off/disable_one/enable_one`、group mode 和状态恢复。
+
+#### Smoke 口径
+
+- checkpoint：E002c A8 init n=64 / pre-act-recon checkpoint。
+- eval：4 samples，batch size 2。
+- device：CUDA。
+- figures：disabled。
+- run root：
+  `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E004_sensitivity/e004a_tool_smoke/`
+
+#### Smoke 结果
+
+| mode | run | selected | quant SNR mean | quant SNR median | quant SSIM mean |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `all_on` | `20260505_201035_e004a_smoke_all_on_cuda` | 51 | -9.4503 | -11.7509 | 0.1586 |
+| `all_off` | `20260505_201050_e004a_smoke_all_off_cuda` | 51 | 3.2151 | 1.7027 | 0.7134 |
+| `disable_one --index 1` | `20260505_201050_e004a_smoke_disable_one_idx1_cuda` | 1 | -9.3920 | -11.7291 | 0.1567 |
+| `disable_group --branch transformer` | `20260505_201049_e004a_smoke_disable_transformer_cuda` | 20 | -9.4168 | -11.7108 | 0.1681 |
+
+#### 验收结论
+
+- `all_on` 选中 51 个候选 quantizer，符合默认排除最终输出 activation quantizer 的设计。
+- `all_off` 明显恢复到正 SNR，并接近 W4A32 方向，说明开关链路有效。
+- `disable_one --index 1` 的 `selected_quantizers.csv` 只有 1 个目标 quantizer。
+- `disable_group --branch transformer` 的 `selected_quantizers.csv` 中 20 个目标均为 transformer branch。
+- E004a 只验证工具语义和 smoke，不把 4-sample 指标当作正式 sensitivity 结论。
+
+#### 下一步入口
+
+进入 E004b 前，应先选择 8-12 个 sentinel quantizers：
+
+- E001 worst relative MSE 前列。
+- E001 lowest effective level 前列。
+- stage4/stage5 attention projection。
+- attention qkv。
+- 若干 CNN Conv2d 对照层。
+- 若干 early / late stage 对照层。
+
+E004b 应继续使用 CUDA、多卡 job-level 并行和固定 128-sample eval subset；不要直接运行完整 52 层 sweep。
