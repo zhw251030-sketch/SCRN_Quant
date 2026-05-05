@@ -1507,3 +1507,18 @@
 - E003b 低样本 `init_batch_size` sweep 暂缓；`256/1024` 需要先解决 memory-safe activation init，当前多卡不能自动分摊单个 init batch 的显存峰值。
 - E003c activation reconstruction 学习率 sweep 暂缓；如果后续需要，只建议先做 short sweep，不直接跑 A5000。
 - 下一阶段建议进入 E004，优先研究 activation range / clipping / scale_method / percentile calibration。
+
+## 2026-05-05 E004 sensitivity plan review
+
+### 修改内容
+
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，对 E004 插入位置敏感性图谱计划做合理性分析和阶段拆分。
+- 本步骤不修改代码、不运行实验、不生成 run 产物。
+
+### 计划结论
+
+- E004 有必要先定位 52 个 activation quantizer 中是否存在少数主导崩坏的位置。
+- E004 应先做选择性 activation quantizer 开关工具，再做 sentinel 小规模验证，最后才跑完整 52 层 sweep。
+- 第一轮优先使用 A8 init / pre-act-recon checkpoint，避免把 activation reconstruction 的二次影响混入插入位置敏感性分析。
+- 所有正式 ranking 必须使用固定 multi-sample eval subset，并记录 sample list hash。
+- E004 只回答“哪里敏感”和“保留高精度是否值得”；percentile clipping、scale_method 改造和 mixed precision 修复应留到 E005/E006。

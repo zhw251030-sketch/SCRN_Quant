@@ -1916,3 +1916,268 @@ E003 当前不再继续扩展。下一阶段建议进入 E004：
 - 针对 transformer / Linear / attention qkv-proj 的局部分布诊断和可选分层策略。
 
 E004 的核心问题应是：如何让 A8 init 在 multi-sample eval 上不从 W4 weight-recon 的约 `4.8 dB` 直接跌到约 `-7 dB`。
+
+### E004 计划深度分析：插入位置敏感性图谱的合理性与改进
+
+- 日期：2026-05-05
+- 负责人：用户 / Codex
+- 状态：计划评审与改进，不运行实验。
+
+#### 为什么 E004 有必要
+
+E001-E003 的证据链已经把问题范围收窄：
+
+- E001 证明 final W4A8 中存在非法负 `delta`，但 pre-act-recon 没有该问题。
+- E002a/E002b 修复了负 `delta` 合法性，final `non_positive_delta_count=0`，但 SNR 没有实质恢复。
+- E003a 用 128-sample eval 证明 A8 init 本身已经崩坏，2/8/16/64 init checkpoints 全部约 `-7 dB`。
+- activation reconstruction 在多样本上没有修复 A8 init 崩坏。
+
+因此，下一步不应继续优先调 reconstruction 学习率或 delta 参数化，而应回答一个更基础的问题：
+
+> 52 个 activation quantizer 中，是否存在少数结构位置一打开就造成大部分 SNR 崩坏？
+
+如果答案是肯定的，后续 E005/E006 才能从“全模型统一 A8”转向更合理的选择性策略，例如：
+
+- 保留某些 attention / Linear activation 为 FP32。
+- 对特定 stage 使用 clipping 或 percentile calibration。
+- 对 CNN branch 和 transformer branch 采用不同 activation quantization 策略。
+- 在精度和资源收益之间做可解释取舍。
+
+#### 原计划的合理性
+
+原始 E004 包含：
+
+- 单点开启或单点关闭 activation quantizer。
+- 按 stage / branch / module type 分组开启或关闭。
+- 输出 sensitivity ranking、activation-volume proxy ranking 和 sensitivity vs resource benefit 表。
+
+这个方向是合理的，原因如下：
+
+1. 它能把“全局 A8 崩坏”拆成可定位的结构问题。
+
+   当前只有全模型 A8 结果，很难判断是所有层普遍不适合 A8，还是少数层拖垮整体。单点和分组开关能把这个问题拆开。
+
+2. 它能验证 E001 中的结构怀疑。
+
+   E001 显示 stage4/stage5 `attention_proj` 曾出现负 `delta`，transformer / Linear 的 relative MSE 明显更差。E004 可以验证这些位置是否也是 A8 init 崩坏的关键位置。
+
+3. 它能为后续 mixed activation precision 提供依据。
+
+   如果少数 quantizer 敏感但 activation volume 不大，保留 FP32 的成本可能很低，却能恢复大部分 SNR。这比盲目全局 clipping 更有工程价值。
+
+4. 它能避免把所有问题都归因于 range/clipping。
+
+   如果单点/分组开关发现 CNN branch 也全部高度敏感，则问题可能是量化公式、输入分布或 eval pipeline 更基础；如果只集中在 attention/Linear，则后续策略应更有针对性。
+
+#### 原计划需要改进的地方
+
+原计划仍有几个风险，需要在 E004 执行前修正。
+
+1. 不能一开始就跑完整 52 层大 sweep。
+
+   单点关闭 52 次、单点开启 52 次、再加分组实验，如果每次都跑 128-sample eval，会消耗较多 GPU 时间。应先做工具 smoke 和小规模验证，确认开关语义正确。
+
+2. 单点关闭和单点开启解释不同，不能混为一谈。
+
+   - 单点关闭：从全 A8 出发，关闭某个 quantizer，看能恢复多少。
+   - 单点开启：从 W4A32 出发，只开启某个 quantizer，看单独造成多少损失。
+
+   单点关闭更接近“修当前全 A8 checkpoint”，但可能受层间耦合影响；单点开启更适合看独立危害，但可能低估多层累积误差。两者应分阶段做。
+
+3. 应优先使用 A8 init checkpoint，而不是 final act-recon checkpoint。
+
+   E003a 已证明主要崩坏发生在 A8 init。E004 第一轮如果直接用 final checkpoint，容易混入 activation reconstruction 对 `delta` 的二次影响。第一轮应以 A8 init n=64 / pre-act-recon checkpoint 为主。
+
+4. sensitivity ranking 必须绑定同一 multi-sample eval subset。
+
+   单张 eval 已被 E003a 证明会误导判断。E004 所有正式 ranking 必须使用固定 128-sample eval subset，并记录 sample list hash。
+
+5. activation-volume proxy 不能误读为真实部署收益。
+
+   activation volume 只能作为资源收益代理，例如输出元素数、shape、通道数。真实部署收益还取决于算子融合、缓存、内存带宽、硬件 kernel 和 packed runtime。E004 先输出 proxy，不直接声称真实速度或显存收益。
+
+6. 多卡只能用于 job-level 并行。
+
+   E004 中每个开关实验相互独立，适合分配到多张 GPU 并行；但单个 eval run 不应假设可以自动分布式。每个并行 job 必须有独立 `run-name` 和输出目录。
+
+#### 改进后的 E004 分阶段计划
+
+##### E004a：选择性 activation quantizer 开关工具
+
+目标：先建立可追踪、可复现的开关能力，不直接跑完整 sweep。
+
+建议实现：
+
+- 新增 CLI：
+  - `SCRN_BRECQ_app/scrn_brecq/cli/evaluate_activation_sensitivity.py`
+- 复用：
+  - checkpoint 加载逻辑。
+  - `activation_diagnostics.py` 中的 quantizer 结构标签。
+  - `evaluate_quantized_scrn_multi.py` 的 multi-sample eval 逻辑。
+- 支持开关模式：
+  - `all_on`
+  - `all_off`
+  - `disable_one`
+  - `enable_one`
+  - `disable_group`
+  - `enable_group`
+- 支持筛选字段：
+  - quantizer index
+  - module name
+  - stage
+  - branch
+  - role
+  - module type
+- 输出：
+  - `config.json`
+  - `metrics.json`
+  - `summary.md`
+  - `selected_quantizers.csv`
+  - `per_sample_metrics.jsonl`
+
+验收标准：
+
+- 2-4 sample smoke 能证明指定 quantizer 的 `disable_act_quant` 或等价开关确实生效。
+- `all_off` 应接近 W4A32 / weight-recon 口径。
+- `all_on` 应接近 A8 init 或 final W4A8 口径。
+- 不生成或提交 run 产物。
+
+##### E004b：小规模 sentinel 敏感性验证
+
+目标：先验证 E004 方法是否能产生有意义差异，再决定是否跑 52 层完整 sweep。
+
+建议选择 8-12 个 sentinel quantizers：
+
+- E001 worst relative MSE 前列。
+- E001 lowest effective level 前列。
+- stage4/stage5 attention projection。
+- attention qkv。
+- 若干 CNN Conv2d 对照层。
+- 若干 early stage / late stage 对照层。
+
+评估口径：
+
+- checkpoint：优先 A8 init n=64 / pre-act-recon checkpoint。
+- eval：固定 128-sample subset，沿用 E003a seed 和 sample list hash。
+- device：CUDA，多卡按 job-level 并行。
+
+验收标准：
+
+- 如果关闭某些 sentinel quantizer 能明显恢复 mean/median SNR，说明完整 sensitivity map 有价值。
+- 如果所有 sentinel 变化都很小，则需要先检查开关工具是否正确，或说明问题是多层累积误差而非单点主导。
+
+##### E004c：完整单点关闭 ranking
+
+目标：从全 A8 出发，评估每个 activation quantizer 被关闭后的恢复收益。
+
+输出 ranking：
+
+- `delta_snr_mean = snr_mean_disable_one - snr_mean_all_on`
+- `delta_snr_median`
+- `delta_ssim_mean`
+- quantizer index / name / stage / branch / role / module type
+- activation shape / element count / channel count
+
+解释：
+
+- 排名前列是“当前全 A8 中最值得保留高精度或单独处理”的候选。
+- 如果 top quantizers 集中在 transformer / Linear / attention，则后续策略应结构化。
+- 如果 top quantizers 分散，说明可能需要全局 range/clipping 策略。
+
+##### E004d：分组关闭实验
+
+目标：验证结构级规律，避免只凭单点 ranking 过拟合。
+
+建议分组：
+
+- branch：
+  - CNN
+  - transformer
+- module type：
+  - Conv2d
+  - Linear
+- role：
+  - attention qkv
+  - attention proj
+  - MLP / FFN
+  - stem / head
+- stage：
+  - stage1-stage5
+
+输出：
+
+- 每组关闭后的 SNR/SSIM。
+- 关闭 quantizer 数量。
+- activation-volume proxy 总量。
+- group sensitivity per quantizer。
+- group sensitivity per activation-volume proxy。
+
+验收标准：
+
+- 能明确判断是否存在“某个 branch / module type / role 主导崩坏”。
+
+##### E004e：单点开启补充验证
+
+目标：从 W4A32 出发，只开启某个 activation quantizer，评估其独立破坏力。
+
+执行条件：
+
+- E004c/E004d 已经显示存在明确敏感层或敏感组。
+- 不建议在 E004a 之后立刻跑完整单点开启，因为成本高，且解释要结合单点关闭结果。
+
+用途：
+
+- 验证 E004c 的 top sensitive quantizers 是否确实单独有害。
+- 找出可以安全 A8 的 quantizer 集合。
+
+##### E004f：sensitivity vs resource benefit 策略表
+
+目标：把 E004c/E004d/E004e 转成可执行策略。
+
+输出表字段：
+
+- quantizer index
+- name
+- stage
+- branch
+- role
+- module type
+- sensitivity score
+- activation-volume proxy
+- sensitivity / volume ratio
+- recommendation：
+  - keep A8
+  - keep FP32
+  - test percentile clipping
+  - test higher precision
+  - needs group-level treatment
+
+验收标准：
+
+- 能提出 E005 的具体候选策略，而不是只给排名。
+
+#### E004 与 E004/E005 边界
+
+E004 只回答“哪里敏感”和“保留高精度是否值得”。
+
+E004 不应直接混入以下修复策略：
+
+- percentile clipping 实现。
+- scale_method 改造。
+- per-group calibration。
+- mixed precision final deployment。
+
+这些应放到 E005 或 E006，否则实验变量会混乱，无法判断收益来自位置选择还是量化算法变化。
+
+#### 当前推荐的下一步
+
+下一步应执行 E004a：
+
+1. 先实现选择性 activation quantizer 开关工具。
+2. 用 2-4 sample smoke 验证：
+   - `all_off` 接近 W4A32。
+   - `all_on` 接近 A8。
+   - 指定 index/name/group 的开关生效。
+3. 通过测试和 smoke 后再进入 E004b sentinel 实验。
+
+暂时不要直接运行完整 52 层 sweep；在工具语义没有验证前，完整 sweep 的结果风险较高。
