@@ -1811,3 +1811,32 @@ E003a 同时说明：
 - E003b 的 init-only sweep、multi-sample eval 和 fixed diagnostics 应优先使用 GPU。
 - E003c 如涉及 activation reconstruction 或 learning-rate sweep，应优先使用 CUDA，且在命令中明确 GPU 选择。
 - 只有当某个工具在 GPU 上存在确定性、显存或兼容性问题时，才把 CPU 作为有记录的例外方案。
+
+### 后续实验资源使用原则补充：多卡并行
+
+- 日期：2026-05-05
+- 负责人：用户 / Codex
+- 原则补充：项目环境存在多张 GPU。后续实验不只是优先使用单张 GPU，而应在实验设计允许时充分利用多卡资源，缩短 sweep、eval 和 diagnostics 的总耗时。
+
+#### 多卡使用方式
+
+- 对互相独立的实验配置，优先做 job-level 多卡并行：
+  - 例如 E003b 中不同 `init_batch_size` 的 init-only run 可以分别分配到不同 GPU。
+  - 不同 checkpoint 的 multi-sample eval 可以分别分配到不同 GPU。
+  - 不同 diagnostics run 可以分别分配到不同 GPU，前提是显存充足且输出目录/`run-name` 不冲突。
+- 如果 CLI 原生支持分布式并且该任务适合分布式，再使用内部多卡分布式。
+  - 目前已知 `quantize_scrn.py --distributed` 主要适用于 W-only reconstruction。
+  - activation reconstruction 路径此前明确不支持 distributed，因此这类任务应优先考虑多进程多卡并行跑不同配置，而不是强行单任务分布式。
+- 对不支持内部多卡的脚本，使用显式 GPU 绑定：
+  - `CUDA_VISIBLE_DEVICES=<gpu_id>` 或 CLI 的 `--gpus <gpu_id>`。
+  - 每个并行 run 必须使用独立 `--run-name`，避免输出覆盖。
+- 正式并行实验前应检查 GPU 占用：
+  - `nvidia-smi`
+  - 记录可用 GPU、显存余量和选择理由。
+
+#### 对后续 E003 的具体影响
+
+- E003b sweep 应优先按配置拆分到多张 GPU 并行执行，而不是串行使用单卡。
+- E003a/E003b 的 multi-sample eval 可以按 checkpoint 维度并行。
+- 如果需要固定 diagnostics，也可以按 checkpoint 维度并行，但要留意 E001 diagnostics 的 hook/quantile 统计显存和耗时。
+- 若某个单 run 因显存限制无法使用大 `init_batch_size`，不能简单认为“多卡能自动解决”；除非脚本支持模型/数据分布式，否则仍需分批初始化策略或更大单卡显存。

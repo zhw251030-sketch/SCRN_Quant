@@ -1477,3 +1477,18 @@
 - 单卡实验应明确指定目标 GPU，例如 `--gpus 0`。
 - CUDA 不可用或显存不足时，不自动无记录切换 CPU；先记录原因，再决定是否改 CPU 或换 GPU。
 - 若为了历史口径必须用 CPU，需要在日志中明确说明。
+
+## 2026-05-05 Multi-GPU resource usage principle
+
+### 修改内容
+
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，补充后续实验应充分利用多卡资源，而不只是使用单张 GPU。
+- 本步骤不修改代码、不运行实验、不生成 run 产物。
+
+### 原则摘要
+
+- 独立实验配置优先按 job-level 分配到多张 GPU 并行运行。
+- 对不支持内部分布式的脚本，使用 `CUDA_VISIBLE_DEVICES=<gpu_id>` 或 `--gpus <gpu_id>` 绑定单个 run。
+- 每个并行 run 必须使用独立 `--run-name` 和清晰输出目录，避免产物覆盖。
+- 正式并行实验前检查 `nvidia-smi`，记录可用 GPU 和显存余量。
+- 已知 activation reconstruction 路径不应强行单任务 distributed；更适合多进程多卡并行跑不同配置。
