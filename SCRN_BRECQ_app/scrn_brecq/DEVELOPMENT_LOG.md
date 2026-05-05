@@ -1313,3 +1313,56 @@
 - E002b formal 64-sample diagnostics。
 - E002b formal single-sample reload eval。
 - 提交前执行 `git diff --check` 和 `git diff --check --cached`。
+
+## 2026-05-05 E002c activation-only 初始化敏感性工作流
+
+### 修改内容
+
+- 新增 `cli/activation_only_quantize_scrn.py`，可从已有 W4 weight-recon checkpoint 继续做 A8 activation 初始化，默认跳过 activation reconstruction。
+- 新增 `tests/test_activation_only_quantize_scrn.py`，覆盖：
+  - activation-only 默认配置是 init-only run。
+  - checkpoint 内旧 `run_root/run_name` 不会覆盖 E002c 输出目录。
+  - activation-only metrics 会记录 `quant_pre_act_recon_snr_db` 和 A8 init SNR delta。
+- 修正配置合并边界：只从 checkpoint 继承量化/数据相关字段，不继承旧 run 输出路径。
+- 本步骤不修改量化公式、不修改 reconstruction 算法、不提交 run 产物。
+
+### 实验记录
+
+- smoke run：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E002c_init_sensitivity/quant/20260505_150649_e002c_smoke_init_n0002`
+  - `quant_pre_act_recon_snr_db=8.380215760145743`
+  - `non_positive_delta_count=0`
+- smoke diagnostics：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E002c_init_sensitivity/diagnostics/20260505_150741_e002c_smoke_diag_n0002`
+  - `activation_quantizers=52`
+  - `non_positive_delta_count=0`
+- init-only sweep：
+  - `n=2`：`20260505_150800_e002c_init_n0002`
+  - `n=8`：`20260505_150814_e002c_init_n0008`
+  - `n=16`：`20260505_150826_e002c_init_n0016`
+  - `n=64`：`20260505_150842_e002c_init_n0064`
+  - `n=256`：`20260505_150917_e002c_init_n0256`
+  - `n=1024`：`20260505_150952_e002c_init_n1024`
+- fixed 64-sample CUDA diagnostics：
+  - `n=2`：`20260505_151932_e002c_diag_cuda_n0002`
+  - `n=8`：`20260505_152323_e002c_diag_cuda_n0008`
+  - `n=16`：`20260505_152708_e002c_diag_cuda_n0016`
+  - `n=64`：`20260505_153054_e002c_diag_cuda_n0064`
+  - `n=256`：`20260505_153439_e002c_diag_cuda_n0256`
+  - `n=1024`：`20260505_153825_e002c_diag_cuda_n1024`
+
+### 关键结论
+
+- 当前 activation 初始化实际使用 `min(num_samples, init_batch_size)` 个样本；默认 `init_batch_size=64`，因此 `n=64/256/1024` 三组得到完全一致的 A8 初始化状态和 SNR。
+- 单样本 SNR 随有效 init 样本数从 2 增加到 64 明显下降：
+  - `2 -> 8 -> 16 -> 64`：`8.3802 -> 7.1866 -> 6.4882 -> 4.9875 dB`
+- 所有 init-only checkpoint 的 activation `delta` 都合法：`non_positive_delta_count=0`。
+- 尝试真正 `--init-batch-size 256` 时，CUDA 0 在 activation MSE scale 初始化中 OOM；因此全 256/1024 activation init 需要后续单独优化初始化策略或更大显存。
+
+### 验证方式
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_only_quantize_scrn`
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/activation_only_quantize_scrn.py`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.activation_only_quantize_scrn --help`
+- E002c smoke quantize + smoke diagnostics。
+- E002c init-only sweep + fixed 64-sample CUDA diagnostics。

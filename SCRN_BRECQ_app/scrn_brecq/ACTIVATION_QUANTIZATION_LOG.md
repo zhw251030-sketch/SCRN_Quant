@@ -1318,3 +1318,138 @@ E002b 证明：E002a 的 post-step clamp 能修掉 final checkpoint 中的非法
 - 比较 `asym=False` vs `asym=True` 的 activation reconstruction 输入口径。
 - 针对 attention qkv/proj 做冻结或单独策略对照。
 - 考虑 delta ratio 约束、log-scale / softplus 参数化，或 activation clipping / range 学习。
+
+### E002c：activation-only 初始化敏感性实验
+
+- 日期：2026-05-05
+- 负责人：Codex
+- 实验目的：从同一个 E002b W4 weight-recon checkpoint 出发，只重新做 A8 activation 初始化，不重跑 W20000，也默认不跑 A5000 activation reconstruction，验证“小样本 smoke 约 8 dB”是否来自 calibration 子集对单张 eval 图的偶然匹配。
+- 起点 checkpoint：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260504_221242_e002b_w4a8_positive_scale_1024samples_w20000_a5000/checkpoints/quantized_scrn_brecq_weight_recon.pth`
+
+#### 工具变更
+
+- 新增 activation-only CLI：
+  - `SCRN_BRECQ_app/scrn_brecq/cli/activation_only_quantize_scrn.py`
+- 功能边界：
+  - 从 weight-recon checkpoint 重建 QuantModel。
+  - 只做 activation quantizer 初始化。
+  - 默认保存 `quantized_scrn_brecq_pre_act_recon.pth`。
+  - 默认 `--skip-act-recon`，因此不生成 final activation reconstruction checkpoint。
+  - 不修改 `UniformAffineQuantizer`、不修改 reconstruction 算法。
+- 新增最小测试：
+  - `SCRN_BRECQ_app/scrn_brecq/tests/test_activation_only_quantize_scrn.py`
+
+#### 运行产物
+
+- smoke run：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E002c_init_sensitivity/quant/20260505_150649_e002c_smoke_init_n0002`
+- smoke diagnostics：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E002c_init_sensitivity/diagnostics/20260505_150741_e002c_smoke_diag_n0002`
+- 正式 init-only sweep runs：
+  - `n=2`：`20260505_150800_e002c_init_n0002`
+  - `n=8`：`20260505_150814_e002c_init_n0008`
+  - `n=16`：`20260505_150826_e002c_init_n0016`
+  - `n=64`：`20260505_150842_e002c_init_n0064`
+  - `n=256`：`20260505_150917_e002c_init_n0256`
+  - `n=1024`：`20260505_150952_e002c_init_n1024`
+- 固定 64-sample diagnostics：
+  - 为避免 diagnostics 样本数和 init 样本数混在一起，所有正式 sweep checkpoint 都使用 64 个 calibration 样本诊断。
+  - CPU diagnostics 单组耗时过长，因此正式 6 组统一用 `--device cuda`。
+  - `n=2`：`20260505_151932_e002c_diag_cuda_n0002`
+  - `n=8`：`20260505_152323_e002c_diag_cuda_n0008`
+  - `n=16`：`20260505_152708_e002c_diag_cuda_n0016`
+  - `n=64`：`20260505_153054_e002c_diag_cuda_n0064`
+  - `n=256`：`20260505_153439_e002c_diag_cuda_n0256`
+  - `n=1024`：`20260505_153825_e002c_diag_cuda_n1024`
+
+#### 必须澄清的实现细节
+
+activation 初始化并不是自动使用全部 `num_samples`。当前代码路径是：
+
+- calibration loader 先收集 `num_samples` 个样本。
+- `initialize_activation_quantization(...)` 再取 `calibration_data[:min(init_batch_size, num_samples)]` 做一次前向初始化。
+- 默认 `init_batch_size=64`。
+
+因此，本轮 `num_samples=64/256/1024` 三组在默认设置下实际都只用前 64 个样本初始化 activation scale。这解释了为什么这三组的 SNR、delta、diagnostics 指标完全一致。这个发现也反过来说明：E002b formal 的 A8 初始化不是 1024-sample activation init，而是 1024 个 calibration 样本被收集后，只用前 64 个样本完成 activation scale 初始化。
+
+#### SNR 结果
+
+| `num_samples` | 有效 init 样本数 | `quant_pre_act_recon_snr_db` | A8 init 相对 W4A32 掉点 |
+| --- | ---: | ---: | ---: |
+| 2 | 2 | 8.380215760145743 | -3.3158832943153704 |
+| 8 | 8 | 7.186574348364017 | -4.509524706097096 |
+| 16 | 16 | 6.488236236978712 | -5.207862817482401 |
+| 64 | 64 | 4.9874515693637465 | -6.708647485097366 |
+| 256 | 64 | 4.9874515693637465 | -6.708647485097366 |
+| 1024 | 64 | 4.9874515693637465 | -6.708647485097366 |
+
+W4 weight-recon 起点单样本 SNR 固定为：
+
+- `quant_post_weight_recon_snr_db=11.696099054461113`
+
+#### 诊断结果
+
+| `num_samples` | `non_positive_delta_count` | `delta_min` | `delta_max` | `effective_int_levels_min` | `fake_quant_mse_max` | Linear effective min | attention proj effective min | attention qkv effective min |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 2 | 0 | 0.00023412889277096838 | 0.04403826966881752 | 146 | 0.00009798040264286101 | 177 | 245 | 244 |
+| 8 | 0 | 0.0002338363992748782 | 0.04399380832910538 | 154 | 0.00009798632527235895 | 210 | 245 | 246 |
+| 16 | 0 | 0.0002460727409925312 | 0.04407128319144249 | 164 | 0.00009808229515329003 | 206 | 245 | 250 |
+| 64 | 0 | 0.00025086768437176943 | 0.04417974501848221 | 191 | 0.00009840026177698746 | 208 | 246 | 251 |
+| 256 | 0 | 0.00025086768437176943 | 0.04417974501848221 | 191 | 0.00009840026177698746 | 208 | 246 | 251 |
+| 1024 | 0 | 0.00025086768437176943 | 0.04417974501848221 | 191 | 0.00009840026177698746 | 208 | 246 | 251 |
+
+局部变化最大的层：
+
+- `delta` 从 2-sample 到 1024-sample 变化最大的是 `model.stage1.0.block.trans_branch.mlp.2`：
+  - `0.008632086217403412 -> 0.0038006349932402372`
+- effective int level 变化最大的是同一层：
+  - `177 -> 256`
+- `model.head` 和 `model.tail` 的 effective int level 也随有效 init 样本数增加明显上升：
+  - head：`209 -> 254`
+  - tail：`146 -> 191`
+
+#### 对 E002b smoke 现象的解释
+
+小样本 activation init 的单样本 SNR 明显更高：
+
+- 2-sample：`8.3802 dB`
+- 8-sample：`7.1866 dB`
+- 16-sample：`6.4882 dB`
+- 64-sample：`4.9875 dB`
+
+但这并不代表小样本量化状态更健康。固定 64-sample diagnostics 显示，随着有效 init 样本数增加，effective int level 通常更高、Linear relative MSE 反而更低，attention qkv/proj 在 pre-act-recon 阶段也保持较健康：
+
+- attention proj effective min：`245 -> 246`
+- attention qkv effective min：`244 -> 251`
+- Linear relative MSE max：`0.00024304398617962052 -> 0.00020600040279561196`
+
+因此，2-sample 的高 SNR 更可能是 activation scale 对当前单张 eval 图的偶然匹配或小样本 overfit，而不是更好的通用 A8 初始化。E002b smoke 约 8 dB 的现象可以由这一点解释：它不是正式 W4A8 流程变好了，而是有效 activation init 样本数极小。
+
+#### Full init 256/1024 的限制
+
+为了确认 `num_samples=256/1024` 如果真正全部参与 activation 初始化会怎样，尝试运行：
+
+- `--num-samples 256 --init-batch-size 256`
+
+结果：CUDA 0 在 activation MSE scale 初始化阶段 OOM，报错位置在 `UniformAffineQuantizer._init_mse_scale -> quantize(...)`，尝试额外分配约 2 GiB 时失败。
+
+这说明当前 activation 初始化实现不是流式统计，而是直接用整批 activation tensor 做 MSE scale 搜索。若要真正测试 256/1024 activation init，需要先做以下之一：
+
+- 改成分层/分批收集 activation range，再初始化 scale。
+- 用更小的候选搜索内存占用。
+- 在更大显存设备上重跑。
+- 先把 `init_batch_size` 作为独立实验变量，而不是只改 `num_samples`。
+
+#### E002c 结论
+
+E002c 回答了两个关键问题：
+
+1. 小样本 A8 init 的确能让当前单张 eval 的 SNR 显著高于 64-sample init，但这更像 calibration subset 对单张 eval 的偶然匹配，不是健康量化状态。
+2. 当前正式 W4A8 的 A8 初始化瓶颈已经在 `init_batch_size=64` 暴露；继续把 `num_samples` 从 64 增大到 1024，在现有代码下不会改变 activation 初始化结果。
+
+这使后续方向更明确：
+
+- 不应把“扩大 `num_samples`”当作下一步主实验，因为 activation init 实际受 `init_batch_size` 控制。
+- 下一步应转向 calibration subset 选择、activation clipping/range 学习、分批初始化统计，或直接做 activation reconstruction 的学习率/冻结策略。
+- pre-act-recon 阶段 attention qkv/proj 指标并不崩；E002b final 中 qkv/proj 崩坏更像 activation reconstruction 阶段引入的问题。
