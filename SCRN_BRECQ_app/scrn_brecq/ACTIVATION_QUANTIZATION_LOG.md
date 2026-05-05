@@ -1687,3 +1687,106 @@ E003 的优先级应高于以下方向：
    - 若小 init batch 在 multi-sample 上仍更好：进入 calibration subset / clipping / range 学习。
    - 若 64 init 更稳或差距消失：进入 activation reconstruction 学习率 sweep。
 6. E003c：只在评估口径稳定后做 `activation_lr=4e-4/1e-4/4e-5`。
+
+### E003a：multi-sample eval 口径建立与 baseline
+
+- 日期：2026-05-05
+- 负责人：Codex
+- 目的：用固定多样本 eval subset 复核 E002c 的单张 eval 结论，判断小样本 A8 init 的高 SNR 是否能泛化。
+
+#### 工具状态
+
+已有 `evaluate_quantized_scrn_multi.py` 可以复用：
+
+- 固定 seed 从 clean patch 目录抽样。
+- 在线生成 degraded 输入。
+- 输出 `metrics.json`、`summary.md`、`per_sample_metrics.jsonl`、`config.json`。
+- `config.json` 记录 `selected_sample_paths`。
+
+E003a 只做了一个小工具补齐：
+
+- `build_aggregate_metrics(...)` 新增 median 聚合字段。
+- `summary.md` 追加主要 mean/median 指标。
+- 新增 `test_evaluate_quantized_scrn_multi.py`，验证 median 聚合和旧字段 alias。
+
+#### 评估设置
+
+- eval dataset：
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_quant_10750_0_patches`
+- `num_eval_samples=128`
+- `batch_size=16`
+- `seed=20260427`
+- `device=cuda`
+- `--no-save-figures`
+- run root：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E003_multi_sample_eval`
+- selected sample list hash：
+  - `cf3b4fe1a094`
+  - 所有正式 run 的 `selected_sample_paths` 完全一致。
+
+#### 正式 run 产物
+
+- W4 weight-recon：
+  - `20260505_165402_e003a_median_w4_weight_recon_eval128`
+- A8 init, effective init samples = 2：
+  - `20260505_165418_e003a_median_a8_init_n0002_eval128`
+- A8 init, effective init samples = 8：
+  - `20260505_165438_e003a_median_a8_init_n0008_eval128`
+- A8 init, effective init samples = 16：
+  - `20260505_165459_e003a_median_a8_init_n0016_eval128`
+- A8 init, effective init samples = 64：
+  - `20260505_165516_e003a_median_a8_init_n0064_eval128`
+- E002b positive-scale final：
+  - `20260505_165531_e003a_median_e002b_final_eval128`
+
+#### 128-sample eval 结果
+
+| checkpoint | SNR mean | SNR median | SNR min | SNR max | SSIM mean | mean SNR - FP32 mean |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| W4 weight-recon | 4.79725691949495 | 4.309259459875541 | 1.3343390090950384 | 10.249259240602004 | 0.7049305604844021 | -1.2928323404783364 |
+| A8 init n=2 | -7.0231250370839735 | -7.857011917587894 | -14.339920378397583 | 8.000126045067118 | 0.18979444123250055 | -13.113214297057262 |
+| A8 init n=8 | -7.023006163652582 | -7.7914053078130605 | -14.271765951371972 | 7.704190278141572 | 0.2021710648360309 | -13.113095423625868 |
+| A8 init n=16 | -7.047440279252236 | -7.8041388297714125 | -14.294644861268328 | 7.493808244600226 | 0.196979314851416 | -13.137529539225525 |
+| A8 init n=64 | -7.102088710746793 | -7.850034466981217 | -14.370487804609258 | 6.784886648518827 | 0.19452354877811634 | -13.192177970720081 |
+| E002b final | -7.071334905403255 | -7.811254783170435 | -14.321177469597867 | 6.931303675318263 | 0.20218104685008775 | -13.161424165376543 |
+
+同一 128-sample eval subset 上：
+
+- input degraded SNR mean：`0.9709 dB`
+- FP32 SNR mean：`6.0901 dB`
+- W4 weight-recon SNR mean：`4.7973 dB`
+
+#### E003a 结论
+
+E003a 直接推翻了 “2/8/16-sample A8 init 可能更好” 这个解释。
+
+E002c 中单张 eval 的 A8 init SNR：
+
+- 2-sample：`8.3802 dB`
+- 8-sample：`7.1866 dB`
+- 16-sample：`6.4882 dB`
+- 64-sample：`4.9875 dB`
+
+但在固定 128-sample eval 上：
+
+- 2/8/16/64-sample A8 init 全部约 `-7 dB`。
+- 它们之间差距极小，且全部远低于 W4 weight-recon 的 `4.7973 dB`。
+- E002b final activation reconstruction 也只有 `-7.0713 dB`，没有在多样本上恢复 A8 init 崩坏。
+
+因此，E002c 的小样本高 SNR 基本可以判定为对当前单张 eval 图的偶然匹配或过拟合，不应作为选择 activation init 策略的依据。
+
+#### 对后续 E003 的影响
+
+E003a 之后，E003b 不应再以单张 eval SNR 为主指标。后续必须使用：
+
+- multi-sample eval mean/median/min/max SNR
+- fixed diagnostics
+- activation quantizer 合法性
+- attention qkv/proj 和 Linear 的局部误差
+
+E003a 同时说明：
+
+- W4 weight-recon 在多样本上已有明显泛化掉点，但仍远好于 A8。
+- A8 init 是当前最主要的多样本崩坏点。
+- activation reconstruction 没有在多样本上修复 A8 崩坏。
+- 下一步 E003b 应继续围绕 activation range / init_batch_size / calibration subset 设计，而不是立即做长时间 A5000 学习率 sweep。

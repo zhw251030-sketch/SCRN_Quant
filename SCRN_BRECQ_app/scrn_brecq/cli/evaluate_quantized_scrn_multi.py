@@ -457,6 +457,7 @@ def build_aggregate_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     for key in aggregate_keys:
         values = np.asarray([float(row[key]) for row in rows], dtype=np.float64)
         metrics[f"{key}_mean"] = float(np.mean(values))
+        metrics[f"{key}_median"] = float(np.median(values))
         metrics[f"{key}_std"] = float(np.std(values))
         metrics[f"{key}_min"] = float(np.min(values))
         metrics[f"{key}_max"] = float(np.max(values))
@@ -488,7 +489,7 @@ def add_legacy_aggregate_aliases(metrics: dict[str, Any]) -> None:
         "fp32_quant_max_abs_diff": "fp32_quant_post_recon_max_abs_diff",
     }
     for old_prefix, new_prefix in alias_pairs.items():
-        for suffix in ("mean", "std", "min", "max"):
+        for suffix in ("mean", "median", "std", "min", "max"):
             new_key = f"{new_prefix}_{suffix}"
             if new_key in metrics:
                 metrics[f"{old_prefix}_{suffix}"] = metrics[new_key]
@@ -516,15 +517,23 @@ def summary_metrics(metrics: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "sample_count": metrics["sample_count"],
         "input_snr_db_mean": metrics["input_snr_db_mean"],
+        "input_snr_db_median": metrics["input_snr_db_median"],
         "fp32_snr_db_mean": metrics["fp32_snr_db_mean"],
+        "fp32_snr_db_median": metrics["fp32_snr_db_median"],
         "quant_pre_recon_snr_db_mean": metrics.get("quant_pre_recon_snr_db_mean", "not_provided"),
+        "quant_pre_recon_snr_db_median": metrics.get("quant_pre_recon_snr_db_median", "not_provided"),
         "quant_post_recon_snr_db_mean": metrics["quant_post_recon_snr_db_mean"],
+        "quant_post_recon_snr_db_median": metrics["quant_post_recon_snr_db_median"],
         "quant_post_minus_pre_snr_db_mean": metrics.get("quant_post_minus_pre_snr_db_mean", "not_provided"),
         "quant_post_minus_fp32_snr_db_mean": metrics["quant_post_minus_fp32_snr_db_mean"],
         "input_ssim_mean": metrics["input_ssim_mean"],
+        "input_ssim_median": metrics["input_ssim_median"],
         "fp32_ssim_mean": metrics["fp32_ssim_mean"],
+        "fp32_ssim_median": metrics["fp32_ssim_median"],
         "quant_pre_recon_ssim_mean": metrics.get("quant_pre_recon_ssim_mean", "not_provided"),
+        "quant_pre_recon_ssim_median": metrics.get("quant_pre_recon_ssim_median", "not_provided"),
         "quant_post_recon_ssim_mean": metrics["quant_post_recon_ssim_mean"],
+        "quant_post_recon_ssim_median": metrics["quant_post_recon_ssim_median"],
         "quant_post_minus_pre_ssim_mean": metrics.get("quant_post_minus_pre_ssim_mean", "not_provided"),
         "quant_post_minus_fp32_ssim_mean": metrics["quant_post_minus_fp32_ssim_mean"],
         "fp32_quant_post_recon_mse_mean": metrics["fp32_quant_post_recon_mse_mean"],

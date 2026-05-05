@@ -1407,3 +1407,59 @@
 - 原始设想中的 `init_batch_size=64/256/1024` 需要根据 E002c 结果调整：当前 256 full-init 已在 CUDA 0 上 OOM。
 - reconstruction 相关 trick 暂时低于 E003 主线优先级，因为最大掉点已经发生在 A8 init 阶段。
 - E003 的关键验收不是单张图 SNR，而是 multi-sample eval、fixed diagnostics 和 activation quantizer 状态的共同结论。
+
+## 2026-05-05 E003a multi-sample eval baseline
+
+### 修改内容
+
+- 复用已有 `cli/evaluate_quantized_scrn_multi.py` 完成 E003a 多样本评估。
+- 补齐 aggregate median 字段，满足 E003a 对 mean / median / min / max 的记录要求。
+- 新增 `tests/test_evaluate_quantized_scrn_multi.py`，验证 median 聚合和 legacy alias。
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md` 记录 E003a 的 run 目录、评估设置、结果表格和结论。
+
+### 实验设置
+
+- `num_eval_samples=128`
+- `batch_size=16`
+- `seed=20260427`
+- `device=cuda`
+- `--no-save-figures`
+- run root：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E003_multi_sample_eval`
+- selected sample list hash：
+  - `cf3b4fe1a094`
+
+### 关键结果
+
+- W4 weight-recon：
+  - SNR mean：`4.79725691949495`
+  - SNR median：`4.309259459875541`
+- A8 init n=2：
+  - SNR mean：`-7.0231250370839735`
+  - SNR median：`-7.857011917587894`
+- A8 init n=8：
+  - SNR mean：`-7.023006163652582`
+  - SNR median：`-7.7914053078130605`
+- A8 init n=16：
+  - SNR mean：`-7.047440279252236`
+  - SNR median：`-7.8041388297714125`
+- A8 init n=64：
+  - SNR mean：`-7.102088710746793`
+  - SNR median：`-7.850034466981217`
+- E002b positive-scale final：
+  - SNR mean：`-7.071334905403255`
+  - SNR median：`-7.811254783170435`
+
+### 结论摘要
+
+- E003a 推翻了“小样本 A8 init 更好”的单张 eval 解释；2/8/16/64 样本 init 在 128-sample eval 上全部约 `-7 dB`。
+- E002b final activation reconstruction 在 128-sample eval 上也没有恢复，SNR mean 仍为 `-7.0713 dB`。
+- 后续 E003b 必须继续使用 multi-sample eval 作为主指标，不能再依赖单张 eval SNR。
+
+### 验证方式
+
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/evaluate_quantized_scrn_multi.py`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi --help`
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_quantized_scrn_multi`
+- E003a 4-sample smoke。
+- E003a 128-sample baseline runs。
