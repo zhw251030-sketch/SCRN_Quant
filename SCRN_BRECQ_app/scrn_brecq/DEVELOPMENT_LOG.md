@@ -1686,3 +1686,23 @@
 - 普通 CNN branch Conv2d 不是当前 A8 init 崩坏的主因。
 - 仍不存在单点完全主导；当前问题是 Conv2d 多点累积误差。
 - 后续可直接进入 E005 Conv2d activation range / clipping / calibration；若继续 E004，应只做 Conv2d 全关后的 reopen 子组验证，而不是完整 52 层 sweep。
+
+## 2026-05-05 E004f skip decision
+
+### 修改内容
+
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，记录不按完整 E004f reopen 计划继续的原因。
+- 本步骤只记录实验路线决策，不修改代码、不运行新实验、不生成 tracked 产物。
+
+### 决策
+
+- 不执行完整 E004f。
+- E004f 只作为可选补充保留；如后续报告需要更强反事实证据，再实现 `disable_group + reopen_group` 组合模式。
+- 当前主线改为先做 E004g 策略表收束，然后进入 E005 Conv2d activation range / clipping / calibration。
+
+### 原因
+
+- E004b 已证明没有单点主导层。
+- E004d 已证明 Conv2d activation quantization 是 A8 init 崩坏主因。
+- E004e 已把 Conv2d 敏感结构进一步定位到 `role=unknown`、`stage5`、`fusion`、`merge_proj`。
+- 完整 E004f 的边际收益有限，而且需要扩展现有工具的组合开关语义。

@@ -2793,3 +2793,54 @@ E004e 已经足够支持进入 E005，不建议再做完整 52 层单点关闭 s
 
 - 优先对 `role=unknown`、`stage5`、`merge_proj`、`fusion` 的 Conv2d activation 做 range / clipping / calibration 策略。
 - `branch=cnn` 和 Linear / transformer 继续作为对照，不作为第一优先修复对象。
+
+### E004f 取舍决策：不按完整 reopen 计划继续，先做 E004g 收束
+
+- 日期：2026-05-05
+- 负责人：用户 / Codex
+- 状态：决策完成，不执行完整 E004f。
+
+#### 原计划 E004f
+
+E004f 原本考虑做 Conv2d-only reopen / leave-one-out：
+
+- 从“全部 Conv2d activation quantizers 关闭”的强恢复状态出发。
+- 重新开启 `role=unknown`、`stage5`、`merge_proj`、`fusion` 等 Conv2d 子组。
+- 观察哪个子组重新 A8 化后最明显拉低 SNR。
+
+#### 为什么不作为主线继续
+
+结合 E004b/E004d/E004e，当前证据链已经足够清楚：
+
+- E004b：sentinel 单点关闭最大只恢复 `+0.2920 dB`，没有单点主导层。
+- E004d：关闭全部 Conv2d activation quantizers 恢复 `+11.6314 dB`，而关闭 Linear / transformer 只恢复 `+0.0209 dB`。
+- E004e：Conv2d 内部的 `role=unknown`、`stage5`、`fusion`、`merge_proj` 更敏感，但任何单个子组都远不能解释全部恢复。
+
+因此，E004 已经回答了核心问题：
+
+- 当前 A8 init 崩坏主要是 Conv2d activation quantization 的系统性/累积性误差。
+- 更敏感位置是 stage transition / downsample-like modules、stage5、fusion 和 merge projection。
+- 不是某个单层或单个子结构独立导致失败。
+
+完整 E004f 的边际收益有限，且当前 E004a 工具尚不支持“全部 Conv2d 关闭后重新开启某个子组”的组合语义。若严谨实现，需要新增组合 selector / mode，这会把工作重心从修复问题转回工具扩展。
+
+#### 当前决策
+
+- 不执行完整 E004f。
+- E004f 只作为可选补充保留：
+  - 如果后续论文/报告需要更强的反事实证据，再实现 `disable_group + reopen_group` 组合模式。
+  - 只需跑 3-4 个关键组合：`unknown`、`stage5`、`merge_proj`、`fusion`。
+- 当前主线改为：
+  1. E004g：汇总 E004 sensitivity vs resource benefit 策略表。
+  2. E005：开始 Conv2d activation range / clipping / calibration 修复实验。
+
+#### 进入 E005 前需要保留的注意事项
+
+- E005 第一优先级不应是 transformer / Linear / attention qkv/proj。
+- E005 第一优先级应是 Conv2d activation 的 range 选择问题。
+- E005 重点结构：
+  - `role=unknown` stage transition / downsample-like Conv2d
+  - `stage5 Conv2d`
+  - `merge_proj`
+  - `fusion Conv2d`
+- E005 每次修复都必须用 E003a 的 128-sample eval 口径复核，而不能回到单样本 SNR。
