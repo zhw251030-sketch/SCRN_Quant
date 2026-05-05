@@ -1577,3 +1577,34 @@
 - 全部 activation quantizer 关闭可恢复约 `+11.90 dB`，但任一 sentinel 单点关闭都远不能解释该差距。
 - 后续不建议直接跑完整 52 层单点关闭 sweep；更合理的是先做 fusion/CNN/transformer/module type/stage 的分组关闭实验。
 - `CUDA_VISIBLE_DEVICES=<id>` 绑定在当前 shell 中会导致子进程 CUDA 不可用，本轮改为无绑定 `--device cuda`，未回退 CPU。
+
+## 2026-05-05 E004d group activation sensitivity
+
+### 修改内容
+
+- 使用 E004a 工具完成 128-sample 结构分组关闭验证。
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，记录 group ranking、结构定位和后续 E005 方向。
+- 本步骤不修改代码、不生成 tracked 产物。
+
+### 实验设置
+
+- checkpoint：E002c A8 init n=64 / pre-act-recon checkpoint。
+- eval：128 samples，batch size 16，seed `20260427`。
+- device：CUDA。
+- run root：
+  `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E004_sensitivity/e004d_group/`
+
+### 关键结果
+
+- `all_on` baseline：SNR mean `-7.1021 dB`。
+- `all_off` baseline：SNR mean `4.7973 dB`。
+- 关闭全部 `module_type=Conv2d` activation quantizers：SNR mean `4.5293 dB`，恢复 `+11.6314 dB`。
+- 关闭全部 `module_type=Linear` 或 `branch=transformer`：SNR mean `-7.0812 dB`，仅恢复 `+0.0209 dB`。
+- `role=unknown` 五个 stage transition / downsample-like Conv2d modules 恢复 `+2.8913 dB`。
+- `branch=fusion` 恢复 `+1.6960 dB`，其中 `merge_proj` 恢复 `+1.3489 dB`。
+
+### 结论摘要
+
+- W4A8 A8 init 崩坏主要由 Conv2d activation quantization 的结构组累积误差导致。
+- Transformer / Linear / attention qkv/proj 不是当前 A8 init 崩坏主因。
+- 后续不应优先继续完整 52 层单点 sweep；主线应转入 E005 Conv2d activation range / clipping / calibration 策略。

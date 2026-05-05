@@ -2358,3 +2358,107 @@ E004b 没有发现“关闭单个 sentinel quantizer 即可显著恢复 W4A8”�
   - `stage1+stage2` 或 early stages
 - 如果分组关闭能显著恢复，说明问题是多层/结构组累积；再决定是否做完整 52 层 ranking。
 - 如果分组关闭仍不能恢复，则应转向 E005 activation range / clipping / scale_method，而不是继续做单点位置筛选。
+
+### E004d：结构分组关闭敏感性验证
+
+- 日期：2026-05-05
+- 负责人：Codex
+- 状态：完成 128-sample group disable 验证；未运行完整 52 层单点 sweep。
+
+#### 目标
+
+在 E004b 未发现单点主导层之后，验证 W4A8 A8 init 崩坏是否由某些结构组的 activation quantization 累积导致。
+
+#### 评估口径
+
+- checkpoint：
+  `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E002c_init_sensitivity/quant/20260505_150842_e002c_init_n0064/checkpoints/quantized_scrn_brecq_pre_act_recon.pth`
+- eval dataset：
+  `SCRN_BRECQ_app/scrn_repro/datasets/scrn_quant_10750_0_patches`
+- `num_eval_samples=128`
+- `batch_size=16`
+- `seed=20260427`
+- device：CUDA
+- run root：
+  `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E004_sensitivity/e004d_group/`
+
+Baseline 复用 E004b：
+
+| mode | selected | SNR mean | SNR median | SSIM mean |
+| --- | ---: | ---: | ---: | ---: |
+| `all_on` | 51 | -7.1021 | -7.8500 | 0.1945 |
+| `all_off` | 51 | 4.7973 | 4.3093 | 0.7049 |
+
+#### 分组关闭结果
+
+以 `all_on` 为 baseline，按 `ΔSNR mean` 排序：
+
+| group | selected | SNR mean | ΔSNR mean | ΔSNR median | ΔSSIM mean |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `module_type=Conv2d` | 31 | 4.5293 | +11.6314 | +11.8975 | +0.3190 |
+| `role=unknown` | 5 | -4.2108 | +2.8913 | +3.1173 | +0.0693 |
+| `stage=stage5` | 10 | -5.0406 | +2.0615 | +2.1606 | +0.0434 |
+| `branch=fusion` | 10 | -5.4061 | +1.6960 | +1.8476 | -0.0412 |
+| `role=merge_proj` | 5 | -5.7532 | +1.3489 | +1.4754 | -0.0320 |
+| `stage=stage4` | 10 | -6.3032 | +0.7989 | +0.8264 | +0.0144 |
+| `stage=stage1` | 10 | -6.3761 | +0.7259 | +0.8040 | +0.0147 |
+| `stage=stage2` | 10 | -6.5257 | +0.5764 | +0.5934 | +0.0205 |
+| `branch=cnn` / `role=conv` | 15 | -6.6676 | +0.4345 | +0.4457 | +0.0054 |
+| `stage=stage3` | 10 | -6.7709 | +0.3312 | +0.3057 | +0.0020 |
+| `role=split_proj` | 5 | -6.7977 | +0.3044 | +0.2704 | -0.0140 |
+| `role=head` | 1 | -6.9833 | +0.1188 | -0.0239 | +0.0015 |
+| `branch=transformer` / `module_type=Linear` | 20 | -7.0812 | +0.0209 | +0.0234 | +0.0079 |
+| `role=mlp` | 10 | -7.0892 | +0.0129 | +0.0019 | +0.0002 |
+| `role=attention_qkv` | 5 | -7.0964 | +0.0057 | +0.0195 | +0.0077 |
+| `role=tail` | 1 | -7.1021 | +0.0000 | +0.0000 | +0.0000 |
+| `role=attention_proj` | 5 | -7.1075 | -0.0054 | -0.0369 | -0.0009 |
+
+#### 关键结构定位
+
+1. Conv2d activation quantization 是当前 A8 init 崩坏的主导问题。
+
+   - 关闭全部 Conv2d activation quantizers 后，SNR mean 从 `-7.1021 dB` 恢复到 `4.5293 dB`。
+   - 这已经接近 all_off / W4 weight-recon 的 `4.7973 dB`。
+   - 说明 31 个 Conv2d activation quantizers 几乎解释了全 A8 崩坏的大部分损失。
+
+2. Transformer / Linear 不是当前 A8 init 崩坏主因。
+
+   - 关闭 transformer branch 或全部 Linear activation quantizers 只恢复约 `+0.0209 dB`。
+   - attention qkv / attention proj / MLP role 关闭后也几乎没有恢复。
+   - 因此，E001 中 stage4/stage5 attention projection 的负 `delta` 更像 activation reconstruction 阶段的合法性/优化问题，不是 A8 init 崩坏的主来源。
+
+3. Fusion 和 stage-level Conv2d 结构值得继续细分。
+
+   - `branch=fusion` 恢复 `+1.6960 dB`。
+   - `role=merge_proj` 恢复 `+1.3489 dB`，明显高于 `split_proj` 的 `+0.3044 dB`。
+   - `role=unknown` 包含 `model.stage1.1` 到 `model.stage5.1` 五个 Conv2d stage transition / downsample-like modules，恢复 `+2.8913 dB`。
+   - `stage5` 恢复 `+2.0615 dB`，比 stage1-stage4 更强。
+
+4. CNN branch alone 不是全部 Conv2d 问题。
+
+   - `branch=cnn` / `role=conv` 只恢复 `+0.4345 dB`。
+   - 大部分 Conv2d 贡献来自 fusion、unknown stage modules、head 以及各 stage 的组合，而不是单纯 CNN branch。
+
+#### 结论
+
+E004d 给出了比 E004b 更强的定位结论：
+
+- W4A8 A8 init 崩坏主要由 Conv2d activation quantization 引起。
+- 这不是单点层主导，而是 Conv2d 结构组的累积误差。
+- Transformer / Linear / attention qkv/proj 在 A8 init 崩坏中影响很小，不应作为下一步主修复对象。
+- 后续修复方向应从“attention/Linear 特殊处理”转向“Conv2d activation range / clipping / calibration 策略”，尤其关注：
+  - merge projection
+  - stage transition / downsample-like Conv2d modules
+  - stage5 Conv2d activations
+  - fusion branch
+
+#### 对后续实验的影响
+
+不建议继续做完整 52 层单点关闭 sweep作为下一步主线。更合理的下一阶段是 E005：
+
+- 对 Conv2d activation quantizers 做 `scale_method=max/max_scale/mse` 对照。
+- 对 Conv2d activation 做 percentile / outlier clipping calibration。
+- 优先在 fusion / merge_proj / unknown stage transition / stage5 上试局部 clipping。
+- 保留 Linear / transformer 当前策略作为对照，避免引入无效变量。
+
+如果仍要在 E004 内继续，应只做更细的 Conv2d group 切分，而不是全层单点 sweep。
