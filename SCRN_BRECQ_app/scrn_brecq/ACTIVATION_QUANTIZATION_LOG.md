@@ -2844,3 +2844,172 @@ E004f 原本考虑做 Conv2d-only reopen / leave-one-out：
   - `merge_proj`
   - `fusion Conv2d`
 - E005 每次修复都必须用 E003a 的 128-sample eval 口径复核，而不能回到单样本 SNR。
+
+### E004g：E004 策略表收束与原目标完成度
+
+- 日期：2026-05-05
+- 负责人：用户 / Codex
+- 状态：完成。
+
+#### 收束目标
+
+E004g 的目标是停止继续扩展 sensitivity 实验，把 E004b/E004d/E004e 已有证据转化为 E005/E006 的执行输入。
+
+当前使用的基准：
+
+- `all_on`：SNR mean `-7.1021 dB`，SSIM mean `0.1945`。
+- `all_off`：SNR mean `4.7973 dB`，SSIM mean `0.7049`。
+- `all_on -> all_off` gap：`11.8993 dB`。
+
+注意：E004a 当前 CSV 中 `activation_numel` 仍为空，因此 E004g 的 resource benefit 不能声称是真实 runtime activation-volume。这里使用三个粗代理：
+
+- `selected_count`：该组关闭的 activation quantizer 数量。
+- `count_share`：`selected_count / 51`，51 是默认排除 output quantizer 后的 E004 activation sensitivity candidate 数。
+- `benefit_per_quantizer`：`delta_snr_mean / selected_count`，只作为“单位 quantizer 粗收益”，不是硬件内存收益。
+
+后续若需要严格 memory / activation-volume ranking，需要新增 hook 采集每个 quantizer 的 runtime output shape / numel；这不是当前 E004 已完成工具的能力。
+
+#### E004g 策略表
+
+| 结构组 | selected count | count share | delta SNR | recovery ratio | benefit / quantizer | 是否优先修复 | 候选策略 |
+|---|---:|---:|---:|---:|---:|---|---|
+| all Conv2d | 31 | 60.8% | +11.6314 | 97.7% | +0.3752 | 是，主方向 | Conv2d activation range / clipping / calibration 总策略 |
+| `role=unknown` stage transition / downsample-like Conv2d | 5 | 9.8% | +2.8913 | 24.3% | +0.5783 | 是，最高优先级 | percentile clipping、MSE range、局部 high precision 对照 |
+| `stage5 + Conv2d` | 6 | 11.8% | +2.0611 | 17.3% | +0.3435 | 是，高优先级 | stage5 Conv2d clipping / scale_method 对照 |
+| `branch=fusion + Conv2d` | 10 | 19.6% | +1.6960 | 14.3% | +0.1696 | 是，高优先级 | fusion Conv2d range calibration |
+| `role=merge_proj + Conv2d` | 5 | 9.8% | +1.3489 | 11.3% | +0.2698 | 是，高优先级 | merge_proj 单独 clipping / calibration |
+| `model.stage5.1` | 1 | 2.0% | +1.0256 | 8.6% | +1.0256 | 是，单点强对照 | stage5.1 FP32 / clipping ablation |
+| `stage4 + Conv2d` | 6 | 11.8% | +0.8008 | 6.7% | +0.1335 | 中 | 作为 late-stage 对照 |
+| `stage1 + Conv2d` | 6 | 11.8% | +0.7030 | 5.9% | +0.1172 | 中 | early-stage 对照 |
+| `stage2 + Conv2d` | 6 | 11.8% | +0.5693 | 4.8% | +0.0949 | 中低 | stage 对照 |
+| `branch=cnn + Conv2d` | 15 | 29.4% | +0.4345 | 3.7% | +0.0290 | 暂不主攻 | 保留为 sanity check |
+| `role=split_proj + Conv2d` | 5 | 9.8% | +0.3044 | 2.6% | +0.0609 | 暂不主攻 | fusion 内部低优先级对照 |
+| `role=head + Conv2d` | 1 | 2.0% | +0.1188 | 1.0% | +0.1188 | 暂不主攻 | 输入头部对照 |
+| all Linear / transformer | 20 | 39.2% | +0.0209 | 0.2% | +0.0010 | 不作为 A8 init 主修复 | 仅做后续 sanity check |
+| attention qkv/proj / MLP | 5-10 | 9.8%-19.6% | 约 0 | 约 0 | 约 0 | 不作为 A8 init 主修复 | 只在 reconstruction 或 E006 中复查 |
+
+#### sensitivity ranking
+
+按 `delta_snr_mean` 排名，E004 当前最重要的结构顺序为：
+
+1. all Conv2d：`+11.6314 dB`
+2. `role=unknown` stage transition / downsample-like Conv2d：`+2.8913 dB`
+3. `stage5 + Conv2d`：`+2.0611 dB`
+4. `branch=fusion + Conv2d`：`+1.6960 dB`
+5. `role=merge_proj + Conv2d`：`+1.3489 dB`
+6. `model.stage5.1`：`+1.0256 dB`
+7. `branch=cnn + Conv2d`：`+0.4345 dB`
+8. Linear / transformer groups：约 `+0.0209 dB` 或更低
+
+这个 ranking 说明：问题首先是 Conv2d activation quantization 的系统性累积误差，其次才是在 Conv2d 内部定位更敏感子组。
+
+#### resource-benefit 粗 ranking
+
+按 `benefit_per_quantizer` 粗排：
+
+1. `model.stage5.1`：`+1.0256 dB / quantizer`
+2. `role=unknown`：`+0.5783 dB / quantizer`
+3. all Conv2d：`+0.3752 dB / quantizer`
+4. `stage5 + Conv2d`：`+0.3435 dB / quantizer`
+5. `merge_proj`：`+0.2698 dB / quantizer`
+6. `fusion`：`+0.1696 dB / quantizer`
+7. `cnn branch`：`+0.0290 dB / quantizer`
+8. Linear / transformer：约 `+0.0010 dB / quantizer`
+
+这不是精确 memory ranking，但足以说明 E005 如果要做小范围策略，`stage5.1`、`role=unknown`、`stage5`、`merge_proj` 的收益密度更高。
+
+#### 对 E005/E006 的输入
+
+E005 第一阶段建议：
+
+- 不从 transformer / Linear 开始。
+- 不从完整 mixed precision 搜索开始。
+- 先做 Conv2d activation range / clipping / calibration。
+- 第一批重点结构：
+  - `role=unknown`
+  - `stage5 Conv2d`
+  - `merge_proj`
+  - `fusion Conv2d`
+  - `model.stage5.1`
+
+E005 的候选策略：
+
+- Conv2d-only percentile clipping calibration。
+- Conv2d-only MSE range calibration。
+- 对 `role=unknown` / `stage5` / `merge_proj` 采用更保守 clipping。
+- 保持 Linear / transformer A8 策略不变作为 sanity check。
+- 每次结果必须用 E003a 128-sample eval 口径对比 all_on baseline，不以单样本 SNR 做结论。
+
+E006 如果后续需要部署策略，可以基于 E004g 表做 mixed precision / selective FP32：
+
+- 首先考虑只保留 `stage5.1` 或 `role=unknown` 为 FP32 的小策略。
+- 再考虑 `stage5 + merge_proj` 等组合。
+- 不建议优先保留全 transformer / Linear FP32，因为 E004 对 A8 init 崩坏几乎没有支持。
+
+#### E004 原始目标完成度检查
+
+原始 E004 目标：
+
+> 知道哪些 activation quantizer 最该保留高精度或单独处理。
+
+完成状态：基本完成。
+
+- 已明确：最该单独处理的是 Conv2d activation quantization，特别是 `role=unknown`、`stage5`、`fusion`、`merge_proj` 和 `model.stage5.1`。
+- 已明确：Linear / transformer / attention qkv/proj 不是当前 A8 init 崩坏主因。
+
+原始实验要求：
+
+1. 单点开启或单点关闭 activation quantizer。
+
+   - 已完成单点关闭 sentinel：E004b。
+   - 已补充若干 Conv2d 单点：E004e 中的 `head`、`stage1.1` 到 `stage5.1`。
+   - 未做完整 52 层单点关闭 sweep，原因是 E004b/E004d/E004e 已显示单点不是主导，完整 sweep 边际收益低。
+   - 未做完整单点开启 sweep，原因是当前问题是累积误差，不适合作为主线。
+
+2. 按 stage / branch / module type 分组开启或关闭。
+
+   - 已完成分组关闭：E004d/E004e。
+   - 覆盖 module type、branch、stage、role、Conv2d 子组。
+   - 未做复杂组合 reopen，已决定不作为当前主线。
+
+3. 记录最终 SNR / SSIM 变化和结构位置。
+
+   - 已完成。
+   - E004b/E004d/E004e 每个 run 均保存 `metrics.json`、`selected_quantizers.csv`、`per_sample_metrics.jsonl` 和 `summary.md`。
+   - 日志已汇总关键 SNR / SSIM / selected names。
+
+原始输出要求：
+
+1. sensitivity ranking。
+
+   - 已完成，见 E004g sensitivity ranking。
+
+2. memory / activation-volume proxy ranking。
+
+   - 部分完成。
+   - 当前使用 `selected_count`、`count_share`、`benefit_per_quantizer` 作为粗 proxy。
+   - 精确 runtime activation-volume 尚未完成，因为 E004a 当前未采集 `activation_numel`。
+   - 若后续论文/部署需要严谨资源排名，需要新增 forward hook 采集 runtime activation shape / numel。
+
+3. sensitivity vs resource benefit 二维图或表。
+
+   - 表格已完成，见 E004g 策略表。
+   - 二维图未生成，因为当前 proxy 是粗代理，生成图的价值不高；如果后续补齐精确 activation-volume，可再生成正式图。
+
+#### E004 总结论
+
+E004 可以收束。
+
+当前最可信结论是：
+
+- W4A8 A8 init 崩坏主要来自 Conv2d activation quantization 的系统性/累积性误差。
+- 不是单点层主导。
+- 不是 transformer / Linear / attention qkv/proj 主导。
+- Conv2d 内部最值得优先处理的是：
+  - stage transition / downsample-like modules (`role=unknown`)
+  - stage5 Conv2d
+  - fusion Conv2d
+  - merge projection
+  - `model.stage5.1`
+
+下一阶段应进入 E005，直接验证 Conv2d activation range / clipping / calibration 是否能恢复 128-sample W4A8 SNR。

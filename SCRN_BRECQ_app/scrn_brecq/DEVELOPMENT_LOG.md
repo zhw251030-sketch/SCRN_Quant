@@ -1706,3 +1706,30 @@
 - E004d 已证明 Conv2d activation quantization 是 A8 init 崩坏主因。
 - E004e 已把 Conv2d 敏感结构进一步定位到 `role=unknown`、`stage5`、`fusion`、`merge_proj`。
 - 完整 E004f 的边际收益有限，而且需要扩展现有工具的组合开关语义。
+
+## 2026-05-05 E004g sensitivity strategy table
+
+### 修改内容
+
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，完成 E004g 策略表收束。
+- 汇总 E004b/E004d/E004e 的 sensitivity ranking、resource-benefit 粗 proxy 和 E005/E006 输入。
+- 记录 E004 原始目标完成度和仍未完成/不再执行的项目。
+- 本步骤不修改代码、不运行新实验、不生成 tracked 产物。
+
+### 核心结果
+
+- E004g 使用 `selected_count`、`count_share`、`benefit_per_quantizer` 作为 activation-volume / resource 粗 proxy。
+- 精确 runtime `activation_numel` 尚未采集，因此严谨 memory ranking 仍需后续 tooling。
+- 最优先修复结构：
+  - all Conv2d：恢复 `+11.6314 dB`
+  - `role=unknown`：恢复 `+2.8913 dB`
+  - `stage5 + Conv2d`：恢复 `+2.0611 dB`
+  - `branch=fusion + Conv2d`：恢复 `+1.6960 dB`
+  - `role=merge_proj + Conv2d`：恢复 `+1.3489 dB`
+  - `model.stage5.1`：恢复 `+1.0256 dB`
+
+### E004 收束判断
+
+- E004 已足够回答“哪些 activation quantizer 最该保留高精度或单独处理”。
+- 不再执行完整 52 层单点关闭 sweep 或完整单点开启 sweep。
+- E004 输出已足够支撑进入 E005 Conv2d activation range / clipping / calibration。
