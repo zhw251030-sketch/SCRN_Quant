@@ -1366,3 +1366,24 @@
 - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.activation_only_quantize_scrn --help`
 - E002c smoke quantize + smoke diagnostics。
 - E002c init-only sweep + fixed 64-sample CUDA diagnostics。
+
+## 2026-05-05 E002 阶段收束记录
+
+### 修改内容
+
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，补充 E002 阶段收束判断。
+- 本步骤不修改代码、不运行新实验、不生成 run 产物。
+
+### 结论摘要
+
+- E002a 的正 scale clamp 已作为必要合法性修复保留。
+- E002b 已验证该修复能让 final checkpoint 的 `non_positive_delta_count=0`，但 final SNR 只提升约 `0.0086 dB`。
+- E002c 已验证当前 A8 init 主要受 `init_batch_size` 控制，默认 64；继续只扩大 `num_samples` 不会改变 activation init 状态。
+- 后续不再优先推进 delta ratio、log-scale/softplus、activation_lr sweep、attention freeze 等 reconstruction trick。
+- 下一阶段 E003 优先进入 activation initialization、range/clipping、calibration subset 和 multi-sample eval 方向。
+
+### 后续注意事项
+
+- 不要把 `num_samples=1024` 误读为 activation init 使用 1024 个样本；当前实际由 `init_batch_size` 截断。
+- 不要只凭单张 eval SNR 判断小样本 init 更好；E002c 显示小样本高 SNR 更像 subset 对单张图的偶然匹配。
+- 不要直接启动长时间 A5000 reconstruction sweep；应先定位 A8 init 打开后从约 `11.696 dB` 掉到约 `4.987 dB` 的原因。

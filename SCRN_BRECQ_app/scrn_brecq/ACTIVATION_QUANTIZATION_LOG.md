@@ -1453,3 +1453,74 @@ E002c 回答了两个关键问题：
 - 不应把“扩大 `num_samples`”当作下一步主实验，因为 activation init 实际受 `init_batch_size` 控制。
 - 下一步应转向 calibration subset 选择、activation clipping/range 学习、分批初始化统计，或直接做 activation reconstruction 的学习率/冻结策略。
 - pre-act-recon 阶段 attention qkv/proj 指标并不崩；E002b final 中 qkv/proj 崩坏更像 activation reconstruction 阶段引入的问题。
+
+### E002 阶段收束：进入 E003 前的判断
+
+- 日期：2026-05-05
+- 负责人：Codex
+- 目的：把 E002 的修复边界、已完成状态和后续优先级记录清楚，避免后续继续在低优先级方向上分散实验资源。
+
+#### 当前已经做到的程度
+
+E002 当前已经完成三个层面的工作：
+
+1. 合法性修复已经完成。
+   - E002a 已在 activation reconstruction 的 `optimizer.step()` 后加入 activation `delta` 正值投影。
+   - 该修复不改变普通推理公式，也不改变历史 checkpoint restore 语义。
+   - E002b formal checkpoint 证明 `non_positive_delta_count=0`，offender layers 为空。
+2. 正 scale 修复的收益边界已经验证。
+   - E001b old final：`quant_post_act_recon_snr_db=5.227702998470372`
+   - E002b positive-scale final：`quant_post_act_recon_snr_db=5.236280200086368`
+   - 提升约 `0.0086 dB`，说明负 `delta` 是必须修的合法性问题，但不是当前 W4A8 失败的主要瓶颈。
+3. A8 initialization 敏感性已经初步澄清。
+   - E002c 证明当前 activation 初始化实际受 `init_batch_size` 控制，而不是单纯受 `num_samples` 控制。
+   - 默认 `init_batch_size=64` 下，`num_samples=64/256/1024` 得到完全相同的 A8 init 状态。
+   - 2/8/16 样本在当前单张 eval 图上 SNR 更高，但 fixed diagnostics 不支持“小样本状态更健康”的解释。
+
+因此，E002 可以阶段性收束：保留正 scale clamp 作为必要工程修复，但不再把“更复杂的 delta 约束”作为下一阶段主线。
+
+#### 暂时降级的方向
+
+以下方向仍然可能有价值，但当前优先级应低于 E003：
+
+- 限制 `delta` 相对初始化值的变化幅度，例如 `min_ratio * init_delta <= delta <= max_ratio * init_delta`。
+- 对 `log(delta / init_delta)` 增加正则，防止 scale 被优化到极端范围。
+- 降低 `activation_lr` 或缩短 `iters_a`，判断当前学习率/迭代数是否过激。
+- 改为 log-scale 或 `softplus(raw_delta) + eps` 参数化，从参数空间上保证 scale 为正。
+- 对 attention projection/qkv 做选择性冻结或单独策略，判断 transformer/Linear 是否是有害重构路径。
+- 重新评估 `asym=False` 的 activation reconstruction 设定是否和真实量化输入分布不一致。
+
+降级原因：
+
+- 这些方向大多作用在 activation reconstruction 或 delta 优化空间。
+- 但当前最大掉点发生在 A8 init 一打开时：W4 weight recon 约 `11.696 dB`，A8 init 后约 `4.987 dB`。
+- activation reconstruction 后只到约 `5.236 dB`，说明在 reconstruction trick 之前，activation range / scale 初始化已经是主问题。
+
+#### 进入 E003 前必须注意的问题
+
+后续处理 W4A8 激活量化时，需要特别注意以下约束：
+
+- 不要再把 `num_samples=1024` 直接理解为 “activation init 使用了 1024 个样本”。
+  - 现有代码实际使用 `min(num_samples, init_batch_size)` 做 activation init。
+  - 若不显式调整 `init_batch_size`，64/256/1024 的 activation init 状态不会变化。
+- 不要只看单张 eval SNR。
+  - E002c 的 2-sample init 在当前单张 eval 图上更高，但 diagnostics 说明这更可能是 calibration subset 对该图的偶然匹配。
+  - E003 应优先建立 multi-sample eval 或至少多张固定 eval set。
+- 不要直接启动长时间 A5000 reconstruction sweep。
+  - 在 A8 init 已经明显崩坏的前提下，先调 reconstruction 学习率或冻结层容易把问题定位复杂化。
+- 不要把 pre-act-recon 阶段 attention qkv/proj 视为已经崩坏。
+  - E002c fixed diagnostics 中 attention qkv/proj 的 effective levels 很高。
+  - E002b final 中 qkv/proj 恶化更像 activation reconstruction 阶段进一步引入的问题。
+- 若要真正测试 256/1024 activation init，必须先解决显存/初始化策略问题。
+  - 直接 `--init-batch-size 256` 已在 CUDA 0 上 OOM。
+  - 需要考虑分批统计 range、降低 MSE scale 搜索内存、或使用更大显存设备。
+
+#### E003 建议入口
+
+E003 不应从 delta ratio/log-scale/softplus 开始，而应优先解决 activation initialization 与评估协议：
+
+1. 建立 multi-sample evaluation，降低单张 eval 图带来的误导。
+2. 把 `init_batch_size` 作为真实实验变量，而不是只改 `num_samples`。
+3. 对比不同 calibration subset 对 A8 init SNR 和 fixed diagnostics 的影响。
+4. 调查 activation clipping/range 初始化策略，尤其是 tensor-wise activation scale 是否过度受 calibration 分布影响。
+5. 在确认 A8 init 的行为后，再决定是否回到 activation reconstruction 的学习率、冻结 qkv/proj 或 delta 参数化实验。
