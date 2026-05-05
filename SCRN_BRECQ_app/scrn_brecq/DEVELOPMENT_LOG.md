@@ -1463,3 +1463,17 @@
 - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_quantized_scrn_multi`
 - E003a 4-sample smoke。
 - E003a 128-sample baseline runs。
+
+## 2026-05-05 GPU resource usage principle
+
+### 修改内容
+
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，记录后续实验优先充分利用 GPU 的原则。
+- 本步骤不修改代码、不运行实验、不生成 run 产物。
+
+### 原则摘要
+
+- 后续量化、评估、诊断和 sweep 默认优先使用 `--device cuda`。
+- 单卡实验应明确指定目标 GPU，例如 `--gpus 0`。
+- CUDA 不可用或显存不足时，不自动无记录切换 CPU；先记录原因，再决定是否改 CPU 或换 GPU。
+- 若为了历史口径必须用 CPU，需要在日志中明确说明。

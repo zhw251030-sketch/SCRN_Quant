@@ -1790,3 +1790,24 @@ E003a 同时说明：
 - A8 init 是当前最主要的多样本崩坏点。
 - activation reconstruction 没有在多样本上修复 A8 崩坏。
 - 下一步 E003b 应继续围绕 activation range / init_batch_size / calibration subset 设计，而不是立即做长时间 A5000 学习率 sweep。
+
+### 后续实验资源使用原则：优先充分利用 GPU
+
+- 日期：2026-05-05
+- 负责人：用户 / Codex
+- 原则：后续激活量化相关实验应尽可能充分利用 GPU 资源，避免在 CPU 上运行本可用 GPU 加速的量化、评估或诊断任务。
+
+#### 具体要求
+
+- 默认优先使用 `--device cuda`。
+- 单卡实验默认明确指定 `--gpus 0` 或当前计划中的目标 GPU。
+- 长时间实验、正式 sweep、multi-sample eval、activation reconstruction 不应默认落到 CPU。
+- 如果 CUDA 不可用、显存不足或 GPU 任务失败，不自动悄悄切回 CPU；应先记录失败原因，再决定是否改 CPU 或换 GPU。
+- 如果为了和历史结果对齐必须使用 CPU，应在日志中明确写出原因和口径差异。
+- 实验前应尽量检查 GPU 可用性和显存占用，避免因已有进程占用导致 OOM 或结论中断。
+
+#### 对 E003 后续的影响
+
+- E003b 的 init-only sweep、multi-sample eval 和 fixed diagnostics 应优先使用 GPU。
+- E003c 如涉及 activation reconstruction 或 learning-rate sweep，应优先使用 CUDA，且在命令中明确 GPU 选择。
+- 只有当某个工具在 GPU 上存在确定性、显存或兼容性问题时，才把 CPU 作为有记录的例外方案。
