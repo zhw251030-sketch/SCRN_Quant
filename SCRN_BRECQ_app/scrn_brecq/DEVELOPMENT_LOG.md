@@ -1387,3 +1387,23 @@
 - 不要把 `num_samples=1024` 误读为 activation init 使用 1024 个样本；当前实际由 `init_batch_size` 截断。
 - 不要只凭单张 eval SNR 判断小样本 init 更好；E002c 显示小样本高 SNR 更像 subset 对单张图的偶然匹配。
 - 不要直接启动长时间 A5000 reconstruction sweep；应先定位 A8 init 打开后从约 `11.696 dB` 掉到约 `4.987 dB` 的原因。
+
+## 2026-05-05 E003 初步实验计划记录
+
+### 修改内容
+
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，记录 E003 的阶段目标、实验顺序和变量优先级。
+- 本步骤不修改代码、不运行实验、不生成 run 产物。
+
+### 计划摘要
+
+- E003 目标：验证 W4A8 失败主要来自 activation 初始化覆盖/range 问题，还是 activation reconstruction 优化稳定性问题。
+- E003a：先建立 multi-sample eval，避免继续被单张 eval SNR 误导。
+- E003b：把 `init_batch_size` 当作真实变量，优先测试 `2/8/16/32/64`；`256/1024` 因 E002c OOM 暂不作为第一轮必跑项。
+- E003c：在 eval 口径稳定后再做 `activation_lr=4e-4/1e-4/4e-5` sweep。
+
+### 设计判断
+
+- 原始设想中的 `init_batch_size=64/256/1024` 需要根据 E002c 结果调整：当前 256 full-init 已在 CUDA 0 上 OOM。
+- reconstruction 相关 trick 暂时低于 E003 主线优先级，因为最大掉点已经发生在 A8 init 阶段。
+- E003 的关键验收不是单张图 SNR，而是 multi-sample eval、fixed diagnostics 和 activation quantizer 状态的共同结论。

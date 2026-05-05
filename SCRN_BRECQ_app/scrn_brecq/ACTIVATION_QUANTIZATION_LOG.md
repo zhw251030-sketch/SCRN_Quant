@@ -1524,3 +1524,166 @@ E003 不应从 delta ratio/log-scale/softplus 开始，而应优先解决 activa
 3. 对比不同 calibration subset 对 A8 init SNR 和 fixed diagnostics 的影响。
 4. 调查 activation clipping/range 初始化策略，尤其是 tensor-wise activation scale 是否过度受 calibration 分布影响。
 5. 在确认 A8 init 的行为后，再决定是否回到 activation reconstruction 的学习率、冻结 qkv/proj 或 delta 参数化实验。
+
+### E003 初步计划：初始化覆盖与优化稳定性
+
+- 日期：2026-05-05
+- 负责人：Codex
+- 阶段目标：在 E002 已完成正 scale 合法性修复后，系统验证 W4A8 的主要瓶颈到底来自 activation 初始化覆盖不足、calibration subset 偶然匹配，还是 activation reconstruction 优化不稳定。
+
+#### E003 要回答的问题
+
+E003 不是为了继续证明负 `delta` 的问题。负 `delta` 已经由 E002a 作为合法性问题修掉。E003 要回答的是：
+
+1. A8 init 为什么会让 W4 weight-recon 从约 `11.696 dB` 直接掉到约 `4.987 dB`？
+2. E002c 中 2/8/16 样本 init 的单张 eval SNR 更高，究竟是有效策略，还是对当前 eval 图的偶然匹配？
+3. 当前 `init_batch_size=64` 是否已经足够，还是 activation range 初始化需要更大的覆盖、更好的 subset 或 clipping/range 策略？
+4. activation reconstruction 的学习率/迭代是否进一步破坏了 pre-act-recon 阶段还算健康的 attention qkv/proj？
+
+#### E003 分阶段设计
+
+E003 不建议直接做一个大矩阵 sweep。建议拆成三个阶段，逐步减少混淆变量。
+
+##### E003a：固定多样本评估口径
+
+目的：先解决单张 eval 图误导问题。
+
+需要做的事：
+
+- 使用已有评估入口或新增最小 multi-sample eval 工作流，对同一 checkpoint 在固定 eval subset 上计算平均 SNR/SSIM。
+- eval subset 必须固定 seed、固定样本列表，并把样本清单写入 run 目录。
+- 至少记录：
+  - mean / median / min / max SNR
+  - 每张样本 SNR
+  - mean / median SSIM
+  - 输入 degraded baseline SNR
+- 第一批对比对象：
+  - W4 weight-recon checkpoint
+  - E002c 2-sample A8 init checkpoint
+  - E002c 8-sample A8 init checkpoint
+  - E002c 16-sample A8 init checkpoint
+  - E002c 64-sample A8 init checkpoint
+
+验收标准：
+
+- 如果 2/8/16-sample init 在多样本 eval 上仍明显高于 64-sample init，则小样本 range 不是单张图偶然，需要进入 calibration subset / clipping 方向。
+- 如果多样本 eval 上差距消失或反转，则 E002c 的高 SNR 主要是单张 eval 图匹配，后续不能以单张图结果选择 activation scale。
+
+##### E003b：`init_batch_size` 作为真实变量
+
+目的：验证 activation 初始化覆盖本身的影响。
+
+推荐变量：
+
+- `init_batch_size=2/8/16/32/64`
+- 暂不把 256/1024 纳入正式必跑项，因为 E002c 已证明 `--init-batch-size 256` 在 CUDA 0 上 OOM。
+- 若要测试 256/1024，必须先单独解决显存或初始化实现问题，不能和主实验混在一起。
+
+固定条件：
+
+- 起点统一为 E002b W4 weight-recon checkpoint：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260504_221242_e002b_w4a8_positive_scale_1024samples_w20000_a5000/checkpoints/quantized_scrn_brecq_weight_recon.pth`
+- `num_samples` 至少等于 `init_batch_size`。
+- 默认不跑 activation reconstruction，只做 A8 init。
+- 每个 checkpoint 都跑：
+  - E003a multi-sample eval
+  - 固定 64-sample E001 diagnostics
+
+记录指标：
+
+- A8 init multi-sample SNR/SSIM
+- single-sample SNR 只作为兼容参考，不作为主结论
+- `non_positive_delta_count`
+- `delta_min/delta_max`
+- `effective_int_levels_min`
+- Linear / transformer relative MSE max
+- attention qkv/proj effective level 与 fake-quant MSE
+- top outlier / worst MSE layers
+
+验收标准：
+
+- 明确判断 `init_batch_size` 增大是否真的改善泛化评估。
+- 明确判断 64-sample init 是过宽 range、过窄 range，还是 calibration subset 不匹配。
+
+##### E003c：activation reconstruction 学习率 sweep
+
+目的：在 A8 init 行为被 E003a/E003b 固定后，再验证 activation reconstruction 是否优化过激。
+
+候选变量：
+
+- `activation_lr=4e-4`
+- `activation_lr=1e-4`
+- `activation_lr=4e-5`
+
+建议做法：
+
+- 不要一开始就重跑 W20000。
+- 从同一个 W4 weight-recon checkpoint 开始，使用 E003b 选定的 activation init 设置，然后只跑 activation reconstruction。
+- 如果工具支持，应保存：
+  - pre-act-recon checkpoint
+  - final act-recon checkpoint
+  - activation reconstruction 前后 multi-sample eval
+  - activation reconstruction 前后 E001 diagnostics
+- 若每个 A5000 run 成本过高，可先做 smoke/short run：
+  - `iters_a=500/1000`
+  - 确认趋势后再跑 `iters_a=5000`
+
+记录指标：
+
+- `quant_pre_act_recon_snr_db`
+- `quant_post_act_recon_snr_db`
+- `quant_act_recon_snr_gain_db`
+- multi-sample eval mean/median/min SNR
+- `non_positive_delta_count`
+- offender layers
+- attention qkv/proj 的 effective level、relative MSE 和 fake-quant MSE
+- final `delta` 是否比 pre-act-recon 发生极端变化
+
+验收标准：
+
+- 如果低学习率能明显提升 multi-sample final SNR，并避免 qkv/proj 指标崩坏，则 activation reconstruction 确实存在优化稳定性问题。
+- 如果低学习率仍不能恢复，而 A8 init 本身已低，则主线继续转向 activation range/clipping，而不是继续调 reconstruction。
+
+#### 关于 `init_batch_size=64/256/1024` 的处理
+
+原始设想中包含：
+
+- `init_batch_size=64/256/1024`
+
+但 E002c 已经给出新的约束：
+
+- `init_batch_size=256` 在 CUDA 0 上直接 OOM。
+- 当前 activation MSE scale 初始化不是流式统计，会在较大 batch 上产生显存压力。
+
+因此 E003 不应把 256/1024 当作第一轮必跑变量。更稳妥的处理是：
+
+1. 第一轮只跑当前显存可承受的 `2/8/16/32/64`，建立趋势。
+2. 如果趋势显示更大 init 覆盖可能有价值，再单开 E003d 或 E004 解决 full-init 内存问题。
+3. 解决方式可以是分批统计 activation range、降低 MSE scale 搜索内存、使用更大显存 GPU，或把 scale 初始化改成更轻量的 percentile/max 方案。
+
+#### E003 的优先级判断
+
+E003 的优先级应高于以下方向：
+
+- delta ratio clamp
+- log-scale / softplus 参数化
+- `log(delta / init_delta)` 正则
+- attention qkv/proj 选择性冻结
+- `asym=False` vs `asym=True` activation reconstruction 对照
+
+原因：
+
+- 这些方向主要解释 reconstruction 阶段的问题。
+- 但目前最大损失在 A8 init 阶段已经发生。
+- 如果不先建立多样本评估和 activation init 变量控制，后续 reconstruction sweep 可能会优化到单张 eval 或某个 calibration subset 上，结论不可靠。
+
+#### E003 推荐执行顺序
+
+1. E003a：建立或确认 multi-sample eval 工作流。
+2. E003a-baseline：评估 W4 weight-recon、E002c 2/8/16/64 init checkpoints。
+3. E003b：正式做 `init_batch_size=2/8/16/32/64` init-only sweep。
+4. E003b-diagnostics：每个 checkpoint 跑固定 64-sample E001 diagnostics。
+5. 根据 E003a/E003b 结果决定：
+   - 若小 init batch 在 multi-sample 上仍更好：进入 calibration subset / clipping / range 学习。
+   - 若 64 init 更稳或差距消失：进入 activation reconstruction 学习率 sweep。
+6. E003c：只在评估口径稳定后做 `activation_lr=4e-4/1e-4/4e-5`。
