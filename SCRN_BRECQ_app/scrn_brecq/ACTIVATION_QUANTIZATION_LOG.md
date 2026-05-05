@@ -2245,3 +2245,116 @@ E004 不应直接混入以下修复策略：
 - 若干 early / late stage 对照层。
 
 E004b 应继续使用 CUDA、多卡 job-level 并行和固定 128-sample eval subset；不要直接运行完整 52 层 sweep。
+
+### E004b：小规模 sentinel 单点关闭敏感性验证
+
+- 日期：2026-05-05
+- 负责人：Codex
+- 状态：完成 128-sample sentinel 验证；未运行完整 52 层 sweep。
+
+#### 目标
+
+验证 E004a 的选择性开关工具在正式 128-sample eval 口径下，是否能通过关闭少数关键 activation quantizer 产生明显恢复，从而判断完整 sensitivity map 是否值得立即展开。
+
+#### 评估口径
+
+- checkpoint：
+  `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E002c_init_sensitivity/quant/20260505_150842_e002c_init_n0064/checkpoints/quantized_scrn_brecq_pre_act_recon.pth`
+- eval dataset：
+  `SCRN_BRECQ_app/scrn_repro/datasets/scrn_quant_10750_0_patches`
+- `num_eval_samples=128`
+- `batch_size=16`
+- `seed=20260427`
+- device：CUDA
+- run root：
+  `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E004_sensitivity/e004b_sentinel/`
+
+#### GPU 资源说明
+
+- PyTorch 可见 4 张 CUDA 设备：
+  - `NVIDIA GeForce RTX 5080` x4
+- `nvidia-smi` 在当前 shell 中无法与驱动通信。
+- 尝试用 `CUDA_VISIBLE_DEVICES=<id>` 做 job-level 绑定时，子进程内 `torch.cuda.is_available()` 变为 `False`，因此本轮没有使用显式 GPU 绑定。
+- 为避免无记录 CPU fallback，本轮仍使用 `--device cuda`，但不绑定单个 GPU。后续如要稳定多卡并行，应先给相关 CLI 增加 `--gpus` 或早期 CUDA 环境设置能力。
+
+#### Sentinel 选择
+
+本轮选择 12 个 sentinel quantizers，覆盖 E001/E002c 诊断中的高风险位置和结构对照：
+
+| index | name | 选择理由 |
+| ---: | --- | --- |
+| 0 | `model.head` | high outlier / high relative MSE |
+| 11 | `model.stage2.0.block.split_proj` | low effective level / per-channel imbalance / fusion |
+| 12 | `model.stage2.0.block.merge_proj` | high relative MSE / fusion |
+| 15 | `model.stage2.0.block.conv_branch.6` | worst fake-quant MSE / outlier / CNN control |
+| 18 | `model.stage2.0.block.trans_branch.mlp.0` | transformer low effective level / outlier |
+| 20 | `model.stage2.1` | low effective level / high relative MSE / downsample-like control |
+| 24 | `model.stage3.0.block.conv_branch.3` | CNN high MSE / per-channel imbalance |
+| 36 | `model.stage4.0.block.trans_branch.attn.qkv` | late transformer attention qkv |
+| 37 | `model.stage4.0.block.trans_branch.attn.proj` | late transformer attention proj; E001 final negative-delta related family |
+| 46 | `model.stage5.0.block.trans_branch.attn.qkv` | late transformer attention qkv |
+| 47 | `model.stage5.0.block.trans_branch.attn.proj` | late transformer attention proj; E001 final negative-delta related family |
+| 48 | `model.stage5.0.block.trans_branch.mlp.0` | lowest non-output effective levels / late transformer MLP |
+
+#### Baseline
+
+| mode | selected | SNR mean | SNR median | SSIM mean |
+| --- | ---: | ---: | ---: | ---: |
+| `all_on` | 51 | -7.1021 | -7.8500 | 0.1945 |
+| `all_off` | 51 | 4.7973 | 4.3093 | 0.7049 |
+
+该 baseline 与 E003a 对齐：
+
+- `all_on` 等价于 A8 init n=64，多样本 SNR mean 约 `-7.10 dB`。
+- `all_off` 等价于 W4 weight-recon，多样本 SNR mean 约 `4.80 dB`。
+- 全部候选 activation quantizer 关闭可恢复约 `+11.90 dB`，再次确认 A8 activation 是主要崩坏来源。
+
+#### Sentinel 单点关闭结果
+
+以 `all_on` 为 baseline，记录 `disable_one` 后的变化：
+
+| index | structure | SNR mean | ΔSNR mean | ΔSNR median | ΔSSIM mean |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 20 | stage2 unknown Conv2d | -6.8101 | +0.2920 | +0.3740 | +0.0050 |
+| 12 | stage2 fusion merge_proj Conv2d | -6.9704 | +0.1317 | +0.1833 | +0.0025 |
+| 0 | head Conv2d | -6.9833 | +0.1188 | -0.0239 | +0.0015 |
+| 11 | stage2 fusion split_proj Conv2d | -7.0505 | +0.0515 | +0.0041 | -0.0060 |
+| 15 | stage2 cnn conv Conv2d | -7.0750 | +0.0271 | +0.0218 | -0.0027 |
+| 24 | stage3 cnn conv Conv2d | -7.0828 | +0.0193 | +0.0417 | +0.0004 |
+| 36 | stage4 transformer attention_qkv Linear | -7.0994 | +0.0027 | -0.0168 | -0.0005 |
+| 18 | stage2 transformer mlp Linear | -7.1011 | +0.0010 | +0.0171 | -0.0011 |
+| 37 | stage4 transformer attention_proj Linear | -7.1013 | +0.0008 | +0.0091 | -0.0001 |
+| 48 | stage5 transformer mlp Linear | -7.1028 | -0.0007 | +0.0125 | +0.0003 |
+| 46 | stage5 transformer attention_qkv Linear | -7.1035 | -0.0014 | -0.0015 | +0.0005 |
+| 47 | stage5 transformer attention_proj Linear | -7.1039 | -0.0018 | +0.0138 | +0.0002 |
+
+#### 结论
+
+E004b 没有发现“关闭单个 sentinel quantizer 即可显著恢复 W4A8”的强信号。
+
+关键观察：
+
+- 最大单点恢复来自 `index=20 model.stage2.1`，SNR mean 只提升约 `+0.292 dB`。
+- 第二梯队是 stage2 fusion / head，恢复约 `+0.05` 到 `+0.13 dB`。
+- stage4/stage5 attention qkv/proj 的单点关闭几乎没有恢复，变化接近 0。
+- 全部 activation quantizer 关闭可恢复约 `+11.90 dB`，但任一 sentinel 单点关闭都远不能解释该差距。
+
+因此，当前更可信的解释是：
+
+- W4A8 崩坏不是由某一个明显的 activation quantizer 单独主导。
+- 也不是简单由 stage4/stage5 attention projection 单点主导；这些层更可能与 activation reconstruction 阶段的负 `delta` 有关，而不是 A8 init 崩坏的单点源头。
+- A8 崩坏更像多层 activation quantization 误差累积、早中期 Conv/Fusion 传播误差、或全局 range/clipping 策略不适配造成的系统性问题。
+
+#### 对后续 E004 的影响
+
+- 不建议立刻跑完整 52 层 `disable_one` sweep；预期收益有限，因为 sentinel 已覆盖多个高风险结构但恢复都很小。
+- 下一步更合理的是做分组关闭 E004c：
+  - `branch=fusion`
+  - `branch=cnn`
+  - `branch=transformer`
+  - `module_type=Conv2d`
+  - `module_type=Linear`
+  - `stage2`
+  - `stage1+stage2` 或 early stages
+- 如果分组关闭能显著恢复，说明问题是多层/结构组累积；再决定是否做完整 52 层 ranking。
+- 如果分组关闭仍不能恢复，则应转向 E005 activation range / clipping / scale_method，而不是继续做单点位置筛选。

@@ -1547,3 +1547,33 @@
 - `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/activation_sensitivity.py SCRN_BRECQ_app/scrn_brecq/cli/evaluate_activation_sensitivity.py`
 - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_activation_sensitivity --help`
 - E004a CUDA smoke runs under ignored `runs/activation_quantization/E004_sensitivity/e004a_tool_smoke/`.
+
+## 2026-05-05 E004b sentinel activation sensitivity
+
+### 修改内容
+
+- 使用 E004a 工具完成 128-sample sentinel 单点关闭验证。
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，记录 sentinel 选择、run 口径、结果表和结论。
+- 本步骤不修改代码、不生成 tracked 产物。
+
+### 实验设置
+
+- checkpoint：E002c A8 init n=64 / pre-act-recon checkpoint。
+- eval：128 samples，batch size 16，seed `20260427`。
+- device：CUDA。
+- run root：
+  `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E004_sensitivity/e004b_sentinel/`
+
+### 关键结果
+
+- `all_on`：SNR mean `-7.1021 dB`，SSIM mean `0.1945`。
+- `all_off`：SNR mean `4.7973 dB`，SSIM mean `0.7049`。
+- 最大单点恢复来自 `index=20 model.stage2.1`，SNR mean `-6.8101 dB`，相对 all_on 提升 `+0.2920 dB`。
+- stage4/stage5 attention qkv/proj 单点关闭基本无恢复，ΔSNR mean 约 `-0.0018` 到 `+0.0027 dB`。
+
+### 结论摘要
+
+- E004b 没有发现单个 sentinel quantizer 主导 W4A8 崩坏。
+- 全部 activation quantizer 关闭可恢复约 `+11.90 dB`，但任一 sentinel 单点关闭都远不能解释该差距。
+- 后续不建议直接跑完整 52 层单点关闭 sweep；更合理的是先做 fusion/CNN/transformer/module type/stage 的分组关闭实验。
+- `CUDA_VISIBLE_DEVICES=<id>` 绑定在当前 shell 中会导致子进程 CUDA 不可用，本轮改为无绑定 `--device cuda`，未回退 CPU。
