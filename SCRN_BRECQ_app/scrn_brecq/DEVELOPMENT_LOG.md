@@ -1492,3 +1492,18 @@
 - 每个并行 run 必须使用独立 `--run-name` 和清晰输出目录，避免产物覆盖。
 - 正式并行实验前检查 `nvidia-smi`，记录可用 GPU 和显存余量。
 - 已知 activation reconstruction 路径不应强行单任务 distributed；更适合多进程多卡并行跑不同配置。
+
+## 2026-05-05 E003 phase summary and handoff
+
+### 修改内容
+
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，追加 E003 阶段性总结。
+- 本步骤不修改代码、不运行实验、不生成 run 产物。
+
+### 结论摘要
+
+- E003a 已完成 multi-sample eval 口径建立，并证明小样本 A8 init 的单张高 SNR 不具备泛化意义。
+- A8 init n=2/8/16/64 在 128-sample eval 上全部约 `-7 dB`，E002b final activation reconstruction 也没有恢复。
+- E003b 低样本 `init_batch_size` sweep 暂缓；`256/1024` 需要先解决 memory-safe activation init，当前多卡不能自动分摊单个 init batch 的显存峰值。
+- E003c activation reconstruction 学习率 sweep 暂缓；如果后续需要，只建议先做 short sweep，不直接跑 A5000。
+- 下一阶段建议进入 E004，优先研究 activation range / clipping / scale_method / percentile calibration。

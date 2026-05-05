@@ -1840,3 +1840,79 @@ E003a 同时说明：
 - E003a/E003b 的 multi-sample eval 可以按 checkpoint 维度并行。
 - 如果需要固定 diagnostics，也可以按 checkpoint 维度并行，但要留意 E001 diagnostics 的 hook/quantile 统计显存和耗时。
 - 若某个单 run 因显存限制无法使用大 `init_batch_size`，不能简单认为“多卡能自动解决”；除非脚本支持模型/数据分布式，否则仍需分批初始化策略或更大单卡显存。
+
+### E003 阶段性总结：当前已完成内容、暂缓内容与后续入口
+
+- 日期：2026-05-05
+- 负责人：用户 / Codex
+- 状态：阶段性收束，准备从 E003 转入 E004 activation range / clipping 主线。
+
+#### 已完成内容
+
+1. E003a 已完成 multi-sample eval 口径建立。
+
+   - `evaluate_quantized_scrn_multi.py` 已补齐 mean / median / min / max 聚合能力。
+   - 已用固定 128-sample eval subset 对 W4 weight-recon、A8 init n=2/8/16/64、E002b final 做同口径评估。
+   - 所有正式 run 使用相同 sample list，hash 为 `cf3b4fe1a094`。
+
+2. E003a 给出了关键结论。
+
+   - W4 weight-recon 128-sample SNR mean 为 `4.7973 dB`。
+   - A8 init n=2/8/16/64 在 128-sample eval 上全部约 `-7 dB`。
+   - E002b positive-scale final activation reconstruction 也约 `-7.0713 dB`。
+   - 因此，E002c 单张 eval 中小样本 A8 init 的 `6-8 dB` 表现不具备泛化意义，更像 calibration subset 与单张 eval 图的偶然匹配。
+
+3. E003 已明确主要瓶颈位置。
+
+   - 主要掉点不是负 `delta` 合法性问题；E002a/E002b 已把 final `non_positive_delta_count` 修到 0，但多样本 SNR 没有恢复。
+   - 主要掉点也不应优先归因于 activation reconstruction 学习率；因为 A8 init 打开后在多样本上已经崩坏。
+   - 当前最可信的主瓶颈是 activation quantizer 的 range / clipping / 初始化策略不适合 SCRN 激活分布。
+
+#### 未完成但已决定暂缓的内容
+
+1. E003b 原计划的 `init_batch_size=2/8/16/32/64` sweep 暂缓。
+
+   - 原因：E003a 已经证明低样本 init 在 multi-sample eval 上全部很差。
+   - 用户判断低样本继续测试价值有限；Codex 同意。
+   - 继续测试 `2/8/16/32/64` 不太可能改变主结论，只会重复证明小样本不稳定。
+
+2. E003b 中 `init_batch_size=256/1024` 暂不直接执行。
+
+   - 原因：E002c 已尝试 `num_samples=256, init_batch_size=256`，在 CUDA 上 OOM。
+   - 当前 activation init 是单进程、单设备一次性前向，不会因为给脚本多个 GPU 就自动把一个 batch 分摊到多卡。
+   - 现有 `--gpus` 主要控制可见 GPU；现有 distributed 路径不支持 activation quant / activation reconstruction。
+   - 因此，多卡当前适合并行多个独立 run，不能直接解决单个 256 init 的显存峰值。
+
+3. E003c activation reconstruction 学习率 sweep 暂缓。
+
+   - 原因：E003a 显示 A8 init 本身已经在多样本 eval 上崩坏。
+   - 学习率 sweep 只能回答 activation reconstruction 是否进一步破坏，不能解决 A8 init 已低的问题。
+   - 若后续需要保留证据链，可以只做 short sweep：
+     - 固定 `init_batch_size=64`
+     - `iters_a=500/1000`
+     - `activation_lr=4e-4/1e-4/4e-5`
+     - 只看 multi-sample final SNR 是否有显著恢复。
+   - 如果 short sweep 仍无明显恢复，则不再跑 A5000。
+
+#### 后续再回到 E003 时的注意事项
+
+- 不能再使用单张 eval SNR 作为主要判断依据。
+- 所有结论必须基于固定 multi-sample eval subset，并记录 sample list hash。
+- 如果要测试 `init_batch_size=256/1024`，需要先解决 memory-safe activation init：
+  - 分批统计 activation range。
+  - 改写 MSE scale 初始化，避免在大 batch 上保留巨大临时张量。
+  - 或实现真正的跨卡 activation range / MSE score 聚合。
+- 不能假设多卡会自动降低单个 run 的显存峰值；除非脚本明确支持数据/模型分布式。
+- 后续 sweep 应充分利用多 GPU 做 job-level 并行，但每个 run 必须有独立 `run-name` 和输出目录。
+- 若 CUDA 不可用、OOM 或驱动异常，先记录原因，不要无记录切换 CPU。
+
+#### 下一步建议
+
+E003 当前不再继续扩展。下一阶段建议进入 E004：
+
+- activation range / clipping 策略。
+- `scale_method=max`、`max_scale`、`mse` 的对比。
+- percentile / outlier clipping calibration。
+- 针对 transformer / Linear / attention qkv-proj 的局部分布诊断和可选分层策略。
+
+E004 的核心问题应是：如何让 A8 init 在 multi-sample eval 上不从 W4 weight-recon 的约 `4.8 dB` 直接跌到约 `-7 dB`。
