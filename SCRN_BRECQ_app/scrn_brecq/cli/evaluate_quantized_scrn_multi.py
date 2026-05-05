@@ -51,6 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-root", default=DEFAULT_RUN_ROOT, help="Output run root")
     parser.add_argument("--run-name", default="multi_sample_eval", help="Run name suffix")
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
+    parser.add_argument("--cuda-device-index", type=int, default=None, help="Explicit CUDA device index, e.g. 1 for cuda:1")
     parser.add_argument("--save-figures", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--max-figures", type=int, default=8, help="Maximum comparison figures to save")
     return parser
@@ -69,7 +70,7 @@ def main() -> None:
         else None
     )
     eval_dataset_dir = require_directory(args.eval_dataset_dir, "eval dataset directory")
-    device = select_device(args.device)
+    device = select_eval_device(args.device, args.cuda_device_index)
 
     post_bundle = load_eval_model(checkpoint_path, device)
     pre_bundle = load_eval_model(pre_recon_checkpoint_path, device) if pre_recon_checkpoint_path is not None else None
@@ -214,6 +215,22 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError(f"--batch-size must be positive, got {args.batch_size}")
     if int(args.max_figures) < 0:
         raise ValueError(f"--max-figures must be non-negative, got {args.max_figures}")
+
+
+def select_eval_device(device_arg: str, cuda_device_index: int | None = None) -> torch.device:
+    """Select an eval device, optionally targeting a specific CUDA index."""
+    if cuda_device_index is None:
+        return select_device(device_arg)
+    if device_arg != "cuda":
+        raise ValueError("--cuda-device-index requires --device cuda.")
+    if int(cuda_device_index) < 0:
+        raise ValueError(f"--cuda-device-index must be non-negative, got {cuda_device_index}")
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested but torch.cuda.is_available() is False")
+    device_count = torch.cuda.device_count()
+    if int(cuda_device_index) >= device_count:
+        raise ValueError(f"--cuda-device-index {cuda_device_index} is out of range for {device_count} CUDA devices.")
+    return torch.device(f"cuda:{int(cuda_device_index)}")
 
 
 def require_directory(path: str | Path, description: str) -> Path:
@@ -568,6 +585,7 @@ def build_run_config(
         "batch_size": int(args.batch_size),
         "seed": int(args.seed),
         "run_dir": str(run_dir),
+        "cuda_device_index": args.cuda_device_index,
         "save_figures": bool(args.save_figures),
         "max_figures": int(args.max_figures),
         "selected_sample_paths": [str(path) for path in selected_files],

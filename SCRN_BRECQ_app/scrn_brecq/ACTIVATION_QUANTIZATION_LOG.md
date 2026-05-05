@@ -2462,3 +2462,73 @@ E004d 给出了比 E004b 更强的定位结论：
 - 保留 Linear / transformer 当前策略作为对照，避免引入无效变量。
 
 如果仍要在 E004 内继续，应只做更细的 Conv2d group 切分，而不是全层单点 sweep。
+
+### E004 资源修正：支持显式 CUDA device index
+
+- 日期：2026-05-05
+- 负责人：用户 / Codex
+- 状态：完成工具修正，后续可避开 0 卡运行 E004/E005 eval。
+
+#### 背景
+
+E004d 期间发现：
+
+- 不绑定 GPU 时，PyTorch 能看到 4 张 `NVIDIA GeForce RTX 5080`。
+- `nvidia-smi` 在当前 shell 中无法与驱动通信。
+- 使用外部 `CUDA_VISIBLE_DEVICES=<id>` 绑定时，子进程内 `torch.cuda.is_available()` 会变为 `False`。
+- 因此，不能依赖 `CUDA_VISIBLE_DEVICES` 做 job-level GPU 绑定。
+
+用户指出 0 卡已有其他任务占用，因此后续实验需要能显式选择非 0 卡。
+
+#### 修改策略
+
+新增内部 CUDA device index 选择，而不是修改 `CUDA_VISIBLE_DEVICES`：
+
+- `evaluate_activation_sensitivity.py` 新增：
+  - `--cuda-device-index`
+- `evaluate_quantized_scrn_multi.py` 新增：
+  - `--cuda-device-index`
+
+使用方式：
+
+```bash
+--device cuda --cuda-device-index 1
+```
+
+这会直接选择 `torch.device("cuda:1")`，不改变进程可见 GPU 列表。
+
+#### Smoke 验证
+
+命令口径：
+
+- CLI：`evaluate_activation_sensitivity.py`
+- mode：`all_on`
+- samples：2
+- batch size：1
+- device：`cuda`
+- cuda device index：1
+- run：
+  `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E004_sensitivity/cuda_device_index_smoke/20260505_205010_e004_cuda_index_1_smoke`
+
+结果：
+
+- run 成功完成。
+- `config.json` 记录：
+  - `device`: `cuda:1`
+  - `cuda_device_index`: `1`
+- SNR mean：`-6.8132 dB`
+- SSIM mean：`0.1401`
+- run 产物位于 `.gitignore` 保护的 `runs/activation_quantization/*` 下，不纳入 Git。
+
+#### 后续使用原则
+
+- 如果 0 卡被占用，后续 E004/E005 eval 优先使用：
+
+```bash
+--device cuda --cuda-device-index 1
+```
+
+或根据可用情况改为 `2/3`。
+
+- 这仍然是“单个 run 单卡”，但可以让多个独立 run 分别指定 `cuda:1/2/3` 并行执行。
+- 后续若要稳定多进程并行，需要在调度脚本中按 run 分配不同 `--cuda-device-index`，不要再用 `CUDA_VISIBLE_DEVICES=<id>`。

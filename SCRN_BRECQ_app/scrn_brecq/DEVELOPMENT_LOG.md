@@ -1608,3 +1608,27 @@
 - W4A8 A8 init 崩坏主要由 Conv2d activation quantization 的结构组累积误差导致。
 - Transformer / Linear / attention qkv/proj 不是当前 A8 init 崩坏主因。
 - 后续不应优先继续完整 52 层单点 sweep；主线应转入 E005 Conv2d activation range / clipping / calibration 策略。
+
+## 2026-05-05 Explicit CUDA device index for eval CLIs
+
+### 修改内容
+
+- `evaluate_quantized_scrn_multi.py` 新增 `--cuda-device-index`，支持直接选择 `cuda:<index>`。
+- `evaluate_activation_sensitivity.py` 新增 `--cuda-device-index`，复用相同设备选择逻辑。
+- `test_evaluate_quantized_scrn_multi.py` 增加设备选择单元测试。
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，记录 E004/E005 后续避开 0 卡的使用原则。
+
+### 背景
+
+- 当前 shell 中 `CUDA_VISIBLE_DEVICES=<id>` 会导致子进程内 CUDA 不可用。
+- 0 卡可能被其他任务占用，因此需要不依赖 `CUDA_VISIBLE_DEVICES` 的显式设备选择。
+
+### 验证方式
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_quantized_scrn_multi`
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/evaluate_quantized_scrn_multi.py SCRN_BRECQ_app/scrn_brecq/cli/evaluate_activation_sensitivity.py`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_activation_sensitivity --help`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi --help`
+- CUDA index smoke：
+  - `--device cuda --cuda-device-index 1`
+  - run 成功记录 `device: cuda:1` 和 `cuda_device_index: 1`。

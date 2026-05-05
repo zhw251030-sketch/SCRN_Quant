@@ -15,7 +15,6 @@ from SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn import (
     normalize_quant_config,
     require_file,
     restore_quantizer_state_shapes,
-    select_device,
 )
 from SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi import (
     DEFAULT_EVAL_DATASET_DIR,
@@ -23,6 +22,7 @@ from SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi import (
     evaluate_files,
     require_directory,
     select_eval_files,
+    select_eval_device,
     summary_metrics,
     write_jsonl,
 )
@@ -58,6 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=16, help="Evaluation batch size")
     parser.add_argument("--seed", type=int, default=20260427, help="Seed for sample selection and online degradation")
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
+    parser.add_argument("--cuda-device-index", type=int, default=None, help="Explicit CUDA device index, e.g. 1 for cuda:1")
     parser.add_argument("--run-root", default=DEFAULT_RUN_ROOT, help="Output run root")
     parser.add_argument("--run-name", default="e004a_activation_sensitivity", help="Run name suffix")
     parser.add_argument("--include-output-quantizer", action="store_true", help="Allow selecting the final output quantizer")
@@ -74,7 +75,7 @@ def main() -> None:
 
     checkpoint_path = require_file(args.checkpoint, "quantized checkpoint")
     eval_dataset_dir = require_directory(args.eval_dataset_dir, "eval dataset directory")
-    device = select_device(args.device)
+    device = select_eval_device(args.device, args.cuda_device_index)
 
     checkpoint = load_quant_checkpoint(checkpoint_path)
     quant_config = normalize_quant_config(checkpoint.get("quant_config", {}))
@@ -237,6 +238,7 @@ def build_run_config(
         "batch_size": int(args.batch_size),
         "seed": int(args.seed),
         "run_dir": str(run_dir),
+        "cuda_device_index": args.cuda_device_index,
         "save_figures": bool(args.save_figures),
         "max_figures": int(args.max_figures),
         "mode": str(args.mode),

@@ -1,6 +1,7 @@
 import unittest
+from unittest import mock
 
-from SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi import build_aggregate_metrics
+from SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi import build_aggregate_metrics, select_eval_device
 
 
 def _row(index: int, value: float) -> dict:
@@ -37,6 +38,21 @@ class EvaluateQuantizedScrnMultiTest(unittest.TestCase):
         self.assertEqual(metrics["input_snr_db_median"], 3.0)
         self.assertEqual(metrics["quant_post_recon_snr_db_median"], 5.0)
         self.assertEqual(metrics["quant_snr_db_median"], 5.0)
+
+    def test_select_eval_device_supports_explicit_cuda_index(self) -> None:
+        with mock.patch("torch.cuda.is_available", return_value=True), mock.patch("torch.cuda.device_count", return_value=4):
+            device = select_eval_device("cuda", 2)
+
+        self.assertEqual(str(device), "cuda:2")
+
+    def test_select_eval_device_rejects_cuda_index_with_cpu(self) -> None:
+        with self.assertRaisesRegex(ValueError, "--cuda-device-index requires --device cuda"):
+            select_eval_device("cpu", 1)
+
+    def test_select_eval_device_rejects_out_of_range_cuda_index(self) -> None:
+        with mock.patch("torch.cuda.is_available", return_value=True), mock.patch("torch.cuda.device_count", return_value=2):
+            with self.assertRaisesRegex(ValueError, "out of range"):
+                select_eval_device("cuda", 3)
 
 
 if __name__ == "__main__":
