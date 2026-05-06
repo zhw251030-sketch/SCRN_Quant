@@ -3497,3 +3497,185 @@ E005a 支持下面判断：
 3. 如果 percentile clipping 对 `fusion/split_proj` 有效，但对 `merge_proj/stage_output_conv` 不足，再进入 E005c MSE range calibration。
 4. 如果 clipping 有明显恢复但 stage5 仍拖后腿，再考虑 per-channel/group-wise。
 5. Linear / transformer 继续作为 sanity check，不作为 E005 第一阶段主线。
+
+### 2026-05-06 E004-E005a：可读结论整理
+
+#### 总体判断
+
+E004 和 E005a 合起来给出的结论不是简单的“Conv2d 有问题”，而是：
+
+> 在 SCRN 的 W4A8 A8 init 阶段，主要失真来自 Conv2d activation quantization 的多点累积误差。这个误差不是单个 quantizer 主导，也不是 attention/Transformer 在 A8 init 阶段主导；Conv2d 内部又同时存在 outlier range、局部相对量化误差偏高和部分通道尺度不均衡三类信号。
+
+这条结论目前比“优先修 attention”更符合已有实验，因为 E004 的敏感性实验直接测了关闭不同 activation quantizer 后的 SNR 恢复。
+
+#### E004 说明了什么
+
+E004 的核心作用是回答“哪些 activation quantizer 对最终多样本 SNR 最敏感”。
+
+统一评估口径：
+
+- checkpoint：A8 init n=64 / pre-act-recon checkpoint。
+- eval：128 samples，seed `20260427`。
+- `all_on`：所有候选 activation quantizers 开启，SNR mean `-7.1021 dB`，SSIM mean `0.1945`。
+- `all_off`：候选 activation quantizers 关闭，近似 W4A32 / weight-recon 口径，SNR mean `4.7973 dB`，SSIM mean `0.7049`。
+- `all_on -> all_off` gap：约 `11.8993 dB`。
+
+E004b 的 sentinel 单点关闭说明：
+
+- 单点关闭无法解释整体崩坏。
+- 单个 quantizer 的最大恢复远小于 `all_on -> all_off` gap。
+- stage4/stage5 attention qkv/proj 单点关闭几乎不恢复 SNR。
+
+E004d 的分组关闭给出强结论：
+
+| 关闭对象 | quantizer 数 | SNR mean | 恢复 |
+|---|---:|---:|---:|
+| all Conv2d | 32 | 约 `4.5293` | `+11.6314 dB` |
+| Linear / transformer | 20 | `-7.0812` | `+0.0209 dB` |
+
+解释：
+
+- 关闭全部 Conv2d activation quantizers 后，SNR 几乎恢复到 W4A32 / all_off 水平。
+- 关闭全部 Linear / transformer activation quantizers 几乎没有恢复。
+- 因此，A8 init 崩坏主因不是 Linear / transformer，而是 Conv2d activation quantization。
+- E001 中 attention projection 的负 `delta` 仍然重要，但它更像 activation reconstruction 阶段的合法性/优化问题，不是当前 A8 init 崩坏的主来源。
+
+E004e 的 Conv2d 子组细分说明：
+
+| 关闭对象 | quantizer 数 | SNR mean | 恢复 | recovery ratio |
+|---|---:|---:|---:|---:|
+| stage output Conv2d，旧 `role=unknown` | 5 | `-4.2108` | `+2.8913 dB` | 24.3% |
+| stage5 Conv2d | 6 | `-5.0410` | `+2.0611 dB` | 17.3% |
+| fusion Conv2d | 10 | `-5.4061` | `+1.6960 dB` | 14.3% |
+| merge_proj Conv2d | 5 | `-5.7532` | `+1.3489 dB` | 11.3% |
+| `model.stage5.1` | 1 | `-6.0764` | `+1.0256 dB` | 8.6% |
+
+解释：
+
+- Conv2d 内部也不是平均贡献。
+- 最值得优先处理的是 stage output Conv2d、stage5、fusion 和 merge projection。
+- 单个 `model.stage5.1` 恢复超过 `+1 dB`，是很强的单点对照。
+- 但任何单点或单个子组都不能完全解释 `+11.6314 dB`，所以问题仍然是多点累积。
+
+#### `role=unknown` 的命名修正
+
+E004 中的 `role=unknown` 后来确认并不是未知结构，而是每个 stage 末尾的 3x3 Conv2d：
+
+- `model.stage1.1`
+- `model.stage2.1`
+- `model.stage3.1`
+- `model.stage4.1`
+- `model.stage5.1`
+
+从 E005a 开始，这些层统一标记为：
+
+- `branch=stage_output`
+- `role=stage_output_conv`
+
+因此，后续不再把这组结构称为 unknown，而应称为 stage output Conv2d。
+
+#### E005a 说明了什么
+
+E005a 的核心作用是解释“为什么 E004 指向 Conv2d”。
+
+module type 级别对比：
+
+| 类型 | 数量 | effective level min | relative MSE max | absmax/p99 max | absmax/p99.99 max | per-channel ratio max |
+|---|---:|---:|---:|---:|---:|---:|
+| Conv2d | 32 | 124 | `0.2044677` | `137.7856` | `29.3499` | `8.5134` |
+| Linear | 20 | 139 | `0.0002061` | `6.6914` | `6.0692` | `5.2560` |
+
+可读解释：
+
+- Conv2d 的最坏 relative MSE 比 Linear 高约三个数量级。
+- Conv2d 的 outlier ratio 明显更强，说明少数极值会把 tensor-wise activation range 拉得很宽。
+- Linear / transformer 虽然也有低 effective level 和部分 outlier，但 E004 已经证明它们不是当前 A8 init SNR 崩坏的主导因素。
+
+#### Conv2d 内部的三类问题
+
+E005a 显示 Conv2d 内部不是一种统一故障，而是至少有三类信号。
+
+第一类：outlier range 更明显的结构。
+
+- `fusion/split_proj` 的高分位 outlier ratio 更突出。
+- `split_proj` 的 `absmax/p99.99` 最高到 `8.0258`。
+- 这类结构适合优先验证 percentile clipping，因为问题很像少数极值撑大 min/max range。
+
+第二类：relative MSE 更突出的结构。
+
+- `merge_proj` relative MSE max：`0.0011164239`。
+- `stage_output_conv` relative MSE max：`0.0010821137`。
+- 它们的 extreme percentile ratio 不一定最高，但 fake-quant 后局部相对误差偏高。
+- 这类结构可能需要 MSE range calibration 或更结构化的 clipping，而不只是固定 percentile。
+
+第三类：channel imbalance 更明显的结构。
+
+- `model.stage5.0.block.conv_branch.6` 的 per-channel absmax ratio：`8.5134`。
+- 这说明某些 Conv2d 输出通道的幅值明显大于其他通道。
+- 但 E004 中普通 `cnn branch` 整体 sensitivity 不高，所以 per-channel/group-wise 不应作为第一步，而应作为 clipping 之后的后续候选。
+
+#### head/tail 的解释边界
+
+E005a 中 `model.head` 和 `model.tail` 的 outlier 与 relative MSE 很强：
+
+- `model.head`：`absmax/p99=137.7856`
+- `model.tail`：`absmax/p99=86.2140`
+- `model.tail` relative MSE：`0.2044677242`
+
+但当前不把 head/tail 作为第一修复对象，原因是：
+
+- E004 sensitivity 默认排除最终输出 activation quantizer，以对齐现有 eval 口径。
+- head 单点关闭恢复有限。
+- head/tail 更像需要持续监控的诊断警报，而不是当前最确定的主修复入口。
+
+#### 对 attention / Transformer 的重新定位
+
+不能说 attention / Transformer 没问题。
+
+更准确的说法是：
+
+- 在 activation reconstruction 阶段，attention projection 曾经出现负 `delta`，这是确定的非法状态和优化不稳定问题。
+- 但在 A8 init 的 128-sample sensitivity 口径下，关闭 Linear / transformer 几乎不恢复 SNR。
+- 因此，当前 E005 第一阶段不应优先做 attention SmoothQuant 或 transformer-specific 策略。
+- Linear / transformer 应继续保留为 sanity check，防止修 Conv2d 后出现新的瓶颈。
+
+#### 当前最可信的问题链条
+
+现阶段可以把 W4A8 激活量化失败拆成两条链：
+
+1. activation reconstruction 链：
+   - 曾经把 stage4/stage5 attention projection 的 `delta` 优化成负数。
+   - E002a 已用正 scale clamp 修掉合法性问题。
+   - 但修掉负 `delta` 不能恢复整体 W4A8 SNR，说明它不是唯一主因。
+
+2. A8 init / activation range 链：
+   - 128-sample all_on A8 init SNR mean 为 `-7.1021 dB`。
+   - 关闭全部 Conv2d activation quantizers 恢复 `+11.6314 dB`。
+   - Conv2d 的 outlier ratio、relative MSE 和 per-channel imbalance 均强于 Linear。
+   - 因此当前主线应转向 Conv2d activation range calibration。
+
+#### 后续实验决策
+
+E005b 应优先做：
+
+1. all Conv2d tensor-wise percentile clipping。
+2. `fusion/split_proj` clipping。
+3. `merge_proj` clipping。
+4. `stage_output_conv` clipping。
+5. `stage5` clipping。
+
+判断标准：
+
+- 如果 percentile clipping 明显提升 128-sample SNR，说明 outlier/range 是主修复方向。
+- 如果只对 `fusion/split_proj` 有效，而 `merge_proj/stage_output_conv` 仍差，则进入 E005c MSE range calibration。
+- 如果 clipping 有一定恢复但 stage5 仍拖后腿，再考虑 per-channel/group-wise。
+- 如果 Conv2d range 修复后 Linear / transformer 变成新瓶颈，再重新考虑 attention/Transformer 专项策略。
+
+当前不建议立刻做：
+
+- 完整 per-channel activation 实现。
+- 完整 group-wise activation 实现。
+- attention SmoothQuant。
+- activation reconstruction 学习率大 sweep。
+
+原因是 E004-E005a 的证据链已经把第一优先级指向了 Conv2d tensor-wise range 修复。直接跳到更复杂策略会让变量过多，难以判断真正有效的机制。

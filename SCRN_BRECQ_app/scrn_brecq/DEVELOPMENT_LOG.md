@@ -1805,3 +1805,18 @@
 - Conv2d 的 worst relative MSE 和 outlier ratio 明显高于 Linear。
 - 旧 `role=unknown` 已明确为 stage output 3x3 Conv2d，后续统一称为 `stage_output_conv`。
 - 下一步进入 E005b：先做 Conv2d tensor-wise percentile clipping，而不是直接做 per-channel/group-wise 或 attention SmoothQuant。
+
+## 2026-05-06 E004-E005a readable conclusion note
+
+### 修改内容
+
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，追加 E004-E005a 可读结论整理。
+- 本步骤只整理已有实验结论，不修改代码、不运行新实验、不生成 run 产物。
+
+### 记录重点
+
+- E004 sensitivity 证明 A8 init 崩坏主因是 Conv2d activation quantization 的多点累积误差。
+- E004 中旧 `role=unknown` 已修正为 `stage_output_conv`。
+- E005a 进一步解释 Conv2d 问题由 outlier range、relative MSE 偏高和部分 channel imbalance 混合构成。
+- Linear / transformer 在 A8 init 阶段不是第一修复对象，但保留为后续 sanity check。
+- E005b 入口明确为 Conv2d tensor-wise percentile clipping。
