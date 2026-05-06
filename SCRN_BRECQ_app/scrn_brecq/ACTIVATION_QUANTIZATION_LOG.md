@@ -3013,3 +3013,301 @@ E004 可以收束。
   - `model.stage5.1`
 
 下一阶段应进入 E005，直接验证 Conv2d activation range / clipping / calibration 是否能恢复 128-sample W4A8 SNR。
+
+### E005 计划重构：Conv2d activation 离群值、范围和粒度实验
+
+- 日期：2026-05-06
+- 负责人：用户 / Codex
+- 状态：计划完成，尚未执行。
+
+#### 背景与问题重定义
+
+原始 E005 目标是：
+
+> 验证 tensor-wise A8 是否被 outlier 和通道差异主导。
+
+在 E004 完成后，E005 的问题需要进一步具体化：
+
+- 当前主瓶颈不是 activation `delta` 负值；E002a/E002b 已修复合法性，但多样本 SNR 没有恢复。
+- 当前主瓶颈不是 transformer / Linear / attention qkv/proj 的 A8 init；E004d 显示关闭 Linear / transformer 只恢复约 `+0.0209 dB`。
+- 当前主瓶颈是 Conv2d activation quantization 的系统性/累积性误差；关闭全部 Conv2d activation quantizers 恢复 `+11.6314 dB`。
+- Conv2d 内部最值得优先处理的是 `role=unknown`、`stage5`、`fusion`、`merge_proj` 和 `model.stage5.1`。
+
+因此，E005 应从“泛泛验证 tensor-wise A8 是否受 outlier 影响”调整为：
+
+> 验证当前 Conv2d tensor-wise A8 range 初始化是否被 outlier / channel imbalance / stage-specific activation 分布主导，并判断 percentile / MSE clipping 或更细粒度策略能否恢复 128-sample W4A8 SNR。
+
+#### E005 在整个激活量化实验中的作用
+
+E001-E004 已经完成“定位问题”：
+
+- E001：建立 activation diagnostics，确认负 `delta` 和局部误差现象。
+- E002：修复正 scale 合法性，但证明这不是主要精度瓶颈。
+- E003：建立 128-sample multi-sample eval，证明 A8 init 本身已经崩坏。
+- E004：定位到 Conv2d activation quantization 的结构组累积误差。
+
+E005 是从“定位”进入“修复”的第一阶段。
+
+它要回答三个核心问题：
+
+1. Conv2d A8 崩坏是否主要由 min/max range 被 outlier 拉宽导致？
+2. 如果使用更稳健的 range calibration，W4A8 A8 init 是否能从约 `-7 dB` 明显恢复？
+3. 修复是否需要全局 Conv2d 策略，还是只需要针对 `unknown/stage5/fusion/merge_proj` 的结构化局部策略？
+
+如果 E005 中 percentile / MSE clipping 能显著恢复 SNR，说明后续创新点可以集中在 SCRN 结构感知 activation range calibration。
+
+如果 E005 仍无法恢复，说明问题可能不是简单 outlier range，而需要进入 E006 方向，例如 activation per-channel / group-wise / structure-wise quantization 或 mixed precision。
+
+#### 固定评估口径
+
+E005 所有正式结论必须沿用 E003a/E004 的多样本口径：
+
+- checkpoint 起点：E002c A8 init n=64 / pre-act-recon 或同等 W4 weight-recon 起点。
+- eval：128 samples。
+- seed：`20260427`。
+- batch size：16。
+- device：CUDA，优先 `--cuda-device-index 1/2/3`。
+- baseline：
+  - all_on A8 init：SNR mean `-7.1021 dB`。
+  - all_off / W4A32 近似：SNR mean `4.7973 dB`。
+  - E005 的目标是让 all_on A8 init 明显远离 `-7 dB`，向 W4A32 靠近。
+
+不得用单样本 SNR 作为 E005 成败结论。
+
+#### E005a：Conv2d range diagnostics 增强
+
+目的：在修复前先确认 Conv2d activation 的 range 问题形态。
+
+应做内容：
+
+- 基于 E001 diagnostics 或新增轻量统计，重点输出 Conv2d 子组：
+  - min / max
+  - p99 / p99.9 / p99.99
+  - absmax / p99
+  - absmax / p99.9
+  - per-channel absmax ratio
+  - fake-quant MSE / relative MSE
+  - effective int levels
+- 分组汇总：
+  - all Conv2d
+  - `role=unknown`
+  - `stage5`
+  - `fusion`
+  - `merge_proj`
+  - `cnn branch`
+  - Linear / transformer sanity check
+
+预期结果：
+
+- 如果 outlier 主导，敏感 Conv2d 子组应表现出高 `absmax/p99` 或 `absmax/p99.9`。
+- 如果 channel imbalance 主导，敏感 Conv2d 子组应表现出高 `per_channel_absmax_ratio`。
+- 如果两者都不明显，E005 后续应更谨慎，避免盲目 clipping。
+
+验收标准：
+
+- 明确指出 Conv2d 问题更像 outlier range、channel imbalance，还是二者混合。
+- 明确 `role=unknown/stage5/fusion/merge_proj` 与普通 `cnn branch` 的统计差异。
+
+#### E005b：Conv2d-only percentile clipping
+
+目的：验证简单稳健 range 是否能缓解 Conv2d tensor-wise A8 崩坏。
+
+优先测试：
+
+- all Conv2d clipping：
+  - p99.9
+  - p99.99
+  - p99.995
+  - p99.999
+- 局部 Conv2d clipping：
+  - `role=unknown`
+  - `stage5`
+  - `fusion`
+  - `merge_proj`
+  - `model.stage5.1`
+
+实验方式：
+
+- 不重跑 W20000。
+- 从同一个 W4 weight-recon checkpoint 出发。
+- 只重新做 A8 init / range calibration。
+- 默认不跑 activation reconstruction，先看 A8 init 是否恢复。
+
+需要记录：
+
+- percentile 参数。
+- clipping 作用范围。
+- clipped range 与原 min/max range 的比例。
+- 128-sample SNR mean / median / min。
+- SSIM mean。
+- E001 diagnostics 中 effective int levels、relative MSE、outlier ranking 是否改善。
+
+预期结果：
+
+- 如果 min/max outlier 是主因，合理 percentile clipping 应显著提升 all_on SNR。
+- 过强 clipping 会牺牲真实大幅值信号，可能让 SNR 变差。
+- 最可能有效的不是极低 percentile，而是较温和的 p99.99/p99.995/p99.999。
+
+验收标准：
+
+- 至少找到一个 Conv2d clipping 设置，使 128-sample A8 init SNR 明显高于 `-7.1021 dB`。
+- 如果提升超过 `+2 dB`，说明 clipping 是主修复方向。
+- 如果能接近或超过 `0 dB`，说明 E005 有强信号继续扩展。
+
+#### E005c：Conv2d-only MSE range calibration
+
+目的：验证比 percentile 更自适应的 range search 是否更稳。
+
+应做内容：
+
+- 对 Conv2d activation quantizer 初始化时，用 calibration activation 搜索使 fake-quant MSE 最小的 clipping range。
+- 先只做 tensor-wise MSE clipping，不引入 per-channel。
+- 范围候选可以基于 absmax shrink ratio，例如：
+  - 1.0
+  - 0.999
+  - 0.995
+  - 0.99
+  - 0.98
+  - 0.95
+  - 0.90
+  - 0.80
+
+优先作用范围：
+
+- all Conv2d。
+- `role=unknown`。
+- `stage5 + Conv2d`。
+- `merge_proj`。
+- `fusion Conv2d`。
+
+预期结果：
+
+- 如果 percentile clipping 对不同层不稳定，MSE calibration 可能更稳。
+- 如果 MSE range 选择过于偏向局部 reconstruction MSE，也可能不等价于最终 SNR，需要 multi-sample eval 验证。
+
+验收标准：
+
+- 与 E005b 最佳 percentile clipping 对比。
+- 如果 MSE calibration 更稳或更高，后续 E005 主线转向 MSE range。
+- 如果 MSE 与 percentile 都无效，说明问题可能不是简单 range shrink。
+
+#### E005d：结构化 clipping 对照
+
+目的：判断修复是否必须覆盖全 Conv2d，还是可以只处理 E004g 高敏感子组。
+
+建议对照：
+
+- all Conv2d clipping。
+- only `role=unknown` clipping。
+- only `stage5` clipping。
+- only `merge_proj` clipping。
+- only `fusion` clipping。
+- `role=unknown + stage5 + merge_proj` 组合。
+- 普通 `cnn branch` clipping 作为低优先级对照。
+
+预期结果：
+
+- 如果只处理高敏感子组就有明显恢复，说明可形成结构感知低成本策略。
+- 如果只处理局部子组恢复有限，而 all Conv2d 有效，说明需要全 Conv2d range 策略。
+- 如果 `cnn branch` clipping 无效，可进一步排除普通 CNN conv branch 是主因。
+
+验收标准：
+
+- 给出“全 Conv2d 策略 vs 高敏感子组策略”的明确选择。
+- 为 E006 mixed precision / selective FP32 提供候选结构组合。
+
+#### E005e：粒度实验的进入条件
+
+原始 E005 中包含 activation per-channel、group-wise、branch-wise / structure-wise。
+
+这些不应一开始就做，进入条件如下：
+
+- percentile / MSE clipping 有明显但不足的恢复：进入 per-channel / group-wise，判断剩余误差是否来自 channel imbalance。
+- clipping 几乎无效，但 E005a 发现 per-channel absmax ratio 很高：直接进入 per-channel / group-wise。
+- clipping 已经能大幅恢复：per-channel / group-wise 降为后续优化，不作为当前必要项。
+
+粒度实验优先级：
+
+1. Conv2d activation per-channel。
+2. Conv2d group-wise activation。
+3. FFB structure-wise：fusion / cnn / unknown / stage5 分结构策略。
+4. branch-wise：CNN branch vs fusion vs transformer。
+
+注意：activation per-channel 可能显著增加实现和部署复杂度。除非 tensor-wise clipping 无法恢复，否则不应优先把它作为 E005 第一阶段。
+
+#### SmoothQuant 类缩放的优先级
+
+原始计划中提到对 attention proj 试 SmoothQuant 类缩放。
+
+结合 E004 结果，该方向优先级降低：
+
+- attention qkv/proj 在 E001/E002 中与 activation reconstruction 劣化有关。
+- 但在 A8 init 崩坏中，E004 证明 Linear / transformer 不是主因。
+- 因此 SmoothQuant 类缩放不应进入 E005 第一阶段。
+
+保留条件：
+
+- 后续如果 Conv2d range 修复后，Linear / transformer 成为新的主要瓶颈，再开 E006/E007 单独处理。
+- 或者如果 activation reconstruction 再次导致 attention qkv/proj 崩坏，再回到 SmoothQuant / reconstruction 稳定性问题。
+
+#### E005 成功/失败判据
+
+核心成功指标：
+
+- 128-sample A8 init SNR mean 相对 `-7.1021 dB` 明显恢复。
+- SNR median 同步提升，而不是只改善少数样本。
+- SSIM mean 不明显恶化。
+- E001 diagnostics 中 Conv2d effective int levels / relative MSE / outlier ratio 有改善。
+- Linear / transformer sanity check 不应变差。
+
+阶段性判断：
+
+- 恢复 `< +1 dB`：弱信号，clipping 可能不是主因。
+- 恢复 `+1 ~ +2 dB`：有信号，但可能不足，需要结构化组合或粒度实验。
+- 恢复 `> +2 dB`：强信号，E005 主线成立。
+- 恢复到 `0 dB` 以上：非常强，说明 Conv2d range calibration 是主要创新方向。
+- 接近 W4A32 的 `4.7973 dB`：说明 W4A8 A8 init 主要可由 range calibration 修复。
+
+#### E005 推荐执行顺序
+
+1. E005a：Conv2d range diagnostics 增强。
+2. E005b：all Conv2d percentile clipping sweep。
+3. E005c：all Conv2d MSE range calibration sweep。
+4. E005d：对 E005b/E005c 最佳策略做结构化局部对照。
+5. E005e：仅在必要时进入 per-channel / group-wise / structure-wise。
+
+当前不建议一开始做：
+
+- 完整 per-channel activation 实现。
+- 完整 group-wise activation 实现。
+- SmoothQuant 类 attention scaling。
+- activation reconstruction 学习率大 sweep。
+
+#### E005 预期产出
+
+E005 应输出：
+
+- 一张 Conv2d range calibration 策略表。
+- 一张 percentile / MSE clipping 对比表。
+- 一张结构化作用范围对比表。
+- 每个候选策略的 128-sample SNR / SSIM。
+- 每个候选策略的 E001 diagnostics 对比。
+- 明确结论：
+  - outlier clipping 是否有效；
+  - MSE range 是否优于 percentile；
+  - 是否需要全 Conv2d；
+  - 是否需要 per-channel / group-wise；
+  - 是否可以进入 E006 mixed precision / deployment 策略。
+
+#### 当前 E005 总体判断
+
+E005 最合理的主线是：
+
+> 先做 Conv2d tensor-wise activation range 修复，而不是立即做复杂粒度或 transformer smoothing。
+
+原因：
+
+- E004 已经把问题定位到 Conv2d activation 组。
+- clipping / MSE range 是验证 outlier 假设的最小修复。
+- 如果最小修复有效，它更容易形成清晰、可解释、可部署的创新点。
+- 如果最小修复无效，再进入 per-channel / group-wise，证据链也更清楚。

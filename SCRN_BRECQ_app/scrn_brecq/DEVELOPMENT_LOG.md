@@ -1733,3 +1733,28 @@
 - E004 已足够回答“哪些 activation quantizer 最该保留高精度或单独处理”。
 - 不再执行完整 52 层单点关闭 sweep 或完整单点开启 sweep。
 - E004 输出已足够支撑进入 E005 Conv2d activation range / clipping / calibration。
+
+## 2026-05-06 E005 activation range experiment plan
+
+### 修改内容
+
+- 更新 `ACTIVATION_QUANTIZATION_LOG.md`，结合 E001-E004 结果重构 E005 实验计划。
+- 本步骤只记录实验设计，不修改代码、不运行新实验、不生成 tracked 产物。
+
+### 核心判断
+
+- E005 不应泛泛从所有 activation quantizers 开始，而应优先针对 Conv2d activation。
+- 第一阶段不应直接做 per-channel / group-wise / SmoothQuant。
+- 最小验证路径应是：
+  1. Conv2d range diagnostics 增强。
+  2. Conv2d-only percentile clipping。
+  3. Conv2d-only MSE range calibration。
+  4. 对 `role=unknown`、`stage5`、`fusion`、`merge_proj` 做结构化局部对照。
+  5. 只有在 clipping/MSE 不足或 diagnostics 显示强 channel imbalance 时，再进入 per-channel / group-wise。
+
+### 评估口径
+
+- 沿用 E003a/E004 128-sample eval。
+- baseline all_on A8 init：SNR mean `-7.1021 dB`。
+- all_off / W4A32 近似：SNR mean `4.7973 dB`。
+- E005 成败必须看 128-sample SNR / SSIM 和 E001 diagnostics，不能回到单样本 SNR。
