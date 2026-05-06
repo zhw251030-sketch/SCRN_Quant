@@ -2080,3 +2080,30 @@ baseline：
 - E006a 应先做 feasibility，不直接做完整部署策略。
 - E006a 重点验证 Conv2d activation per-channel 的 scale shape、forward 广播、checkpoint 保存/恢复、diagnostics 兼容和 128-sample eval。
 - 注意不能直接复用权重量化的 `channel_wise=True` 语义；Conv2d activation per-channel 应按 `[N, C, H, W]` 的 `C` 维，目标 `delta/zero_point` 形状为 `[1, C, 1, 1]`。
+
+## 2026-05-06 E006 granularity experiment roadmap
+
+### 记录内容
+
+- 在 `ACTIVATION_QUANTIZATION_LOG.md` 中补充 E006 总体展开计划。
+- E006 被定义为 activation 量化粒度实验线，用于验证 tensor-wise activation 粒度是否是 W4A8 失败主因。
+
+### 阶段划分
+
+- E006a：Conv2d activation per-channel feasibility。
+  - 目标是验证 `[1, C, 1, 1]` activation `delta/zero_point` 的广播、保存/恢复、diagnostics 和 128-sample eval。
+- E006b：Conv2d activation group-wise feasibility。
+  - 目标是验证 group size 4/8/16 是否能以较低复杂度接近 per-channel 收益。
+- E006c：结构化粒度对照。
+  - 目标是判断是否需要 all Conv2d 细粒度，还是只处理 fusion / merge_proj / split_proj / stage_output_conv / stage5 即可。
+- E006d：Linear / transformer sanity check。
+  - 目标是确认 Conv2d 粒度策略不会把瓶颈转移到 attention / Linear。
+- E006e：策略收束。
+  - 输出 per-channel 上限、group-wise 折中、结构化粒度策略表，并决定是否进入 mixed precision / selective FP32。
+
+### 执行原则
+
+- E006 第一阶段不跑 activation reconstruction，只看 A8 init 粒度本身。
+- 不直接复用权重量化 `channel_wise=True`。
+- 正式结论继续使用 128-sample eval；single-sample 只作为 smoke。
+- 如果 per-channel / group-wise 均无效，则停止粒度方向，转入 mixed precision / selective FP32 / reconstruction objective。

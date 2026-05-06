@@ -4240,3 +4240,151 @@ E006 不再以 outlier clipping 为主线，而以量化粒度为主线：
   - 验证 E001/E005 diagnostics 能读取 per-channel activation quantizer。
   - 跑小样本 smoke，再跑 128-sample eval。
 - 如果 E006a 有明显恢复，再进入 group-wise 和结构化粒度；如果仍无效，再转入 E007 / mixed precision / selective FP32 activation quantizer。
+
+### E006：Activation 量化粒度实验总体计划
+
+#### 总目标
+
+E006 用来验证一个新的核心假设：
+
+> 当前 W4A8 激活量化失败，不是因为 tensor-wise range 没调好，而是因为 tensor-wise activation 量化粒度过粗，无法处理 Conv2d activation 的通道间尺度差异和结构差异。
+
+E006 的目标不是继续调 outlier clipping，而是回答：
+
+- Conv2d activation per-channel 是否能显著恢复 128-sample SNR。
+- 如果 per-channel 有效，group-wise 是否能以较低复杂度获得主要收益。
+- 是否必须全 Conv2d 使用细粒度，还是只处理 fusion / merge_proj / stage_output_conv / stage5 等结构即可。
+- 细粒度策略是否会把瓶颈转移到 Linear / transformer。
+
+统一 baseline：
+
+- all_on A8 init：128-sample SNR mean `-7.1021 dB`。
+- all_off / W4A32 近似：128-sample SNR mean `4.7973 dB`。
+- 评估口径：128-sample eval，`seed=20260427`，`batch_size=16`，优先 CUDA 多卡 job-level 并行。
+- 起点 checkpoint：E002b W4 weight-recon checkpoint，不重跑 W20000。
+- 默认不跑 activation reconstruction；先只看 A8 init 粒度本身能否恢复。
+
+#### E006a：Conv2d activation per-channel feasibility
+
+目的：先验证 activation per-channel 在当前代码体系中能不能正确工作，而不是立刻追求最优效果。
+
+要做到：
+
+- 新增或扩展 activation range helper，使其支持 Conv2d activation per-channel range。
+- 对 4D activation `[N, C, H, W]` 按 `C` 维统计 range。
+- 写入 `delta/zero_point` 形状为 `[1, C, 1, 1]`。
+- 验证 `UniformAffineQuantizer.forward()` 中 `x / delta` 和反量化广播正确。
+- 验证 checkpoint 保存/恢复后仍保留 per-channel activation `delta/zero_point` shape。
+- 验证 E001/E005 diagnostics 能读取和报告 per-channel activation quantizer。
+
+实验：
+
+- E006a-0：单元测试 + toy model。
+- E006a-1：2-sample smoke。
+- E006a-2：all Conv2d per-channel A8 init，128-sample eval。
+- E006a-3：E005a diagnostics 复核。
+
+验收：
+
+- smoke 中 `activation_quantizers=52`。
+- `non_positive_delta_count=0`。
+- checkpoint reload 后推理可运行。
+- 如果 all Conv2d per-channel 相对 all_on 提升 `> +1 dB`，说明粒度假设成立，应继续 E006b/E006c。
+- 如果提升 `< +0.2 dB`，说明单纯 per-channel 也不足，应尽快转向 mixed precision / selective FP32。
+
+#### E006b：Conv2d activation group-wise feasibility
+
+目的：如果 per-channel 有效，验证是否能用更低复杂度的 group-wise 方案获得主要收益。
+
+候选 group 设置：
+
+- group size = 4 channels。
+- group size = 8 channels。
+- group size = 16 channels。
+- 如果通道数不能整除，最后一组单独处理。
+
+要做到：
+
+- 对 Conv2d activation 的 `C` 维分组。
+- 每组共享一组 `delta/zero_point`。
+- 广播 shape 可以设计为 `[1, C, 1, 1]`，其中同组通道使用相同值，先保证 forward 和 checkpoint 兼容。
+- 记录 group size、group count、metadata proxy。
+
+实验：
+
+- all Conv2d group-wise，分别测试 group size 4/8/16。
+- 使用与 E006a 相同 128-sample eval 和 diagnostics。
+
+验收：
+
+- 如果 group-wise 接近 per-channel 收益，例如达到 per-channel 恢复量的 70% 以上，则 group-wise 是更有部署价值的候选。
+- 如果 group-wise 明显弱于 per-channel，则 E006 后续可以保留 per-channel 作为上限实验，部署策略转向结构化细粒度或 mixed precision。
+
+#### E006c：结构化粒度对照
+
+目的：判断是否必须全 Conv2d 使用细粒度，还是只处理高敏感结构即可。
+
+候选结构：
+
+- all Conv2d。
+- `branch=fusion + module_type=Conv2d`。
+- `role=merge_proj + module_type=Conv2d`。
+- `role=split_proj + module_type=Conv2d`。
+- `role=stage_output_conv + module_type=Conv2d`。
+- `stage=stage5 + module_type=Conv2d`。
+- 组合：`split_proj + merge_proj + stage_output_conv`。
+
+实验：
+
+- 使用 E006a/E006b 中效果最好的粒度策略。
+- 对上述结构分别启用细粒度，其余 activation quantizer 保持 tensor-wise。
+- 记录 128-sample SNR/SSIM、diagnostics、selected quantizer count。
+
+验收：
+
+- 如果少数组结构能恢复大部分收益，则 E006 可以形成结构感知低成本策略。
+- 如果只有 all Conv2d 有效，则说明粒度问题是广泛累积误差，不是少数结构主导。
+- 如果所有结构化粒度都无效，但 all Conv2d 有效，则后续部署需要权衡精度和 metadata 成本。
+
+#### E006d：Linear / transformer sanity check
+
+目的：确认 Conv2d 细粒度修复不会隐藏新的 transformer / Linear 瓶颈。
+
+要做到：
+
+- 对 E006 最优 Conv2d 策略运行 E001 diagnostics。
+- 对比 Linear / transformer：
+  - effective int levels min/mean。
+  - fake-quant relative MSE max/mean。
+  - attention qkv/proj 是否进入 worst layer。
+- 必要时补一个 Linear per-channel / per-token 的只诊断实验，但不作为 E006 第一主线。
+
+验收：
+
+- 如果 Conv2d 修复后 SNR 明显恢复，而 Linear / transformer 指标仍稳定，则主瓶颈确实在 Conv2d activation 粒度。
+- 如果 Conv2d 修复后 Linear / transformer 成为新的 worst group，则下一阶段需要单独设计 attention / Linear 粒度或 mixed precision 策略。
+
+#### E006e：策略收束
+
+目的：把 E006 的粒度实验转化为后续可用策略，而不是无限扩展实验。
+
+需要输出：
+
+- per-channel 上限效果。
+- group-wise 成本 / 效果折中。
+- 结构化粒度策略表。
+- 与 E004 sensitivity 表、E005 range/clipping 负结果的联合结论。
+
+最终判断：
+
+- 若 per-channel / group-wise 明显有效：E006 成为下一阶段主创新方向。
+- 若 per-channel 有效但 group-wise 不够：考虑 selective per-channel 或 selective FP32。
+- 若 per-channel 仍无效：停止细粒度方向，进入 E007 mixed precision / selective FP32 / reconstruction objective。
+
+#### E006 的风险和注意事项
+
+- 不要直接复用 weight `channel_wise=True`。
+- per-channel activation 会改变 `delta/zero_point` shape，必须先确认 checkpoint restore 支持。
+- 先不跑 activation reconstruction，避免把“粒度初始化效果”和“重建优化稳定性”混在一起。
+- 所有正式结论必须基于 128-sample eval；single-sample 只用于 smoke。
+- 每次涉及 activation quantization 的代码或实验，必须同步记录到本日志和 `DEVELOPMENT_LOG.md`。
