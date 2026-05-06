@@ -31,6 +31,26 @@ class TinyConvLinearModel(nn.Module):
         self.fc.set_quant_state(weight_quant, act_quant)
 
 
+class MultiChannelConvLinearModel(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.conv = QuantModule(nn.Conv2d(1, 3, kernel_size=1, bias=False), act_quant_params={"n_bits": 8, "leaf_param": True})
+        self.flatten = nn.Flatten()
+        self.fc = QuantModule(nn.Linear(12, 2, bias=False), act_quant_params={"n_bits": 8, "leaf_param": True})
+        with torch.no_grad():
+            self.conv.weight.copy_(torch.tensor([[[[1.0]]], [[[2.0]]], [[[4.0]]]]))
+            self.fc.weight.fill_(1.0)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.conv(x)
+        x = self.flatten(x)
+        return self.fc(x)
+
+    def set_quant_state(self, weight_quant: bool = False, act_quant: bool = False) -> None:
+        self.conv.set_quant_state(weight_quant, act_quant)
+        self.fc.set_quant_state(weight_quant, act_quant)
+
+
 class TwoConvModel(nn.Module):
     def __init__(self) -> None:
         super().__init__()
@@ -182,6 +202,64 @@ class ActivationRangeTest(unittest.TestCase):
         self.assertEqual(layer["best_shrink_ratio"], float(expected_best))
         self.assertEqual(layer["best_score"], layer["candidate_scores"][expected_best])
         self.assertAlmostEqual(layer["chosen_max"], 100.0 * float(expected_best))
+
+    def test_per_channel_mse_grid_writes_conv2d_channel_shapes(self) -> None:
+        model = MultiChannelConvLinearModel()
+        inputs = torch.tensor([[[[0.0, 1.0], [2.0, 25.0]]]], dtype=torch.float32)
+
+        result = apply_activation_ranges(
+            model,
+            inputs,
+            method="mse_grid",
+            activation_granularity="per_channel",
+            module_type="Conv2d",
+            mse_shrink_ratios=[1.0, 0.5],
+            loss_p=2.0,
+        )
+
+        layer = result["layers"][0]
+        self.assertEqual(result["activation_granularity"], "per_channel")
+        self.assertEqual(result["selected_count"], 1)
+        self.assertEqual(layer["channel_count"], 3)
+        self.assertEqual(layer["delta_shape"], [1, 3, 1, 1])
+        self.assertEqual(layer["zero_point_shape"], [1, 3, 1, 1])
+        self.assertEqual(list(model.conv.act_quantizer.delta.shape), [1, 3, 1, 1])
+        self.assertEqual(list(model.conv.act_quantizer.zero_point.shape), [1, 3, 1, 1])
+
+    def test_per_channel_mse_grid_rejects_non_4d_activation_outputs(self) -> None:
+        model = TinyConvLinearModel()
+        inputs = torch.tensor([[[[0.0, 1.0], [2.0, 25.0]]]], dtype=torch.float32)
+
+        with self.assertRaisesRegex(ValueError, "per-channel activation range expects 4D"):
+            apply_activation_ranges(
+                model,
+                inputs,
+                method="mse_grid",
+                activation_granularity="per_channel",
+                module_type="Linear",
+                include_output_quantizer=True,
+                mse_shrink_ratios=[1.0, 0.5],
+            )
+
+    def test_per_channel_selected_conv2d_does_not_rewrite_linear_delta_shape(self) -> None:
+        model = MultiChannelConvLinearModel()
+        inputs = torch.tensor([[[[0.0, 1.0], [2.0, 25.0]]]], dtype=torch.float32)
+        model.set_quant_state(True, True)
+        with torch.no_grad():
+            _ = model(inputs)
+        original_linear_delta_shape = list(model.fc.act_quantizer.delta.shape)
+
+        apply_activation_ranges(
+            model,
+            inputs,
+            method="mse_grid",
+            activation_granularity="per_channel",
+            module_type="Conv2d",
+            mse_shrink_ratios=[1.0, 0.5],
+        )
+
+        self.assertEqual(list(model.conv.act_quantizer.delta.shape), [1, 3, 1, 1])
+        self.assertEqual(list(model.fc.act_quantizer.delta.shape), original_linear_delta_shape)
 
     def test_parse_mse_shrink_ratios_rejects_invalid_values(self) -> None:
         with self.assertRaisesRegex(ValueError, "range_mse_shrink_ratios"):

@@ -306,13 +306,13 @@ def _fake_quant_stats(tensor: torch.Tensor, quantizer: nn.Module) -> dict[str, A
         if bool((delta_tensor == 0).any().item()):
             return _skipped_fake_quant_stats("zero_delta")
         sampled = False
-        if (
-            values.numel() > TORCH_QUANTILE_MAX_EXACT_VALUES
-            and delta_tensor.numel() == 1
-            and zero_point_tensor.numel() == 1
-        ):
-            values = _sample_large_tensor(values)
-            sampled = True
+        if values.numel() > TORCH_QUANTILE_MAX_EXACT_VALUES:
+            if delta_tensor.numel() == 1 and zero_point_tensor.numel() == 1:
+                values = _sample_large_tensor(values)
+                sampled = True
+            elif _is_4d_channel_quantizer(values, delta_tensor, zero_point_tensor):
+                values = _sample_large_tensor_by_channel(values)
+                sampled = True
         q_int = torch.round(values / delta_tensor) + zero_point_tensor
         q_int = torch.clamp(q_int, 0, int(getattr(quantizer, "n_levels", 2 ** getattr(quantizer, "n_bits", 8))) - 1)
         quantized = (q_int - zero_point_tensor) * delta_tensor
@@ -560,6 +560,24 @@ def _sample_large_tensor(values: torch.Tensor) -> torch.Tensor:
     flattened = values.reshape(-1)
     stride = max(1, (flattened.numel() + TORCH_QUANTILE_MAX_EXACT_VALUES - 1) // TORCH_QUANTILE_MAX_EXACT_VALUES)
     return flattened[::stride]
+
+
+def _is_4d_channel_quantizer(values: torch.Tensor, delta: torch.Tensor, zero_point: torch.Tensor) -> bool:
+    if values.ndim != 4:
+        return False
+    expected_shape = (1, int(values.shape[1]), 1, 1)
+    return tuple(delta.shape) == expected_shape and tuple(zero_point.shape) == expected_shape
+
+
+def _sample_large_tensor_by_channel(values: torch.Tensor) -> torch.Tensor:
+    if values.ndim != 4:
+        return _sample_large_tensor(values)
+    channel_count = int(values.shape[1])
+    per_channel_budget = max(1, TORCH_QUANTILE_MAX_EXACT_VALUES // max(channel_count, 1))
+    channel_values = values.movedim(1, 0).reshape(channel_count, -1)
+    stride = max(1, (channel_values.shape[1] + per_channel_budget - 1) // per_channel_budget)
+    sampled = channel_values[:, ::stride]
+    return sampled.reshape(1, channel_count, 1, sampled.shape[1])
 
 
 def _safe_ratio(numerator: float | None, denominator: float | None) -> float | None:

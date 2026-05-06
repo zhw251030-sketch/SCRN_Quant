@@ -2107,3 +2107,101 @@ baseline：
 - 不直接复用权重量化 `channel_wise=True`。
 - 正式结论继续使用 128-sample eval；single-sample 只作为 smoke。
 - 如果 per-channel / group-wise 均无效，则停止粒度方向，转入 mixed precision / selective FP32 / reconstruction objective。
+
+## 2026-05-06 E006a Conv2d activation per-channel feasibility
+
+### 修改内容
+
+- 扩展 `quant/activation_range.py`：
+  - 新增 `activation_granularity`，支持 `tensor` 和 `per_channel`。
+  - `per_channel` 第一版只支持 `mse_grid`，用于隔离 activation 粒度变量。
+  - 对 4D Conv2d activation `[N, C, H, W]` 按 C 维逐通道做 MSE grid range search，并写入 `[1, C, 1, 1]` 形状的 activation `delta/zero_point`。
+  - 当原 activation `delta` 是 scalar `nn.Parameter` 且 shape 不一致时，替换为新的 per-channel `nn.Parameter`，避免错误 `copy_`。
+- 扩展 `cli/activation_only_quantize_scrn.py`：
+  - 新增 `--activation-granularity {tensor,per_channel}`。
+  - 默认保持 `tensor`，兼容 E005 range/clipping 配置。
+  - range calibration summary 记录 `activation_granularity`。
+- 扩展 `quant/activation_diagnostics.py`：
+  - per-channel activation fake-quant diagnostics 对大 4D tensor 使用保持 C 维的确定性采样，避免 128-sample diagnostics 对 per-channel quantizer 退化为全量计算。
+- 新增配置：
+  - `configs/activation_quantization/e006a_conv2d_per_channel.json`
+- 新增/更新测试：
+  - `tests/test_activation_range.py`
+  - `tests/test_activation_only_quantize_scrn.py`
+  - `tests/test_activation_diagnostics.py`
+  - `tests/test_evaluate_quantized_scrn.py`
+
+### 验证
+
+- TDD red：
+  - `test_activation_range` 初始失败于 `apply_activation_ranges()` 不接受 `activation_granularity`。
+  - `test_activation_only_quantize_scrn` 初始失败于 CLI 不接受 `--activation-granularity`、config 缺少 `activation_granularity`。
+  - `test_activation_diagnostics` 新增 per-channel 大输出采样测试，初始失败于 `fake_quant_sampled=False`。
+- Green checks：
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_range`
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_only_quantize_scrn`
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_quantized_scrn`
+  - `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/activation_range.py SCRN_BRECQ_app/scrn_brecq/quant/activation_diagnostics.py SCRN_BRECQ_app/scrn_brecq/cli/activation_only_quantize_scrn.py`
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.activation_only_quantize_scrn --help`
+  - `conda run -n quant python -m json.tool SCRN_BRECQ_app/scrn_brecq/configs/activation_quantization/e006a_conv2d_per_channel.json`
+
+### Smoke
+
+- run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006a_conv2d_per_channel/quant/20260506_210819_e006a_smoke_conv2d_per_channel_mse/`
+- device：`cuda:1`
+- config：
+  - `num_samples=2`
+  - `init_batch_size=2`
+  - `activation_range_method=mse_grid`
+  - `activation_granularity=per_channel`
+  - `range_module_type=Conv2d`
+- result：
+  - selected Conv2d quantizers：31
+  - first selected layer `delta/zero_point` shape：`[1, 64, 1, 1]`
+  - `activation_quantizers=52`
+  - `activation_delta_count=52`
+  - `activation_zero_point_count=52`
+  - `non_positive_delta_count=0`
+  - single-sample `quant_pre_act_recon_snr_db=5.1128 dB`
+- reload eval：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006a_conv2d_per_channel/eval/20260506_210901_e006a_smoke_reload_eval2/`
+  - 2-sample reload eval completed on `cuda:1`，确认 per-channel activation checkpoint 可恢复并 forward。
+
+### 正式实验结果
+
+baseline：
+
+- all_on A8 init：128-sample SNR mean `-7.1021 dB`。
+- all_off / W4A32 近似：128-sample SNR mean `4.7973 dB`。
+
+E006a all Conv2d per-channel MSE：
+
+- quant run：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006a_conv2d_per_channel/quant/20260506_210914_e006a_conv2d_per_channel_mse/`
+- eval run：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006a_conv2d_per_channel/eval/20260506_211010_e006a_conv2d_per_channel_eval128/`
+- diagnostics run：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006a_conv2d_per_channel/diagnostics/20260506_211053_e006a_conv2d_per_channel_diagnostics128/`
+
+| run | selected | single-sample SNR | 128-sample SNR mean | median | min | max | SSIM mean | delta vs all_on |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| all Conv2d per-channel MSE | 31 | 3.2283 | -5.3817 | -5.9146 | -12.3092 | 5.9752 | 0.5549 | +1.7203 |
+
+Diagnostics：
+
+- `activation_quantizers=52`
+- `activation_delta_count=52`
+- `activation_zero_point_count=52`
+- `non_positive_delta_count=0`
+- selected Conv2d channel counts：min `32`，max `64`
+- selected Conv2d `delta/zero_point` shape：`[1, C, 1, 1]`
+- tail output quantizer remains scalar and disabled.
+- `effective_int_levels_min=139`
+
+### 结论
+
+- E006a 证明 Conv2d activation per-channel 粒度有强信号：128-sample SNR mean 从 all_on `-7.1021 dB` 恢复到 `-5.3817 dB`，提升 `+1.7203 dB`。
+- 这超过 E006a 预设的 `+1 dB` 强信号阈值，说明 tensor-wise activation 粒度过粗是当前 W4A8 A8 init 崩坏的重要原因之一。
+- 但 per-channel 仍远低于 all_off / W4A32 的 `4.7973 dB`，只恢复了 all_on 到 all_off gap 的一部分，不能视为完整修复。
+- 下一步应进入 E006b group-wise feasibility，验证 group size 4/8/16 是否能以更低复杂度接近 per-channel 收益；同时 E006c 需要做结构化 per-channel 对照。

@@ -4,6 +4,7 @@ import torch
 from torch import nn
 
 from SCRN_BRECQ_app.scrn_brecq.quant import QuantModule
+from SCRN_BRECQ_app.scrn_brecq.quant import activation_diagnostics as diagnostics_module
 from SCRN_BRECQ_app.scrn_brecq.quant.activation_diagnostics import (
     _quantile,
     build_activation_diagnostics_report,
@@ -107,6 +108,57 @@ class ActivationDiagnosticsTest(unittest.TestCase):
         self.assertAlmostEqual(stats[0]["per_channel_absmax_median"], 2.0)
         self.assertAlmostEqual(stats[0]["per_channel_absmax_ratio"], 5.0)
         self.assertIsNone(stats[0]["per_channel_absmax_skip_reason"])
+
+    def test_collect_activation_stats_supports_per_channel_activation_quantizer(self) -> None:
+        module = QuantModule(
+            nn.Conv2d(1, 3, kernel_size=1, bias=False),
+            weight_quant_params={"n_bits": 4, "channel_wise": True, "scale_method": "max"},
+            act_quant_params={"n_bits": 8, "channel_wise": False, "scale_method": "max", "leaf_param": True},
+        )
+        with torch.no_grad():
+            module.weight.copy_(torch.tensor([[[[1.0]]], [[[2.0]]], [[[4.0]]]]))
+            module.org_weight.copy_(module.weight)
+        module.act_quantizer.delta = nn.Parameter(torch.ones(1, 3, 1, 1) * 0.1)
+        module.act_quantizer.zero_point = torch.zeros(1, 3, 1, 1)
+        module.act_quantizer.inited = True
+        model = nn.Sequential(module)
+        model.set_quant_state = lambda weight_quant, act_quant: module.set_quant_state(weight_quant, act_quant)
+        inputs = torch.ones(1, 1, 2, 2)
+
+        rows = collect_quantizer_rows(model)
+        stats = collect_activation_stats(model, inputs, weight_quant=False)
+
+        self.assertEqual(rows[0]["act_delta_shape"], [1, 3, 1, 1])
+        self.assertEqual(rows[0]["act_delta_non_positive_elements"], 0)
+        self.assertFalse(stats[0]["fake_quant_skipped"])
+        self.assertEqual(stats[0]["fake_quant_sample_count"], 12)
+        self.assertGreaterEqual(stats[0]["effective_int_levels"], 1)
+
+    def test_per_channel_fake_quant_stats_samples_large_outputs_by_channel(self) -> None:
+        original_limit = diagnostics_module.TORCH_QUANTILE_MAX_EXACT_VALUES
+        diagnostics_module.TORCH_QUANTILE_MAX_EXACT_VALUES = 6
+        try:
+            module = QuantModule(
+                nn.Conv2d(1, 3, kernel_size=1, bias=False),
+                weight_quant_params={"n_bits": 4, "channel_wise": True, "scale_method": "max"},
+                act_quant_params={"n_bits": 8, "channel_wise": False, "scale_method": "max", "leaf_param": True},
+            )
+            with torch.no_grad():
+                module.weight.copy_(torch.tensor([[[[1.0]]], [[[2.0]]], [[[4.0]]]]))
+                module.org_weight.copy_(module.weight)
+            module.act_quantizer.delta = nn.Parameter(torch.ones(1, 3, 1, 1) * 0.1)
+            module.act_quantizer.zero_point = torch.zeros(1, 3, 1, 1)
+            module.act_quantizer.inited = True
+            model = nn.Sequential(module)
+            model.set_quant_state = lambda weight_quant, act_quant: module.set_quant_state(weight_quant, act_quant)
+
+            stats = collect_activation_stats(model, torch.ones(2, 1, 4, 4), weight_quant=False)
+        finally:
+            diagnostics_module.TORCH_QUANTILE_MAX_EXACT_VALUES = original_limit
+
+        self.assertFalse(stats[0]["fake_quant_skipped"])
+        self.assertTrue(stats[0]["fake_quant_sampled"])
+        self.assertEqual(stats[0]["fake_quant_sample_count"], 6)
 
     def test_quantile_handles_tensors_over_torch_quantile_limit(self) -> None:
         values = torch.arange(17_000_000, dtype=torch.float32)

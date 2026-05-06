@@ -4388,3 +4388,141 @@ E006 的目标不是继续调 outlier clipping，而是回答：
 - 先不跑 activation reconstruction，避免把“粒度初始化效果”和“重建优化稳定性”混在一起。
 - 所有正式结论必须基于 128-sample eval；single-sample 只用于 smoke。
 - 每次涉及 activation quantization 的代码或实验，必须同步记录到本日志和 `DEVELOPMENT_LOG.md`。
+
+### 2026-05-06 E006a：Conv2d activation per-channel feasibility
+
+#### 目标
+
+E006a 用来验证 Conv2d activation tensor-wise A8 粒度是否过粗。第一版只做 all Conv2d activation per-channel feasibility：
+
+- 不重跑 W20000。
+- 从 E002b W4 weight-recon checkpoint 出发。
+- 不跑 activation reconstruction。
+- 使用 per-channel MSE grid，而不是 max，尽量只改变 activation 粒度这一变量。
+- Conv2d activation output `[N, C, H, W]` 按 C 维统计，写入 `delta/zero_point` shape `[1, C, 1, 1]`。
+
+#### 工具改动
+
+- `quant/activation_range.py`
+  - 新增 `activation_granularity`，支持 `tensor` 和 `per_channel`。
+  - `per_channel` 当前只支持 `mse_grid`。
+  - 对 4D activation 逐通道执行 MSE grid range search。
+  - per-channel 写入时如果原 `delta` 是 scalar `nn.Parameter`，会替换成新 shape 的 `nn.Parameter`。
+  - summary 中记录 `activation_granularity`、`channel_count`、`delta_shape` 和 `zero_point_shape`。
+- `cli/activation_only_quantize_scrn.py`
+  - 新增 `--activation-granularity {tensor,per_channel}`。
+  - 默认 `tensor`，保持 E005 配置兼容。
+- `quant/activation_diagnostics.py`
+  - per-channel activation fake-quant diagnostics 对大 4D tensor 做保持通道维的确定性采样。
+- 新增配置：
+  - `configs/activation_quantization/e006a_conv2d_per_channel.json`
+
+#### TDD 与最小验证
+
+新增/更新测试：
+
+- `tests/test_activation_range.py`
+  - per-channel MSE 对 4D Conv2d activation 写出 `[1, C, 1, 1]`。
+  - per-channel MSE 拒绝非 4D activation output。
+  - selected Conv2d 改成 per-channel 时，未选 Linear 保持原 shape。
+- `tests/test_activation_only_quantize_scrn.py`
+  - parser 接受 `--activation-granularity per_channel`。
+  - normalize config 默认 `tensor`，可解析 `per_channel`。
+- `tests/test_activation_diagnostics.py`
+  - per-channel activation quantizer fake-quant stats 可运行。
+  - 大 4D per-channel fake-quant stats 会按通道采样。
+- `tests/test_evaluate_quantized_scrn.py`
+  - checkpoint restore 支持 `[1, C, 1, 1]` activation `delta/zero_point` 严格加载并 forward。
+
+验证命令：
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_range`
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_only_quantize_scrn`
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_quantized_scrn`
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/activation_range.py SCRN_BRECQ_app/scrn_brecq/quant/activation_diagnostics.py SCRN_BRECQ_app/scrn_brecq/cli/activation_only_quantize_scrn.py`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.activation_only_quantize_scrn --help`
+- `conda run -n quant python -m json.tool SCRN_BRECQ_app/scrn_brecq/configs/activation_quantization/e006a_conv2d_per_channel.json`
+
+#### E006a-0 smoke
+
+- run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006a_conv2d_per_channel/quant/20260506_210819_e006a_smoke_conv2d_per_channel_mse/`
+- device：`cuda:1`
+- config：
+  - `num_samples=2`
+  - `init_batch_size=2`
+  - `activation_range_method=mse_grid`
+  - `activation_granularity=per_channel`
+  - `range_module_type=Conv2d`
+  - `skip_act_recon=true`
+- result：
+  - selected Conv2d quantizers：31
+  - first selected layer：`model.head`
+  - first selected layer `delta/zero_point` shape：`[1, 64, 1, 1]`
+  - `activation_quantizers=52`
+  - `activation_delta_count=52`
+  - `activation_zero_point_count=52`
+  - `non_positive_delta_count=0`
+  - single-sample `quant_pre_act_recon_snr_db=5.1128 dB`
+
+Reload smoke：
+
+- run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006a_conv2d_per_channel/eval/20260506_210901_e006a_smoke_reload_eval2/`
+- 2-sample reload eval 成功，说明 `[1, C, 1, 1]` activation checkpoint 可以恢复并 forward。
+
+#### E006a-1 formal all Conv2d per-channel MSE
+
+统一 baseline：
+
+- all_on A8 init：128-sample SNR mean `-7.1021 dB`。
+- all_off / W4A32 近似：128-sample SNR mean `4.7973 dB`。
+- all_on 到 all_off gap：`11.8993 dB`。
+
+run 目录：
+
+- quant：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006a_conv2d_per_channel/quant/20260506_210914_e006a_conv2d_per_channel_mse/`
+- 128-sample eval：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006a_conv2d_per_channel/eval/20260506_211010_e006a_conv2d_per_channel_eval128/`
+- 128-sample diagnostics：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006a_conv2d_per_channel/diagnostics/20260506_211053_e006a_conv2d_per_channel_diagnostics128/`
+
+| run | selected | single-sample SNR | 128-sample SNR mean | median | min | max | SSIM mean | delta vs all_on | recovery |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| all Conv2d per-channel MSE | 31 | 3.2283 | -5.3817 | -5.9146 | -12.3092 | 5.9752 | 0.5549 | +1.7203 | 0.145 |
+
+Diagnostics：
+
+- `activation_quantizers=52`
+- `activation_delta_count=52`
+- `activation_zero_point_count=52`
+- `non_positive_delta_count=0`
+- selected Conv2d quantizers：31
+- selected Conv2d channel count：min `32`，max `64`
+- selected Conv2d `delta/zero_point` shape：`[1, C, 1, 1]`
+- tail output quantizer 保持 scalar 且 disabled。
+- `effective_int_levels_min=139`
+- Conv2d effective int level mean：`250.5625`
+- Linear effective int level min：`139`
+- Linear fake-quant relative MSE max：`0.0002060855`
+
+#### E006a 结论
+
+E006a 给出强正信号：
+
+- all Conv2d per-channel MSE 让 128-sample SNR mean 从 `-7.1021 dB` 恢复到 `-5.3817 dB`。
+- 提升 `+1.7203 dB`，超过预设的 `+1 dB` 强信号阈值。
+- 说明 tensor-wise Conv2d activation 粒度过粗确实是当前 W4A8 A8 init 崩坏的重要因素。
+
+但这不是完整修复：
+
+- per-channel 只恢复了 all_on 到 all_off gap 的约 `14.5%`。
+- 结果仍远低于 W4A32 / all_off 的 `4.7973 dB`。
+- Conv2d diagnostics 中局部 fake-quant MSE / relative MSE 仍有异常层，说明更细粒度改善了最终输出，但没有消除所有 activation 误差来源。
+
+下一步：
+
+1. 进入 E006b：Conv2d activation group-wise feasibility，优先 group size 4/8/16。
+2. 进入 E006c：结构化 per-channel 对照，判断 all Conv2d 是否必要，还是只处理 fusion / merge_proj / stage_output_conv / stage5。
+3. 保留 Linear / transformer sanity check；当前 Linear 指标没有变成 A8 init 主瓶颈。

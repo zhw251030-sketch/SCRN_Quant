@@ -36,6 +36,7 @@ DEFAULT_MSE_SHRINK_RATIOS = [
     0.5,
 ]
 RANGE_SELECTOR_KEYS = {"index", "name_contains", "stage", "branch", "role", "module_type"}
+ACTIVATION_GRANULARITIES = {"tensor", "per_channel"}
 
 
 def apply_activation_ranges(
@@ -43,6 +44,7 @@ def apply_activation_ranges(
     inputs: torch.Tensor,
     *,
     method: str,
+    activation_granularity: str = "tensor",
     percentile: float = 99.99,
     mse_shrink_ratios: str | Iterable[float] | None = None,
     loss_p: float = 2.4,
@@ -62,6 +64,9 @@ def apply_activation_ranges(
     method = str(method)
     if method not in {"percentile", "max", "mse_grid"}:
         raise ValueError(f"Unsupported activation range method: {method}")
+    activation_granularity = _validate_activation_granularity(activation_granularity)
+    if activation_granularity == "per_channel" and method != "mse_grid":
+        raise ValueError("per-channel activation range calibration currently supports only mse_grid.")
     percentile = _validate_percentile(percentile)
     max_values_per_layer = _validate_max_values(max_values_per_layer)
     loss_p = _validate_loss_p(loss_p)
@@ -91,7 +96,17 @@ def apply_activation_ranges(
     for index_, row in selected_by_index.items():
         hooks.append(
             module_by_index[index_].register_forward_hook(
-                _make_range_hook(index_, row, records, method, percentile, mse_ratios, loss_p, max_values_per_layer)
+                _make_range_hook(
+                    index_,
+                    row,
+                    records,
+                    method,
+                    percentile,
+                    mse_ratios,
+                    loss_p,
+                    max_values_per_layer,
+                    activation_granularity,
+                )
             )
         )
 
@@ -109,6 +124,7 @@ def apply_activation_ranges(
     layers = [records[int(row["index"])] for row in selected_rows]
     summary = {
         "method": method,
+        "activation_granularity": activation_granularity,
         "selected_count": len(layers),
         "selected_names": [layer["name"] for layer in layers],
         "selector": {
@@ -143,6 +159,7 @@ def apply_percentile_activation_ranges(
     inputs: torch.Tensor,
     *,
     percentile: float,
+    activation_granularity: str = "tensor",
     index: int | None = None,
     name_contains: str | None = None,
     stage: str | None = None,
@@ -160,6 +177,7 @@ def apply_percentile_activation_ranges(
         model,
         inputs,
         method="percentile",
+        activation_granularity=activation_granularity,
         percentile=percentile,
         index=index,
         name_contains=name_contains,
@@ -263,12 +281,27 @@ def _make_range_hook(
     mse_shrink_ratios: list[float],
     loss_p: float,
     max_values_per_layer: int,
+    activation_granularity: str,
 ):
     def hook(module: QuantModule, _inputs, output: torch.Tensor) -> None:
-        if method == "percentile":
+        if activation_granularity == "per_channel":
+            if method != "mse_grid":
+                raise ValueError("per-channel activation range calibration currently supports only mse_grid.")
+            n_levels = int(getattr(module.act_quantizer, "n_levels", 2 ** int(getattr(module.act_quantizer, "n_bits", 8))))
+            stats = _per_channel_mse_grid_range_stats(
+                output,
+                mse_shrink_ratios=mse_shrink_ratios,
+                loss_p=loss_p,
+                max_values_per_layer=max_values_per_layer,
+                n_levels=n_levels,
+            )
+            _write_activation_quantizer_values(module.act_quantizer, output, stats["delta_tensor"], stats["zero_point_tensor"])
+        elif method == "percentile":
             stats = _percentile_range_stats(output, percentile=percentile, max_values_per_layer=max_values_per_layer)
+            _write_activation_quantizer_range(module.act_quantizer, output, stats["chosen_min"], stats["chosen_max"])
         elif method == "max":
             stats = _max_range_stats(output)
+            _write_activation_quantizer_range(module.act_quantizer, output, stats["chosen_min"], stats["chosen_max"])
         elif method == "mse_grid":
             n_levels = int(getattr(module.act_quantizer, "n_levels", 2 ** int(getattr(module.act_quantizer, "n_bits", 8))))
             stats = _mse_grid_range_stats(
@@ -278,9 +311,11 @@ def _make_range_hook(
                 max_values_per_layer=max_values_per_layer,
                 n_levels=n_levels,
             )
+            _write_activation_quantizer_range(module.act_quantizer, output, stats["chosen_min"], stats["chosen_max"])
         else:
             raise ValueError(f"Unsupported activation range method: {method}")
-        _write_activation_quantizer_range(module.act_quantizer, output, stats["chosen_min"], stats["chosen_max"])
+        stats.pop("delta_tensor", None)
+        stats.pop("zero_point_tensor", None)
         records[index] = {
             "index": int(index),
             "name": row["name"],
@@ -290,7 +325,9 @@ def _make_range_hook(
             "module_type": row["module_type"],
             **stats,
             "delta": _float_value(module.act_quantizer.delta),
+            "delta_shape": _shape_value(module.act_quantizer.delta),
             "zero_point": _float_value(module.act_quantizer.zero_point),
+            "zero_point_shape": _shape_value(module.act_quantizer.zero_point),
         }
 
     return hook
@@ -435,6 +472,98 @@ def _mse_grid_range_stats(
     }
 
 
+def _per_channel_mse_grid_range_stats(
+    tensor: torch.Tensor,
+    *,
+    mse_shrink_ratios: Iterable[float],
+    loss_p: float,
+    max_values_per_layer: int,
+    n_levels: int,
+) -> dict[str, Any]:
+    values = tensor.detach().float()
+    if values.ndim != 4:
+        raise ValueError(f"per-channel activation range expects 4D [N, C, H, W] output, got shape {tuple(values.shape)}")
+    if values.shape[1] <= 0:
+        raise ValueError("per-channel activation range expects non-empty channel dimension.")
+
+    channel_count = int(values.shape[1])
+    max_values_per_channel = max(1, int(max_values_per_layer) // channel_count)
+    deltas: list[torch.Tensor] = []
+    zero_points: list[torch.Tensor] = []
+    original_mins: list[float] = []
+    original_maxes: list[float] = []
+    chosen_mins: list[float] = []
+    chosen_maxes: list[float] = []
+    chosen_ranges: list[float] = []
+    range_shrink_ratios: list[float] = []
+    best_ratios: list[float] = []
+    best_scores: list[float] = []
+    sampled_any = False
+    total_sample_count = 0
+    total_numel = 0
+
+    for channel_index in range(channel_count):
+        channel_values = values[:, channel_index, :, :].reshape(-1)
+        stats = _mse_grid_range_stats(
+            channel_values,
+            mse_shrink_ratios=mse_shrink_ratios,
+            loss_p=loss_p,
+            max_values_per_layer=max_values_per_channel,
+            n_levels=n_levels,
+        )
+        delta_value = max(float(stats["chosen_range"]) / float(n_levels - 1), ACTIVATION_RANGE_EPS)
+        deltas.append(torch.tensor(delta_value, dtype=tensor.dtype, device=tensor.device))
+        zero_points.append(torch.tensor(round(-float(stats["chosen_min"]) / delta_value), dtype=tensor.dtype, device=tensor.device))
+        original_mins.append(float(stats["original_min"]))
+        original_maxes.append(float(stats["original_max"]))
+        chosen_mins.append(float(stats["chosen_min"]))
+        chosen_maxes.append(float(stats["chosen_max"]))
+        chosen_ranges.append(float(stats["chosen_range"]))
+        range_shrink_ratios.append(float(stats["range_shrink_ratio"]))
+        best_ratios.append(float(stats["best_shrink_ratio"]))
+        best_scores.append(float(stats["best_score"]))
+        sampled_any = sampled_any or bool(stats["sampled"])
+        total_sample_count += int(stats["sample_count"])
+        total_numel += int(stats["numel"])
+
+    delta_tensor = torch.stack(deltas).view(1, channel_count, 1, 1)
+    zero_point_tensor = torch.stack(zero_points).view(1, channel_count, 1, 1)
+    original_range = max(max(original_maxes) - min(original_mins), ACTIVATION_RANGE_EPS)
+    chosen_range = max(max(chosen_maxes) - min(chosen_mins), ACTIVATION_RANGE_EPS)
+    return {
+        "original_min": min(original_mins),
+        "original_max": max(original_maxes),
+        "lower_value": min(chosen_mins),
+        "upper_value": max(chosen_maxes),
+        "clipped_min": min(chosen_mins),
+        "clipped_max": max(chosen_maxes),
+        "chosen_min": min(chosen_mins),
+        "chosen_max": max(chosen_maxes),
+        "chosen_range": chosen_range,
+        "original_range": original_range,
+        "clipped_range": chosen_range,
+        "range_shrink_ratio": chosen_range / original_range,
+        "best_shrink_ratio": _mean(best_ratios),
+        "best_shrink_ratio_min": min(best_ratios),
+        "best_shrink_ratio_max": max(best_ratios),
+        "best_score": _mean(best_scores),
+        "best_score_max": max(best_scores),
+        "sampled": sampled_any,
+        "sample_count": total_sample_count,
+        "numel": total_numel,
+        "channel_count": channel_count,
+        "per_channel_sample_budget": max_values_per_channel,
+        "chosen_range_min": min(chosen_ranges),
+        "chosen_range_mean": _mean(chosen_ranges),
+        "chosen_range_max": max(chosen_ranges),
+        "range_shrink_ratio_min": min(range_shrink_ratios),
+        "range_shrink_ratio_mean": _mean(range_shrink_ratios),
+        "range_shrink_ratio_max": max(range_shrink_ratios),
+        "delta_tensor": delta_tensor,
+        "zero_point_tensor": zero_point_tensor,
+    }
+
+
 def _fake_quantize_with_range(values: torch.Tensor, min_value: float, max_value: float, *, n_levels: int) -> torch.Tensor:
     delta_value = max((float(max_value) - float(min_value)) / float(n_levels - 1), ACTIVATION_RANGE_EPS)
     delta = torch.tensor(delta_value, dtype=values.dtype, device=values.device)
@@ -454,11 +583,20 @@ def _write_activation_quantizer_range(
     delta_value = max((float(clipped_max) - float(clipped_min)) / float(n_levels - 1), ACTIVATION_RANGE_EPS)
     delta = torch.tensor(delta_value, dtype=reference.dtype, device=reference.device)
     zero_point = torch.tensor(round(-float(clipped_min) / delta_value), dtype=reference.dtype, device=reference.device)
+    _write_activation_quantizer_values(quantizer, reference, delta, zero_point)
+
+
+def _write_activation_quantizer_values(
+    quantizer: nn.Module,
+    reference: torch.Tensor,
+    delta: torch.Tensor,
+    zero_point: torch.Tensor,
+) -> None:
+    delta = delta.detach().to(dtype=reference.dtype, device=reference.device).clone()
+    zero_point = zero_point.detach().to(dtype=reference.dtype, device=reference.device).clone()
     current_delta = getattr(quantizer, "delta", None)
-    if isinstance(current_delta, nn.Parameter):
+    if isinstance(current_delta, nn.Parameter) and tuple(current_delta.shape) == tuple(delta.shape):
         current_delta.data.copy_(delta)
-    elif current_delta is not None:
-        quantizer.delta = delta
     elif bool(getattr(quantizer, "leaf_param", False)):
         quantizer.delta = nn.Parameter(delta)
     else:
@@ -479,6 +617,13 @@ def _validate_percentile(percentile: float) -> float:
     if value <= 0.0 or value >= 100.0:
         raise ValueError(f"activation percentile must be between 0 and 100, got {percentile}")
     return value
+
+
+def _validate_activation_granularity(value: str) -> str:
+    normalized = str(value)
+    if normalized not in ACTIVATION_GRANULARITIES:
+        raise ValueError(f"Unsupported activation_granularity: {value}")
+    return normalized
 
 
 def _validate_max_values(max_values_per_layer: int) -> int:
@@ -524,6 +669,19 @@ def _float_value(value: torch.Tensor | nn.Parameter | None) -> float | None:
     if value is None:
         return None
     return float(value.detach().float().reshape(-1)[0].item())
+
+
+def _shape_value(value: torch.Tensor | nn.Parameter | None) -> list[int] | None:
+    if value is None:
+        return None
+    return list(value.shape)
+
+
+def _mean(values: Iterable[float]) -> float | None:
+    materialized = [float(value) for value in values]
+    if not materialized:
+        return None
+    return sum(materialized) / len(materialized)
 
 
 @contextmanager

@@ -28,6 +28,7 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
         self.assertEqual(config["run_name"], "activation_only_init")
         self.assertEqual(config["activation_range_method"], "none")
         self.assertEqual(config["activation_percentile"], 99.99)
+        self.assertEqual(config["activation_granularity"], "tensor")
         self.assertIsNone(config["cuda_device_index"])
 
     def test_checkpoint_quant_config_does_not_override_e002c_run_root(self) -> None:
@@ -80,6 +81,8 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
                 "mse_grid",
                 "--activation-percentile",
                 "99.9",
+                "--activation-granularity",
+                "per_channel",
                 "--range-mse-shrink-ratios",
                 "1.0,0.99,0.95",
                 "--range-loss-p",
@@ -110,6 +113,7 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
 
         self.assertEqual(args.activation_range_method, "mse_grid")
         self.assertEqual(args.activation_percentile, 99.9)
+        self.assertEqual(args.activation_granularity, "per_channel")
         self.assertEqual(args.range_mse_shrink_ratios, "1.0,0.99,0.95")
         self.assertEqual(args.range_loss_p, 2.4)
         self.assertEqual(args.range_module_type, "Conv2d")
@@ -166,6 +170,36 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
         self.assertEqual(config["activation_range_method"], "mse_grid")
         self.assertEqual(config["range_mse_shrink_ratios"], [1.0, 0.99, 0.95])
         self.assertEqual(config["range_loss_p"], 2.4)
+        self.assertEqual(config["activation_granularity"], "tensor")
+
+    def test_normalize_config_accepts_per_channel_activation_granularity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = Path(tmpdir) / "weight_recon.pth"
+            checkpoint.write_bytes(b"placeholder")
+
+            config = normalize_config(
+                {
+                    "weight_recon_checkpoint": str(checkpoint),
+                    "activation_range_method": "mse_grid",
+                    "activation_granularity": "per_channel",
+                    "range_module_type": "Conv2d",
+                }
+            )
+
+        self.assertEqual(config["activation_granularity"], "per_channel")
+
+    def test_normalize_config_rejects_unsupported_activation_granularity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = Path(tmpdir) / "weight_recon.pth"
+            checkpoint.write_bytes(b"placeholder")
+
+            with self.assertRaisesRegex(ValueError, "Unsupported activation_granularity"):
+                normalize_config(
+                    {
+                        "weight_recon_checkpoint": str(checkpoint),
+                        "activation_granularity": "group_wise",
+                    }
+                )
 
     def test_normalize_config_parses_selector_group_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
