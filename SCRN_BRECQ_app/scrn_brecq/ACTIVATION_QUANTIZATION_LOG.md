@@ -3836,3 +3836,96 @@ run dir：
 - 128-sample multi eval。
 - 128-sample E005a diagnostics。
 - 记录相对 `all_on=-7.1021 dB` 的 SNR 恢复和 diagnostics 指标变化。
+
+### 2026-05-06 E005b：Conv2d percentile clipping 正式结果
+
+#### 实验口径
+
+本轮只验证 Conv2d tensor-wise percentile clipping 是否能修复 A8 init 崩坏。
+
+固定设置：
+
+- 起点：同一个 W4 weight-recon checkpoint。
+- activation init：`num_samples=64`、`init_batch_size=64`、`seed=1005`。
+- 不跑 activation reconstruction。
+- 输出 checkpoint：`quantized_scrn_brecq_pre_act_recon.pth`。
+- 正式评价：128-sample multi eval，`seed=20260427`、`batch_size=16`、CUDA。
+- diagnostics：128-sample E005a diagnostics。
+- baseline：
+  - all_on A8 init：SNR mean `-7.1021 dB`。
+  - all_off / W4A32 近似：SNR mean `4.7973 dB`。
+  - all_on 到 all_off gap 约 `11.8993 dB`。
+
+#### E005b-1：all Conv2d percentile sweep
+
+| run | selected | single-sample SNR | 128-sample SNR mean | median | min | SSIM mean | delta vs all_on | recovery |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| all Conv2d p99.9 | 31 | 0.6913 | -11.5661 | -12.3617 | -18.9702 | 0.3979 | -4.4640 | -0.375 |
+| all Conv2d p99.99 | 31 | 1.7552 | -8.0514 | -8.7076 | -15.2199 | 0.2250 | -0.9493 | -0.080 |
+| all Conv2d p99.995 | 31 | 2.3028 | -8.0202 | -8.6771 | -15.2424 | 0.2247 | -0.9181 | -0.077 |
+| all Conv2d p99.999 | 31 | 3.0883 | -7.9668 | -8.6962 | -15.2510 | 0.2272 | -0.8647 | -0.073 |
+
+结果解释：
+
+- all Conv2d percentile clipping 没有带来恢复，反而全部低于原始 all_on A8 init。
+- percentile 越宽松，结果越接近 all_on，但即使 p99.999 仍比 all_on 低约 `0.8647 dB`。
+- p99.9 过强 clipping 明显伤害 SNR，说明简单截断 outlier 会引入严重饱和误差。
+- 单样本 SNR 随 percentile 放宽从 `0.6913 dB` 上升到 `3.0883 dB`，但 128-sample mean 仍没有恢复；因此后续仍以 multi-sample 结果为准，不能用单图 SNR 判断有效。
+
+diagnostics 结果：
+
+- 所有 all Conv2d run 均保持 `activation_quantizers=52`、`non_positive_delta_count=0`。
+- p99.999 all Conv2d run 中，selected Conv2d quantizers 为 31 个。
+- p99.999 的 per-layer range shrink ratio：
+  - min `0.2427`
+  - mean `0.8891`
+  - max `0.9983`
+- p99.999 all Conv2d diagnostics：
+  - Conv2d `fake_quant_relative_mse_max=0.204468`
+  - Conv2d `fake_quant_relative_mse_mean=0.010738`
+  - Conv2d `effective_int_levels_min=140`
+  - Conv2d `effective_int_levels_mean=219.0`
+  - Conv2d `absmax_over_p99.99_max=29.3499`
+  - Conv2d `absmax_over_p99.99_mean=2.5891`
+- 对比 E005a 原始 A8 init：原始 Conv2d `fake_quant_mse_max=9.827e-05`，all Conv2d p99.999 后 `fake_quant_mse_max=0.007526`。这说明简单 tensor-wise percentile clipping 通过缩小 scale 换来更多饱和误差，局部 fake-quant MSE 反而放大。
+
+#### E005b-2：结构组对照
+
+使用 E005b-1 中相对最不差的 `p99.999`，只对局部 Conv2d 结构组应用 percentile range。
+
+| run | selected | single-sample SNR | 128-sample SNR mean | median | min | SSIM mean | delta vs all_on | recovery |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| fusion p99.999 | 10 | 4.8361 | -7.1144 | -7.8704 | -14.3532 | 0.2050 | -0.0123 | -0.001 |
+| split_proj p99.999 | 5 | 4.8327 | -7.0859 | -7.8377 | -14.3553 | 0.1943 | +0.0162 | 0.001 |
+| merge_proj p99.999 | 5 | 4.9909 | -7.1121 | -7.8484 | -14.4247 | 0.2044 | -0.0100 | -0.001 |
+| stage_output_conv p99.999 | 5 | 4.9830 | -7.0469 | -7.7355 | -14.3601 | 0.2019 | +0.0552 | 0.005 |
+| stage5 Conv2d p99.999 | 6 | 4.9873 | -8.1822 | -9.0382 | -15.5562 | 0.2408 | -1.0801 | -0.091 |
+
+结果解释：
+
+- 局部结构组没有出现足够强的恢复信号。
+- `stage_output_conv` 是本轮相对最好的局部组，但只恢复 `+0.0552 dB`，recovery ratio 约 `0.5%`，不足以证明 percentile clipping 是有效修复。
+- `split_proj` 只有 `+0.0162 dB`，可以视为噪声级别弱信号。
+- `fusion`、`merge_proj` 基本持平或略差。
+- `stage5 Conv2d` 明显变差 `-1.0801 dB`，说明后期结构对 clipping 饱和更敏感，不能简单扩大到 stage5。
+- 结构组单样本 SNR 都在 `4.83-4.99 dB` 附近，但 128-sample mean 仍接近 all_on；再次说明单样本结果存在很强偶然性，不应作为策略选择依据。
+
+#### E005b 结论
+
+E005b 没有验证“Conv2d A8 崩坏主要可由 tensor-wise percentile clipping 修复”。
+
+更准确的判断是：
+
+- Conv2d activation 仍是 W4A8 A8 init 崩坏的主要敏感区域，这一点由 E004/E005a 支持。
+- 但问题不是简单的“outlier 把 range 拉大，所以截掉 outlier 就恢复”。
+- 简单 percentile clipping 会缩小 selected Conv2d quantizer 的 range，但也会带来饱和误差，尤其 all Conv2d 和 stage5 Conv2d 会明显伤害 multi-sample SNR。
+- 当前 evidence 不支持继续扩大 percentile sweep 或把 percentile clipping 作为主修复策略。
+
+#### 后续判断
+
+E005b 后，优先级应调整为：
+
+1. 进入 E005c：MSE range calibration。原因是 percentile 只按分位数截断，不直接优化 fake-quant error；当前结果显示“截断 outlier”容易转化为饱和误差。
+2. 如果 E005c 仍无恢复，再考虑 per-channel / group-wise activation quantization。原因是 E005a 显示 Conv2d 存在 channel imbalance，但 E005b 的 tensor-wise range 修复不足。
+3. attention / Linear 仍保留为 sanity check，不作为 E005b 后的第一修复对象。E005b 未推翻 E004 的结构敏感性结论。
+4. 后续所有策略仍必须用 128-sample eval 判断，不接受单样本 SNR 作为成功证据。

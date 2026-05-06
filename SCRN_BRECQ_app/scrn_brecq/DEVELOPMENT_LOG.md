@@ -1865,3 +1865,55 @@
   - selected Conv2d quantizers：31
   - single-sample `quant_pre_act_recon_snr_db=0.4362 dB`
 - 该 smoke 只验证工具链和 checkpoint 保存，不作为正式 E005b 结论。
+
+## 2026-05-06 E005b percentile clipping experiments
+
+### 执行内容
+
+- 完成 E005b-1 all Conv2d percentile sweep：
+  - `99.9`
+  - `99.99`
+  - `99.995`
+  - `99.999`
+- 完成 E005b-2 结构组对照：
+  - `branch=fusion`
+  - `role=split_proj`
+  - `role=merge_proj`
+  - `role=stage_output_conv`
+  - `stage=stage5 + module_type=Conv2d`
+- 每个 run 均从同一个 W4 weight-recon checkpoint 出发，只做 A8 init + percentile range，不跑 activation reconstruction。
+- 每个正式 checkpoint 均完成：
+  - 128-sample multi eval。
+  - 128-sample E005a diagnostics。
+- 所有产物均写入：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E005_range_clipping/E005b_percentile/`
+- run 产物处于 `.gitignore` 保护目录，不纳入 Git。
+
+### 关键结果
+
+baseline：
+
+- all_on A8 init：SNR mean `-7.1021 dB`。
+- all_off / W4A32 近似：SNR mean `4.7973 dB`。
+
+all Conv2d sweep：
+
+- p99.9：128-sample SNR mean `-11.5661 dB`。
+- p99.99：128-sample SNR mean `-8.0514 dB`。
+- p99.995：128-sample SNR mean `-8.0202 dB`。
+- p99.999：128-sample SNR mean `-7.9668 dB`。
+
+结构组对照：
+
+- fusion p99.999：`-7.1144 dB`。
+- split_proj p99.999：`-7.0859 dB`。
+- merge_proj p99.999：`-7.1121 dB`。
+- stage_output_conv p99.999：`-7.0469 dB`。
+- stage5 Conv2d p99.999：`-8.1822 dB`。
+
+### 结论
+
+- E005b 未产生有效恢复；all Conv2d percentile clipping 全部弱于原始 all_on。
+- 局部结构组最多只有 `+0.0552 dB` 的弱恢复，不能作为有效修复证据。
+- p99.999 all Conv2d 虽然保持 `non_positive_delta_count=0`，但 Conv2d `fake_quant_mse_max` 从 E005a 原始 A8 init 的 `9.827e-05` 放大到 `0.007526`，说明简单 tensor-wise clipping 容易把 outlier 问题转成饱和误差。
+- 后续 E005 应优先转入 MSE range calibration，而不是继续扩大 percentile sweep。
