@@ -29,6 +29,7 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
         self.assertEqual(config["activation_range_method"], "none")
         self.assertEqual(config["activation_percentile"], 99.99)
         self.assertEqual(config["activation_granularity"], "tensor")
+        self.assertIsNone(config["activation_group_size"])
         self.assertIsNone(config["cuda_device_index"])
 
     def test_checkpoint_quant_config_does_not_override_e002c_run_root(self) -> None:
@@ -82,7 +83,9 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
                 "--activation-percentile",
                 "99.9",
                 "--activation-granularity",
-                "per_channel",
+                "group_wise",
+                "--activation-group-size",
+                "8",
                 "--range-mse-shrink-ratios",
                 "1.0,0.99,0.95",
                 "--range-loss-p",
@@ -113,7 +116,8 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
 
         self.assertEqual(args.activation_range_method, "mse_grid")
         self.assertEqual(args.activation_percentile, 99.9)
-        self.assertEqual(args.activation_granularity, "per_channel")
+        self.assertEqual(args.activation_granularity, "group_wise")
+        self.assertEqual(args.activation_group_size, 8)
         self.assertEqual(args.range_mse_shrink_ratios, "1.0,0.99,0.95")
         self.assertEqual(args.range_loss_p, 2.4)
         self.assertEqual(args.range_module_type, "Conv2d")
@@ -171,6 +175,7 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
         self.assertEqual(config["range_mse_shrink_ratios"], [1.0, 0.99, 0.95])
         self.assertEqual(config["range_loss_p"], 2.4)
         self.assertEqual(config["activation_granularity"], "tensor")
+        self.assertIsNone(config["activation_group_size"])
 
     def test_normalize_config_accepts_per_channel_activation_granularity(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -188,6 +193,61 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
 
         self.assertEqual(config["activation_granularity"], "per_channel")
 
+    def test_normalize_config_accepts_group_wise_activation_granularity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = Path(tmpdir) / "weight_recon.pth"
+            checkpoint.write_bytes(b"placeholder")
+
+            config = normalize_config(
+                {
+                    "weight_recon_checkpoint": str(checkpoint),
+                    "activation_range_method": "mse_grid",
+                    "activation_granularity": "group_wise",
+                    "activation_group_size": 8,
+                    "range_module_type": "Conv2d",
+                }
+            )
+
+        self.assertEqual(config["activation_granularity"], "group_wise")
+        self.assertEqual(config["activation_group_size"], 8)
+
+    def test_normalize_config_rejects_group_wise_without_positive_group_size(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = Path(tmpdir) / "weight_recon.pth"
+            checkpoint.write_bytes(b"placeholder")
+
+            with self.assertRaisesRegex(ValueError, "activation_group_size"):
+                normalize_config(
+                    {
+                        "weight_recon_checkpoint": str(checkpoint),
+                        "activation_range_method": "mse_grid",
+                        "activation_granularity": "group_wise",
+                    }
+                )
+            with self.assertRaisesRegex(ValueError, "activation_group_size"):
+                normalize_config(
+                    {
+                        "weight_recon_checkpoint": str(checkpoint),
+                        "activation_range_method": "mse_grid",
+                        "activation_granularity": "group_wise",
+                        "activation_group_size": 0,
+                    }
+                )
+
+    def test_e006b_configs_parse_group_wise_granularity(self) -> None:
+        for group_size in (4, 8, 16):
+            with self.subTest(group_size=group_size):
+                config_path = Path(f"SCRN_BRECQ_app/scrn_brecq/configs/activation_quantization/e006b_conv2d_group_wise_g{group_size}.json")
+                args = build_parser().parse_args(["--config", str(config_path)])
+
+                config = load_and_resolve_config(args, {"quant_config": {}})
+
+                self.assertEqual(config["activation_granularity"], "group_wise")
+                self.assertEqual(config["activation_group_size"], group_size)
+                self.assertEqual(config["activation_range_method"], "mse_grid")
+                self.assertEqual(config["range_module_type"], "Conv2d")
+                self.assertTrue(config["skip_act_recon"])
+
     def test_normalize_config_rejects_unsupported_activation_granularity(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             checkpoint = Path(tmpdir) / "weight_recon.pth"
@@ -197,7 +257,7 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
                 normalize_config(
                     {
                         "weight_recon_checkpoint": str(checkpoint),
-                        "activation_granularity": "group_wise",
+                        "activation_granularity": "unsupported",
                     }
                 )
 

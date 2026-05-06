@@ -79,7 +79,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skip-act-recon", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--activation-range-method", choices=["none", "percentile", "max", "mse_grid"], default=None)
     parser.add_argument("--activation-percentile", type=float, default=None)
-    parser.add_argument("--activation-granularity", choices=["tensor", "per_channel"], default=None)
+    parser.add_argument("--activation-granularity", choices=["tensor", "per_channel", "group_wise"], default=None)
+    parser.add_argument("--activation-group-size", type=int, default=None)
     parser.add_argument("--range-mse-shrink-ratios", default=None)
     parser.add_argument("--range-loss-p", type=float, default=None)
     parser.add_argument("--range-index", type=int, default=None)
@@ -240,6 +241,8 @@ def main() -> None:
                 "skip_act_recon": config["skip_act_recon"],
                 "activation_range_method": config["activation_range_method"],
                 "activation_percentile": config["activation_percentile"],
+                "activation_granularity": config["activation_granularity"],
+                "activation_group_size": config["activation_group_size"],
                 "range_selector": activation_range_summary.get("selector", {}),
             },
         },
@@ -285,6 +288,7 @@ def load_and_resolve_config(args: argparse.Namespace, checkpoint: Mapping[str, A
         "activation_range_method",
         "activation_percentile",
         "activation_granularity",
+        "activation_group_size",
         "range_mse_shrink_ratios",
         "range_loss_p",
         "range_index",
@@ -356,6 +360,7 @@ def default_config() -> dict[str, Any]:
         "activation_range_method": "none",
         "activation_percentile": 99.99,
         "activation_granularity": "tensor",
+        "activation_group_size": None,
         "range_mse_shrink_ratios": "1.0,0.999,0.995,0.99,0.98,0.97,0.96,0.95,0.925,0.9,0.875,0.85,0.8,0.75,0.7,0.65,0.6,0.55,0.5",
         "range_loss_p": 2.4,
         "range_index": None,
@@ -388,6 +393,8 @@ def normalize_config(config: Mapping[str, Any]) -> dict[str, Any]:
     normalized["run_name"] = str(normalized["run_name"])
     normalized["device"] = str(normalized["device"])
     normalized["activation_granularity"] = str(normalized["activation_granularity"])
+    activation_group_size = normalized.get("activation_group_size")
+    normalized["activation_group_size"] = None if activation_group_size is None else int(activation_group_size)
     normalized["gpus"] = str(normalized.get("gpus", "") or "")
     cuda_device_index = normalized.get("cuda_device_index")
     normalized["cuda_device_index"] = None if cuda_device_index is None else int(cuda_device_index)
@@ -436,8 +443,13 @@ def normalize_config(config: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError(f"activation_percentile must be between 0 and 100, got {normalized['activation_percentile']}")
     if normalized["activation_range_method"] not in {"none", "percentile", "max", "mse_grid"}:
         raise ValueError(f"Unsupported activation_range_method: {normalized['activation_range_method']}")
-    if normalized["activation_granularity"] not in {"tensor", "per_channel"}:
+    if normalized["activation_granularity"] not in {"tensor", "per_channel", "group_wise"}:
         raise ValueError(f"Unsupported activation_granularity: {normalized['activation_granularity']}")
+    if normalized["activation_granularity"] == "group_wise":
+        if normalized["activation_group_size"] is None or normalized["activation_group_size"] <= 0:
+            raise ValueError(
+                f"activation_group_size must be positive for group_wise activation_granularity, got {normalized['activation_group_size']}"
+            )
     if normalized["cuda_device_index"] is not None and normalized["cuda_device_index"] < 0:
         raise ValueError(f"cuda_device_index must be non-negative, got {normalized['cuda_device_index']}")
     for key in [
@@ -498,6 +510,7 @@ def apply_activation_range_calibration(
         init_inputs,
         method=method,
         activation_granularity=str(config["activation_granularity"]),
+        activation_group_size=config.get("activation_group_size"),
         percentile=float(config["activation_percentile"]),
         mse_shrink_ratios=config.get("range_mse_shrink_ratios"),
         loss_p=float(config["range_loss_p"]),

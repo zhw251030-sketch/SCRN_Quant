@@ -4593,3 +4593,87 @@ E006a 给出强正信号：
 - 默认单图：E006a per-channel 相对 tensor-wise init 下降 `-1.7556 dB`。
 
 因此这次单样本 sanity check 进一步证明：单样本 SNR 只能用于 smoke / 可视化，不适合作为 E006 粒度策略的正式判断依据。正式结论仍以固定 128-sample eval 为准。
+
+### 2026-05-06 E006b：Conv2d activation group-wise feasibility implementation and smoke
+
+E006b 目标：
+
+> 在 E006a per-channel 给出 `+1.7203 dB` 强信号后，验证 group-wise 是否能以更低复杂度接近 per-channel 收益。
+
+实现口径：
+
+- 新增 `activation_granularity=group_wise`。
+- 新增 `activation_group_size`。
+- E006b 只支持 `group_wise + mse_grid`。
+- 仅支持 Conv2d 4D activation `[N, C, H, W]`。
+- 按 C 维连续分组，最后一组允许不足 group size。
+- `delta/zero_point` 仍写为 `[1, C, 1, 1]`，同组 channel 重复相同 scale / zero point。
+- 这样可以复用 E006a 已验证的 forward 广播、checkpoint restore 和 diagnostics 兼容路径。
+
+新增配置：
+
+- `configs/activation_quantization/e006b_conv2d_group_wise_g4.json`
+- `configs/activation_quantization/e006b_conv2d_group_wise_g8.json`
+- `configs/activation_quantization/e006b_conv2d_group_wise_g16.json`
+
+新增 / 更新测试：
+
+- `test_activation_range.py`
+  - group-wise MSE 对 4D Conv2d 写出 `[1, C, 1, 1]`。
+  - 同一 group 内 `delta/zero_point` 重复。
+  - 非 4D output 报错。
+  - `activation_group_size` 缺失或非正时报错。
+  - selected Conv2d group-wise 不改 Linear activation delta shape。
+- `test_activation_only_quantize_scrn.py`
+  - parser 接受 `--activation-granularity group_wise --activation-group-size 8`。
+  - 默认仍是 `tensor`，`activation_group_size=None`。
+  - E006b 三个配置可解析。
+- `test_activation_diagnostics.py`
+  - repeated `[1, C, 1, 1]` group-wise scale fake-quant stats 可运行，`non_positive_delta_count=0`。
+
+最小检查：
+
+- `test_activation_range`：19 tests OK。
+- `test_activation_only_quantize_scrn`：15 tests OK。
+- `test_activation_diagnostics + test_evaluate_quantized_scrn`：11 tests OK。
+- `py_compile` passed。
+- CLI `--help` 已确认新参数。
+
+#### E006b-0 smoke：group size 8
+
+run：
+
+- quant：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/quant/20260506_220432_e006b_smoke_group_wise_g8_mse/`
+- checkpoint：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/quant/20260506_220432_e006b_smoke_group_wise_g8_mse/checkpoints/quantized_scrn_brecq_pre_act_recon.pth`
+- reload eval：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/eval/20260506_220506_e006b_smoke_g8_reload_eval2/`
+- diagnostics：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/diagnostics/20260506_220522_e006b_smoke_g8_diagnostics2/`
+
+smoke 结果：
+
+| item | value |
+|---|---:|
+| group size | 8 |
+| selected Conv2d quantizers | 31 |
+| activation quantizers | 52 |
+| activation delta count | 52 |
+| activation zero point count | 52 |
+| non-positive delta count | 0 |
+| smoke single pre-act SNR | 7.3547 dB |
+| diagnostics activation stat count | 52 |
+| diagnostics fake quant MSE max | 7.977941277204081e-05 |
+
+复核：
+
+- selected Conv2d activation `delta/zero_point` shape 为 `[1, C, 1, 1]`。
+- group size 8 时，64-channel Conv2d 通常有 8 组，32-channel Conv2d 通常有 4 组。
+- checkpoint reload eval completed on `cuda:1`，说明保存/恢复和 forward 兼容。
+
+当前结论：
+
+- E006b group-wise 代码路径已通过 smoke。
+- smoke 单图 SNR 不作为正式效果证据。
+- 下一步进入 E006b-1：g4 / g8 / g16 固定 128-sample eval 和 128-sample diagnostics。

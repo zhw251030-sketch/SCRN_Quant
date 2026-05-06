@@ -2251,3 +2251,67 @@ Diagnostics：
 - 默认单图上，E006a per-channel A8 init 低于旧 tensor-wise A8 init。
 - 这与 128-sample eval 的结论相反：E006a 在 128-sample mean 上相对 all_on 提升 `+1.7203 dB`。
 - 因此该单图 sanity check 再次确认：单样本 SNR 只能用于可视化和 smoke，不能作为 E006 粒度策略的正式判断依据。
+
+## 2026-05-06 E006b Conv2d activation group-wise implementation and smoke
+
+代码改动：
+
+- `quant/activation_range.py`
+  - 扩展 `activation_granularity`，新增 `group_wise`。
+  - 新增 `activation_group_size`，仅在 `group_wise + mse_grid` 下启用。
+  - Conv2d activation group-wise 按 `[N, C, H, W]` 的 C 维连续分组，最后一组允许不足 group size。
+  - 写入的 activation `delta/zero_point` 仍保持 `[1, C, 1, 1]`，同组 channel 重复同一组 scale / zero point，复用 E006a checkpoint restore 和 forward 广播路径。
+- `cli/activation_only_quantize_scrn.py`
+  - 新增 `--activation-granularity group_wise`。
+  - 新增 `--activation-group-size`。
+  - config normalize 默认保持 `activation_granularity=tensor`、`activation_group_size=None`，旧 E005/E006a 配置不受影响。
+- 新增 E006b 配置：
+  - `configs/activation_quantization/e006b_conv2d_group_wise_g4.json`
+  - `configs/activation_quantization/e006b_conv2d_group_wise_g8.json`
+  - `configs/activation_quantization/e006b_conv2d_group_wise_g16.json`
+
+测试：
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_range`
+  - 19 tests OK。
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_only_quantize_scrn`
+  - 15 tests OK。
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_quantized_scrn`
+  - 11 tests OK。
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/activation_range.py SCRN_BRECQ_app/scrn_brecq/cli/activation_only_quantize_scrn.py SCRN_BRECQ_app/scrn_brecq/quant/activation_diagnostics.py`
+  - passed。
+- CLI `--help` 已确认出现：
+  - `--activation-granularity {tensor,per_channel,group_wise}`
+  - `--activation-group-size ACTIVATION_GROUP_SIZE`
+
+E006b-0 smoke：
+
+- config：`e006b_conv2d_group_wise_g8.json`
+- override：`num_samples=2`、`init_batch_size=2`、`batch_size=2`、`cuda_device_index=1`
+- quant run：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/quant/20260506_220432_e006b_smoke_group_wise_g8_mse/`
+- checkpoint：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/quant/20260506_220432_e006b_smoke_group_wise_g8_mse/checkpoints/quantized_scrn_brecq_pre_act_recon.pth`
+- smoke metrics：
+  - `post_weight_snr=11.6961`
+  - `pre_act_snr=7.3547`
+  - `selected_count=31`
+  - `activation_quantizers=52`
+  - `activation_delta_count=52`
+  - `activation_zero_point_count=52`
+  - `non_positive_delta_count=0`
+  - selected Conv2d `delta_shape/zero_point_shape=[1,C,1,1]`
+- reload eval：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/eval/20260506_220506_e006b_smoke_g8_reload_eval2/`
+  - 2-sample reload eval completed on `cuda:1`，确认 group-wise activation checkpoint 可恢复并 forward。
+- diagnostics：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/diagnostics/20260506_220522_e006b_smoke_g8_diagnostics2/`
+  - `activation_quantizers=52`
+  - `non_positive_delta_count=0`
+  - `activation_stat_count=52`
+  - `fake_quant_mse_max=7.977941277204081e-05`
+
+当前结论：
+
+- E006b group-wise 实现、checkpoint 保存/恢复和 diagnostics 兼容性 smoke 已通过。
+- 该 smoke 不能作为正式效果结论；下一步必须跑 g4/g8/g16 固定 128-sample eval 和 diagnostics。

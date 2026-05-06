@@ -134,6 +134,33 @@ class ActivationDiagnosticsTest(unittest.TestCase):
         self.assertEqual(stats[0]["fake_quant_sample_count"], 12)
         self.assertGreaterEqual(stats[0]["effective_int_levels"], 1)
 
+    def test_collect_activation_stats_supports_repeated_group_wise_activation_quantizer(self) -> None:
+        module = QuantModule(
+            nn.Conv2d(1, 4, kernel_size=1, bias=False),
+            weight_quant_params={"n_bits": 4, "channel_wise": True, "scale_method": "max"},
+            act_quant_params={"n_bits": 8, "channel_wise": False, "scale_method": "max", "leaf_param": True},
+        )
+        with torch.no_grad():
+            module.weight.copy_(torch.tensor([[[[1.0]]], [[[2.0]]], [[[4.0]]], [[[8.0]]]]))
+            module.org_weight.copy_(module.weight)
+        module.act_quantizer.delta = nn.Parameter(torch.tensor([0.1, 0.1, 0.2, 0.2]).view(1, 4, 1, 1))
+        module.act_quantizer.zero_point = torch.tensor([0.0, 0.0, 1.0, 1.0]).view(1, 4, 1, 1)
+        module.act_quantizer.inited = True
+        model = nn.Sequential(module)
+        model.set_quant_state = lambda weight_quant, act_quant: module.set_quant_state(weight_quant, act_quant)
+        inputs = torch.ones(1, 1, 2, 2)
+
+        rows = collect_quantizer_rows(model)
+        summary = summarize_activation_quantizers(rows)
+        stats = collect_activation_stats(model, inputs, weight_quant=False)
+
+        self.assertEqual(rows[0]["act_delta_shape"], [1, 4, 1, 1])
+        self.assertEqual(rows[0]["act_zero_point_shape"], [1, 4, 1, 1])
+        self.assertEqual(rows[0]["act_delta_non_positive_elements"], 0)
+        self.assertEqual(summary["non_positive_delta_count"], 0)
+        self.assertFalse(stats[0]["fake_quant_skipped"])
+        self.assertEqual(stats[0]["fake_quant_sample_count"], 16)
+
     def test_per_channel_fake_quant_stats_samples_large_outputs_by_channel(self) -> None:
         original_limit = diagnostics_module.TORCH_QUANTILE_MAX_EXACT_VALUES
         diagnostics_module.TORCH_QUANTILE_MAX_EXACT_VALUES = 6
