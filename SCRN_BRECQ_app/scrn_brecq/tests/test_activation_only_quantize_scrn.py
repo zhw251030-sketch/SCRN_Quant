@@ -77,9 +77,13 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
         args = build_parser().parse_args(
             [
                 "--activation-range-method",
-                "percentile",
+                "mse_grid",
                 "--activation-percentile",
                 "99.9",
+                "--range-mse-shrink-ratios",
+                "1.0,0.99,0.95",
+                "--range-loss-p",
+                "2.4",
                 "--range-module-type",
                 "Conv2d",
                 "--range-stage",
@@ -100,8 +104,10 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
             ]
         )
 
-        self.assertEqual(args.activation_range_method, "percentile")
+        self.assertEqual(args.activation_range_method, "mse_grid")
         self.assertEqual(args.activation_percentile, 99.9)
+        self.assertEqual(args.range_mse_shrink_ratios, "1.0,0.99,0.95")
+        self.assertEqual(args.range_loss_p, 2.4)
         self.assertEqual(args.range_module_type, "Conv2d")
         self.assertEqual(args.range_stage, "stage5")
         self.assertEqual(args.range_branch, "fusion")
@@ -131,6 +137,29 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
         self.assertEqual(config["cuda_device_index"], 2)
         self.assertEqual(config["activation_range_method"], "percentile")
         self.assertEqual(config["range_module_type"], "Conv2d")
+
+    def test_parser_accepts_max_range_method(self) -> None:
+        args = build_parser().parse_args(["--activation-range-method", "max"])
+
+        self.assertEqual(args.activation_range_method, "max")
+
+    def test_normalize_config_parses_mse_grid_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = Path(tmpdir) / "weight_recon.pth"
+            checkpoint.write_bytes(b"placeholder")
+
+            config = normalize_config(
+                {
+                    "weight_recon_checkpoint": str(checkpoint),
+                    "activation_range_method": "mse_grid",
+                    "range_mse_shrink_ratios": "1.0,0.99,0.95",
+                    "range_loss_p": 2.4,
+                }
+            )
+
+        self.assertEqual(config["activation_range_method"], "mse_grid")
+        self.assertEqual(config["range_mse_shrink_ratios"], [1.0, 0.99, 0.95])
+        self.assertEqual(config["range_loss_p"], 2.4)
 
     def test_build_activation_only_metrics_records_pre_act_recon_delta(self) -> None:
         clean = np.arange(256, dtype=np.float32).reshape(16, 16)

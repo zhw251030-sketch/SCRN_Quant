@@ -3929,3 +3929,143 @@ E005b 后，优先级应调整为：
 2. 如果 E005c 仍无恢复，再考虑 per-channel / group-wise activation quantization。原因是 E005a 显示 Conv2d 存在 channel imbalance，但 E005b 的 tensor-wise range 修复不足。
 3. attention / Linear 仍保留为 sanity check，不作为 E005b 后的第一修复对象。E005b 未推翻 E004 的结构敏感性结论。
 4. 后续所有策略仍必须用 128-sample eval 判断，不接受单样本 SNR 作为成功证据。
+
+### 2026-05-06 E005c：Conv2d MSE range calibration 正式结果
+
+#### 实验动机
+
+E005b 说明 percentile clipping 没有恢复 W4A8 A8 init，反而容易把 outlier 问题转成饱和误差。
+
+E005c 因此测试更自适应的 tensor-wise range search：
+
+- `max`：对选中 Conv2d activation quantizer 写 full min/max range，作为“不裁剪”对照。
+- `mse_grid`：在一组 shrink ratio 上搜索 fake-quant Lp/MSE loss 最小的 range。
+- conservative grid：`1.0,0.999,0.995,0.99,0.98,0.97,0.96,0.95`。
+- standard grid：`1.0,0.999,0.995,0.99,0.98,0.97,0.96,0.95,0.925,0.9,0.875,0.85,0.8,0.75,0.7,0.65,0.6,0.55,0.5`。
+
+重要前提：
+
+- 当前 all_on A8 init 本身已经使用 `scale_method=mse`。
+- 因此 E005c 不是“首次启用 MSE”，而是审计和细化 Conv2d-only MSE range。
+
+#### 工具改动
+
+扩展 `quant/activation_range.py`：
+
+- 新增通用入口 `apply_activation_ranges()`。
+- 保留 `apply_percentile_activation_ranges()` 作为兼容接口。
+- 新增 `max` method。
+- 新增 `mse_grid` method。
+- 新增 `parse_mse_shrink_ratios()`。
+- 每层记录：
+  - `chosen_min/chosen_max`
+  - `chosen_range`
+  - `range_shrink_ratio`
+  - `best_shrink_ratio`
+  - `best_score`
+  - `candidate_scores`
+  - `sampled/sample_count`
+
+扩展 `activation_only_quantize_scrn.py`：
+
+- `--activation-range-method` 支持 `{none,percentile,max,mse_grid}`。
+- 新增 `--range-mse-shrink-ratios`。
+- 新增 `--range-loss-p`，默认 `2.4`。
+
+新增配置：
+
+- `SCRN_BRECQ_app/scrn_brecq/configs/activation_quantization/e005c_conv2d_mse_range.json`
+
+#### 验证
+
+已通过：
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_range`
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_only_quantize_scrn`
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/activation_range.py SCRN_BRECQ_app/scrn_brecq/cli/activation_only_quantize_scrn.py`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.activation_only_quantize_scrn --help`
+
+E005c-0 smoke：
+
+- run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E005_range_clipping/E005c_mse_range/quant/20260506_190919_e005c_smoke_mse_grid/`
+- device：`cuda:1`
+- `activation_quantizers=52`
+- `non_positive_delta_count=0`
+- selected Conv2d quantizers：31
+- single-sample `quant_pre_act_recon_snr_db=8.7106 dB`
+- 该 smoke 只证明工具链有效，不作为正式结论。
+
+#### E005c-1：all Conv2d range controls
+
+baseline：
+
+- all_on A8 init：SNR mean `-7.1021 dB`。
+- all_off / W4A32 近似：SNR mean `4.7973 dB`。
+- all_on 到 all_off gap 约 `11.8993 dB`。
+
+| run | method | selected | single-sample SNR | 128-sample SNR mean | median | min | SSIM mean | delta vs all_on | recovery | best shrink min/mean/max |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| all Conv2d max | max | 31 | 9.1001 | -7.2963 | -8.1817 | -14.6397 | 0.2000 | -0.1942 | -0.016 | 1.000/1.000/1.000 |
+| all Conv2d MSE conservative | mse_grid | 31 | 8.8912 | -7.1224 | -7.9550 | -14.4597 | 0.1909 | -0.0203 | -0.002 | 0.950/0.971/1.000 |
+| all Conv2d MSE standard | mse_grid | 31 | 5.7910 | -7.7571 | -8.6296 | -15.0790 | 0.2130 | -0.6550 | -0.055 | 0.500/0.902/0.995 |
+
+诊断对比：
+
+| run | Conv2d fake-quant MSE max | Conv2d fake-quant MSE mean | Conv2d effective level min | Conv2d effective level mean |
+|---|---:|---:|---:|---:|
+| E005a original A8 init | 0.00009827 | 0.00005048 | 124 | 210.34 |
+| all Conv2d max | 0.00012242 | 0.00005360 | 63 | 202.72 |
+| all Conv2d MSE conservative | 0.00014805 | 0.00005735 | 68 | 205.94 |
+| all Conv2d MSE standard | 0.00450799 | 0.00041749 | 109 | 213.72 |
+
+解释：
+
+- 三个 all Conv2d range control 都没有超过 all_on baseline。
+- `max` 单样本 SNR 很高，但 128-sample mean 仍比 all_on 低 `0.1942 dB`，再次说明单样本偶然性很强。
+- conservative MSE 最接近 all_on，但仍低 `0.0203 dB`，可以视为基本持平或轻微变差，不是有效恢复。
+- standard MSE grid 允许缩到 0.5，平均 best shrink ratio 为 `0.902`，正式 SNR 反而下降 `0.6550 dB`，说明局部 fake-quant loss 搜索更激进时会伤害最终输出。
+- `max` 和 conservative MSE 都把 Conv2d effective level min 从原始 `124` 降到 `63/68`，说明 range 变宽或局部改写并没有改善有效 int level。
+
+#### E005c-2：结构组对照
+
+使用 E005c-1 中最接近 all_on 的 conservative MSE grid。
+
+| run | selected | single-sample SNR | 128-sample SNR mean | median | min | SSIM mean | delta vs all_on | recovery | best shrink min/mean/max |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| fusion MSE conservative | 10 | 4.9992 | -7.1603 | -7.8697 | -14.4085 | 0.1955 | -0.0582 | -0.005 | 0.950/0.979/0.995 |
+| split_proj MSE conservative | 5 | 4.9969 | -7.1614 | -7.8870 | -14.4011 | 0.1895 | -0.0593 | -0.005 | 0.970/0.978/0.990 |
+| merge_proj MSE conservative | 5 | 4.9902 | -7.0997 | -7.8480 | -14.3643 | 0.2010 | +0.0024 | 0.000 | 0.950/0.979/0.995 |
+| stage_output_conv MSE conservative | 5 | 4.9944 | -7.1444 | -7.8779 | -14.4226 | 0.1957 | -0.0423 | -0.004 | 0.960/0.980/0.990 |
+| stage5 Conv2d MSE conservative | 6 | 4.9881 | -7.1600 | -7.9289 | -14.4799 | 0.1908 | -0.0580 | -0.005 | 0.950/0.975/1.000 |
+
+解释：
+
+- 结构组 MSE range 也没有有效恢复。
+- `merge_proj` 是唯一略高于 all_on 的组，但只提升 `+0.0024 dB`，属于噪声级别。
+- 其他结构组都轻微变差。
+- 相比 E005b percentile 的 `stage_output_conv +0.0552 dB`，E005c conservative MSE 没有提供更强结构信号。
+
+#### E005c 结论
+
+E005c 没有验证“Conv2d A8 init 崩坏可以由 tensor-wise MSE range search 修复”。
+
+更准确的判断：
+
+- 当前 all_on A8 init 已经使用 MSE scale，额外的 Conv2d-only `max` 或 `mse_grid` 改写没有带来 128-sample 恢复。
+- `max` 明显优于 aggressive standard MSE，但仍不如 all_on，说明不是简单的“当前 MSE shrink 过强，换 full range 就好”。
+- conservative MSE 基本贴近 all_on，说明当前默认 MSE 初始化已经接近这个 tensor-wise range search 的上限。
+- standard MSE grid 的强 shrink 会进一步伤害 SNR，说明局部 fake-quant loss 最优不等于最终恢复质量最优。
+- E005b/E005c 合起来基本否定了“Conv2d tensor-wise range/clipping 是主要可修复瓶颈”。
+
+#### 后续判断
+
+E005 继续扩大 tensor-wise percentile/MSE sweep 的价值很低。
+
+下一步更合理方向：
+
+1. 进入 activation per-channel / group-wise feasibility。E005a 已显示 Conv2d 存在 channel imbalance，且 tensor-wise range search 无效。
+2. 保留 Linear / transformer sanity check，确保 Conv2d 粒度策略不会把瓶颈转移到 attention。
+3. 如果 per-channel/group-wise 仍无效，再转入 E006：mixed precision / selective FP32 activation quantizer / reconstruction objective。
+4. 后续仍必须以 128-sample eval 为主，single-sample SNR 只能做 smoke。

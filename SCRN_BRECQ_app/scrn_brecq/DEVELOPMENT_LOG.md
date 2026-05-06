@@ -1917,3 +1917,78 @@ all Conv2d sweep：
 - 局部结构组最多只有 `+0.0552 dB` 的弱恢复，不能作为有效修复证据。
 - p99.999 all Conv2d 虽然保持 `non_positive_delta_count=0`，但 Conv2d `fake_quant_mse_max` 从 E005a 原始 A8 init 的 `9.827e-05` 放大到 `0.007526`，说明简单 tensor-wise clipping 容易把 outlier 问题转成饱和误差。
 - 后续 E005 应优先转入 MSE range calibration，而不是继续扩大 percentile sweep。
+
+## 2026-05-06 E005c Conv2d MSE range calibration
+
+### 修改内容
+
+- 扩展 `quant/activation_range.py`：
+  - 新增通用入口 `apply_activation_ranges()`。
+  - 保留 `apply_percentile_activation_ranges()` 作为兼容接口。
+  - 新增 `max` range method。
+  - 新增 `mse_grid` range method。
+  - 新增 `parse_mse_shrink_ratios()`。
+  - 每层记录 chosen range、best shrink ratio、candidate scores、sample count 和 range shrink ratio。
+- 扩展 `cli/activation_only_quantize_scrn.py`：
+  - `--activation-range-method` 支持 `{none,percentile,max,mse_grid}`。
+  - 新增 `--range-mse-shrink-ratios`。
+  - 新增 `--range-loss-p`。
+- 新增配置：
+  - `configs/activation_quantization/e005c_conv2d_mse_range.json`
+- 更新测试：
+  - `tests/test_activation_range.py`
+  - `tests/test_activation_only_quantize_scrn.py`
+
+### 验证
+
+- TDD red：
+  - `test_activation_range` 初始失败于缺少 `apply_activation_ranges` / `parse_mse_shrink_ratios`。
+  - `test_activation_only_quantize_scrn` 初始失败于 CLI 不接受 `max/mse_grid`。
+- Green checks：
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_range`
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_only_quantize_scrn`
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`
+  - `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/activation_range.py SCRN_BRECQ_app/scrn_brecq/cli/activation_only_quantize_scrn.py`
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.activation_only_quantize_scrn --help`
+
+### Smoke
+
+- run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E005_range_clipping/E005c_mse_range/quant/20260506_190919_e005c_smoke_mse_grid/`
+- device：`cuda:1`
+- result：
+  - `activation_quantizers=52`
+  - `non_positive_delta_count=0`
+  - selected Conv2d quantizers：31
+  - single-sample `quant_pre_act_recon_snr_db=8.7106 dB`
+- 该 smoke 只验证工具链和 checkpoint 保存。
+
+### 正式实验结果
+
+baseline：
+
+- all_on A8 init：SNR mean `-7.1021 dB`。
+- all_off / W4A32 近似：SNR mean `4.7973 dB`。
+
+all Conv2d controls：
+
+- max：128-sample SNR mean `-7.2963 dB`。
+- MSE conservative：128-sample SNR mean `-7.1224 dB`。
+- MSE standard：128-sample SNR mean `-7.7571 dB`。
+
+结构组 MSE conservative：
+
+- fusion：`-7.1603 dB`。
+- split_proj：`-7.1614 dB`。
+- merge_proj：`-7.0997 dB`。
+- stage_output_conv：`-7.1444 dB`。
+- stage5 Conv2d：`-7.1600 dB`。
+
+### 结论
+
+- E005c 未产生有效恢复。
+- MSE conservative 最接近 all_on，但仍低 `0.0203 dB`，基本只能视为持平或轻微变差。
+- `merge_proj` 结构组只提升 `+0.0024 dB`，属于噪声级别。
+- standard MSE grid 允许更强 shrink，反而下降 `0.6550 dB`，说明局部 fake-quant loss 搜索更激进时不等于最终 SNR 更好。
+- E005b/E005c 合起来基本否定了 Conv2d tensor-wise percentile/MSE range calibration 作为主修复路径。
+- 后续应转入 activation per-channel / group-wise feasibility，而不是继续扩大 tensor-wise range sweep。

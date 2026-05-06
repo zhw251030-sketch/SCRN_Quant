@@ -3,7 +3,11 @@ import unittest
 import torch
 from torch import nn
 
-from SCRN_BRECQ_app.scrn_brecq.quant.activation_range import apply_percentile_activation_ranges
+from SCRN_BRECQ_app.scrn_brecq.quant.activation_range import (
+    apply_activation_ranges,
+    apply_percentile_activation_ranges,
+    parse_mse_shrink_ratios,
+)
 from SCRN_BRECQ_app.scrn_brecq.quant.quant_layer import QuantModule
 
 
@@ -117,6 +121,49 @@ class ActivationRangeTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "activation percentile"):
             apply_percentile_activation_ranges(model, inputs, percentile=100.0, module_type="Conv2d")
+
+    def test_max_range_writes_full_selected_conv2d_range(self) -> None:
+        model = TinyConvLinearModel()
+        inputs = torch.tensor([[[[-10.0, -1.0], [2.0, 100.0]]]], dtype=torch.float32)
+
+        result = apply_activation_ranges(model, inputs, method="max", module_type="Conv2d")
+
+        layer = result["layers"][0]
+        self.assertEqual(result["method"], "max")
+        self.assertEqual(result["selected_count"], 1)
+        self.assertAlmostEqual(layer["chosen_min"], -10.0)
+        self.assertAlmostEqual(layer["chosen_max"], 100.0)
+        self.assertAlmostEqual(layer["range_shrink_ratio"], 1.0)
+        self.assertAlmostEqual(float(model.conv.act_quantizer.delta.detach()), 110.0 / 255.0, places=6)
+
+    def test_mse_grid_chooses_best_shrink_ratio(self) -> None:
+        model = TinyConvLinearModel()
+        inputs = torch.tensor([[[[0.0, 1.0], [1.0, 100.0]]]], dtype=torch.float32)
+
+        result = apply_activation_ranges(
+            model,
+            inputs,
+            method="mse_grid",
+            module_type="Conv2d",
+            mse_shrink_ratios=[1.0, 0.5],
+            loss_p=2.0,
+        )
+
+        layer = result["layers"][0]
+        self.assertEqual(result["method"], "mse_grid")
+        self.assertEqual(result["mse_shrink_ratios"], [1.0, 0.5])
+        expected_best = min(layer["candidate_scores"], key=layer["candidate_scores"].get)
+        self.assertEqual(layer["best_shrink_ratio"], float(expected_best))
+        self.assertEqual(layer["best_score"], layer["candidate_scores"][expected_best])
+        self.assertAlmostEqual(layer["chosen_max"], 100.0 * float(expected_best))
+
+    def test_parse_mse_shrink_ratios_rejects_invalid_values(self) -> None:
+        with self.assertRaisesRegex(ValueError, "range_mse_shrink_ratios"):
+            parse_mse_shrink_ratios("")
+        with self.assertRaisesRegex(ValueError, "range_mse_shrink_ratios"):
+            parse_mse_shrink_ratios("1.0,not-a-number")
+        with self.assertRaisesRegex(ValueError, "range_mse_shrink_ratios"):
+            parse_mse_shrink_ratios("1.0,0.0")
 
 
 if __name__ == "__main__":

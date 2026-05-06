@@ -29,7 +29,10 @@ from SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn import (
     serializable_config,
 )
 from SCRN_BRECQ_app.scrn_brecq.data import CalibrationDataConfig, load_calibration_data
-from SCRN_BRECQ_app.scrn_brecq.quant.activation_range import apply_percentile_activation_ranges
+from SCRN_BRECQ_app.scrn_brecq.quant.activation_range import (
+    apply_activation_ranges,
+    parse_mse_shrink_ratios,
+)
 from SCRN_BRECQ_app.scrn_brecq.quant.activation_diagnostics import summarize_activation_quantizers
 from SCRN_BRECQ_app.scrn_brecq.quant.activation_diagnostics import collect_quantizer_rows
 from SCRN_BRECQ_app.scrn_brecq.utils import build_model_size_report, load_json, require_file
@@ -72,8 +75,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--activation-lr", type=float, default=None)
     parser.add_argument("--lp-norm", type=float, default=None)
     parser.add_argument("--skip-act-recon", action=argparse.BooleanOptionalAction, default=None)
-    parser.add_argument("--activation-range-method", choices=["none", "percentile"], default=None)
+    parser.add_argument("--activation-range-method", choices=["none", "percentile", "max", "mse_grid"], default=None)
     parser.add_argument("--activation-percentile", type=float, default=None)
+    parser.add_argument("--range-mse-shrink-ratios", default=None)
+    parser.add_argument("--range-loss-p", type=float, default=None)
     parser.add_argument("--range-index", type=int, default=None)
     parser.add_argument("--range-name-contains", default=None)
     parser.add_argument("--range-stage", default=None)
@@ -274,6 +279,8 @@ def load_and_resolve_config(args: argparse.Namespace, checkpoint: Mapping[str, A
         "save_figure",
         "activation_range_method",
         "activation_percentile",
+        "range_mse_shrink_ratios",
+        "range_loss_p",
         "range_index",
         "range_name_contains",
         "range_stage",
@@ -338,6 +345,8 @@ def default_config() -> dict[str, Any]:
         "skip_act_recon": True,
         "activation_range_method": "none",
         "activation_percentile": 99.99,
+        "range_mse_shrink_ratios": "1.0,0.999,0.995,0.99,0.98,0.97,0.96,0.95,0.925,0.9,0.875,0.85,0.8,0.75,0.7,0.65,0.6,0.55,0.5",
+        "range_loss_p": 2.4,
         "range_index": None,
         "range_name_contains": None,
         "range_stage": None,
@@ -389,11 +398,15 @@ def normalize_config(config: Mapping[str, Any]) -> dict[str, Any]:
     normalized["activation_lr"] = float(normalized["activation_lr"])
     normalized["lp_norm"] = float(normalized["lp_norm"])
     normalized["activation_percentile"] = float(normalized["activation_percentile"])
+    normalized["range_loss_p"] = float(normalized["range_loss_p"])
+    normalized["range_mse_shrink_ratios"] = parse_mse_shrink_ratios(normalized["range_mse_shrink_ratios"])
     if normalized["activation_lr"] <= 0.0:
         raise ValueError(f"activation_lr must be positive, got {normalized['activation_lr']}")
+    if normalized["range_loss_p"] <= 0.0:
+        raise ValueError(f"range_loss_p must be positive, got {normalized['range_loss_p']}")
     if normalized["activation_percentile"] <= 0.0 or normalized["activation_percentile"] >= 100.0:
         raise ValueError(f"activation_percentile must be between 0 and 100, got {normalized['activation_percentile']}")
-    if normalized["activation_range_method"] not in {"none", "percentile"}:
+    if normalized["activation_range_method"] not in {"none", "percentile", "max", "mse_grid"}:
         raise ValueError(f"Unsupported activation_range_method: {normalized['activation_range_method']}")
     if normalized["cuda_device_index"] is not None and normalized["cuda_device_index"] < 0:
         raise ValueError(f"cuda_device_index must be non-negative, got {normalized['cuda_device_index']}")
@@ -431,14 +444,17 @@ def apply_activation_range_calibration(
     method = str(config["activation_range_method"])
     if method == "none":
         return {"method": "none"}
-    if method != "percentile":
+    if method not in {"percentile", "max", "mse_grid"}:
         raise ValueError(f"Unsupported activation_range_method: {method}")
     device = next(quant_model.parameters()).device
     init_inputs = calibration_data[: min(int(config["init_batch_size"]), int(calibration_data.size(0)))].to(device)
-    return apply_percentile_activation_ranges(
+    return apply_activation_ranges(
         quant_model,
         init_inputs,
+        method=method,
         percentile=float(config["activation_percentile"]),
+        mse_shrink_ratios=config.get("range_mse_shrink_ratios"),
+        loss_p=float(config["range_loss_p"]),
         index=config.get("range_index"),
         name_contains=config.get("range_name_contains"),
         stage=config.get("range_stage"),

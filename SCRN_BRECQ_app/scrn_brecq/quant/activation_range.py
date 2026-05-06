@@ -14,6 +14,119 @@ from SCRN_BRECQ_app.scrn_brecq.quant.quant_layer import QuantModule
 
 DEFAULT_MAX_VALUES_PER_LAYER = 500_000
 ACTIVATION_RANGE_EPS = 1e-8
+DEFAULT_MSE_SHRINK_RATIOS = [
+    1.0,
+    0.999,
+    0.995,
+    0.99,
+    0.98,
+    0.97,
+    0.96,
+    0.95,
+    0.925,
+    0.9,
+    0.875,
+    0.85,
+    0.8,
+    0.75,
+    0.7,
+    0.65,
+    0.6,
+    0.55,
+    0.5,
+]
+
+
+def apply_activation_ranges(
+    model: nn.Module,
+    inputs: torch.Tensor,
+    *,
+    method: str,
+    percentile: float = 99.99,
+    mse_shrink_ratios: str | Iterable[float] | None = None,
+    loss_p: float = 2.4,
+    index: int | None = None,
+    name_contains: str | None = None,
+    stage: str | None = None,
+    branch: str | None = None,
+    role: str | None = None,
+    module_type: str | None = None,
+    include_output_quantizer: bool = False,
+    max_values_per_layer: int = DEFAULT_MAX_VALUES_PER_LAYER,
+    weight_quant: bool = True,
+) -> dict[str, Any]:
+    """Recalibrate selected activation quantizers with a named range method."""
+    method = str(method)
+    if method not in {"percentile", "max", "mse_grid"}:
+        raise ValueError(f"Unsupported activation range method: {method}")
+    percentile = _validate_percentile(percentile)
+    max_values_per_layer = _validate_max_values(max_values_per_layer)
+    loss_p = _validate_loss_p(loss_p)
+    mse_ratios = parse_mse_shrink_ratios(mse_shrink_ratios)
+    selected_rows = select_activation_quantizers(
+        model,
+        index=index,
+        name_contains=name_contains,
+        stage=stage,
+        branch=branch,
+        role=role,
+        module_type=module_type,
+        include_output_quantizer=include_output_quantizer,
+    )
+    if not selected_rows:
+        raise ValueError(f"{method} activation range calibration selected no activation quantizers.")
+
+    named_modules = _named_quant_modules(model)
+    module_by_index = {index_: module for index_, (_name, module) in enumerate(named_modules)}
+    selected_by_index = {int(row["index"]): row for row in selected_rows}
+    records: dict[int, dict[str, Any]] = {}
+    hooks = []
+    for index_, row in selected_by_index.items():
+        hooks.append(
+            module_by_index[index_].register_forward_hook(
+                _make_range_hook(index_, row, records, method, percentile, mse_ratios, loss_p, max_values_per_layer)
+            )
+        )
+
+    try:
+        with torch.no_grad(), _temporary_quant_state(model, weight_quant=weight_quant, act_quant=False):
+            _ = model(inputs)
+    finally:
+        for hook in hooks:
+            hook.remove()
+
+    missing = sorted(set(selected_by_index) - set(records))
+    if missing:
+        raise RuntimeError(f"Selected activation quantizers were not observed during forward pass: {missing}")
+
+    layers = [records[int(row["index"])] for row in selected_rows]
+    summary = {
+        "method": method,
+        "selected_count": len(layers),
+        "selected_names": [layer["name"] for layer in layers],
+        "selector": {
+            "index": index,
+            "name_contains": name_contains,
+            "stage": stage,
+            "branch": branch,
+            "role": role,
+            "module_type": module_type,
+            "include_output_quantizer": bool(include_output_quantizer),
+        },
+        "max_values_per_layer": max_values_per_layer,
+        "layers": layers,
+    }
+    if method == "percentile":
+        summary.update(
+            {
+                "percentile": percentile,
+                "lower_quantile": _lower_quantile(percentile),
+                "upper_quantile": 1.0 - _lower_quantile(percentile),
+            }
+        )
+    if method == "mse_grid":
+        summary.update({"mse_shrink_ratios": mse_ratios, "loss_p": loss_p})
+    return summary
 
 
 def apply_percentile_activation_ranges(
@@ -32,10 +145,11 @@ def apply_percentile_activation_ranges(
     weight_quant: bool = True,
 ) -> dict[str, Any]:
     """Recalibrate selected activation quantizers with two-sided percentile ranges."""
-    percentile = _validate_percentile(percentile)
-    max_values_per_layer = _validate_max_values(max_values_per_layer)
-    selected_rows = select_activation_quantizers(
+    return apply_activation_ranges(
         model,
+        inputs,
+        method="percentile",
+        percentile=percentile,
         index=index,
         name_contains=name_contains,
         stage=stage,
@@ -43,61 +157,38 @@ def apply_percentile_activation_ranges(
         role=role,
         module_type=module_type,
         include_output_quantizer=include_output_quantizer,
+        max_values_per_layer=max_values_per_layer,
+        weight_quant=weight_quant,
     )
-    if not selected_rows:
-        raise ValueError("Percentile activation range calibration selected no activation quantizers.")
-
-    named_modules = _named_quant_modules(model)
-    module_by_index = {index_: module for index_, (_name, module) in enumerate(named_modules)}
-    selected_by_index = {int(row["index"]): row for row in selected_rows}
-    records: dict[int, dict[str, Any]] = {}
-    hooks = []
-    for index_, row in selected_by_index.items():
-        hooks.append(module_by_index[index_].register_forward_hook(_make_percentile_hook(index_, row, records, percentile, max_values_per_layer)))
-
-    try:
-        with torch.no_grad(), _temporary_quant_state(model, weight_quant=weight_quant, act_quant=False):
-            _ = model(inputs)
-    finally:
-        for hook in hooks:
-            hook.remove()
-
-    missing = sorted(set(selected_by_index) - set(records))
-    if missing:
-        raise RuntimeError(f"Selected activation quantizers were not observed during forward pass: {missing}")
-
-    layers = [records[int(row["index"])] for row in selected_rows]
-    return {
-        "method": "percentile",
-        "percentile": percentile,
-        "lower_quantile": _lower_quantile(percentile),
-        "upper_quantile": 1.0 - _lower_quantile(percentile),
-        "selected_count": len(layers),
-        "selected_names": [layer["name"] for layer in layers],
-        "selector": {
-            "index": index,
-            "name_contains": name_contains,
-            "stage": stage,
-            "branch": branch,
-            "role": role,
-            "module_type": module_type,
-            "include_output_quantizer": bool(include_output_quantizer),
-        },
-        "max_values_per_layer": max_values_per_layer,
-        "layers": layers,
-    }
 
 
-def _make_percentile_hook(
+def _make_range_hook(
     index: int,
     row: dict[str, Any],
     records: dict[int, dict[str, Any]],
+    method: str,
     percentile: float,
+    mse_shrink_ratios: list[float],
+    loss_p: float,
     max_values_per_layer: int,
 ):
     def hook(module: QuantModule, _inputs, output: torch.Tensor) -> None:
-        stats = _percentile_range_stats(output, percentile=percentile, max_values_per_layer=max_values_per_layer)
-        _write_activation_quantizer_range(module.act_quantizer, output, stats["clipped_min"], stats["clipped_max"])
+        if method == "percentile":
+            stats = _percentile_range_stats(output, percentile=percentile, max_values_per_layer=max_values_per_layer)
+        elif method == "max":
+            stats = _max_range_stats(output)
+        elif method == "mse_grid":
+            n_levels = int(getattr(module.act_quantizer, "n_levels", 2 ** int(getattr(module.act_quantizer, "n_bits", 8))))
+            stats = _mse_grid_range_stats(
+                output,
+                mse_shrink_ratios=mse_shrink_ratios,
+                loss_p=loss_p,
+                max_values_per_layer=max_values_per_layer,
+                n_levels=n_levels,
+            )
+        else:
+            raise ValueError(f"Unsupported activation range method: {method}")
+        _write_activation_quantizer_range(module.act_quantizer, output, stats["chosen_min"], stats["chosen_max"])
         records[index] = {
             "index": int(index),
             "name": row["name"],
@@ -145,13 +236,120 @@ def _percentile_range_stats(
         "upper_value": upper_value,
         "clipped_min": clipped_min,
         "clipped_max": clipped_max,
+        "chosen_min": clipped_min,
+        "chosen_max": clipped_max,
+        "chosen_range": clipped_range,
         "original_range": original_range,
         "clipped_range": clipped_range,
         "range_shrink_ratio": clipped_range / original_range,
+        "best_shrink_ratio": None,
+        "best_score": None,
         "sampled": sampled,
         "sample_count": int(sampled_values.numel()),
         "numel": int(values.numel()),
     }
+
+
+def _max_range_stats(tensor: torch.Tensor) -> dict[str, Any]:
+    values = tensor.detach().float().reshape(-1)
+    if values.numel() == 0:
+        raise ValueError("Cannot calibrate activation range from an empty tensor.")
+    original_min = float(values.min().item())
+    original_max = float(values.max().item())
+    chosen_min = original_min
+    chosen_max = original_max
+    if chosen_max - chosen_min < ACTIVATION_RANGE_EPS:
+        chosen_max = chosen_min + ACTIVATION_RANGE_EPS
+    original_range = max(original_max - original_min, ACTIVATION_RANGE_EPS)
+    chosen_range = chosen_max - chosen_min
+    return {
+        "original_min": original_min,
+        "original_max": original_max,
+        "lower_value": original_min,
+        "upper_value": original_max,
+        "clipped_min": chosen_min,
+        "clipped_max": chosen_max,
+        "chosen_min": chosen_min,
+        "chosen_max": chosen_max,
+        "chosen_range": chosen_range,
+        "original_range": original_range,
+        "clipped_range": chosen_range,
+        "range_shrink_ratio": chosen_range / original_range,
+        "best_shrink_ratio": 1.0,
+        "best_score": None,
+        "sampled": False,
+        "sample_count": int(values.numel()),
+        "numel": int(values.numel()),
+    }
+
+
+def _mse_grid_range_stats(
+    tensor: torch.Tensor,
+    *,
+    mse_shrink_ratios: Iterable[float],
+    loss_p: float,
+    max_values_per_layer: int,
+    n_levels: int,
+) -> dict[str, Any]:
+    values = tensor.detach().float().reshape(-1)
+    if values.numel() == 0:
+        raise ValueError("Cannot calibrate activation range from an empty tensor.")
+    original_min = float(values.min().item())
+    original_max = float(values.max().item())
+    original_range = max(original_max - original_min, ACTIVATION_RANGE_EPS)
+    sampled_values, sampled = _sample_values(values, max_values_per_layer=max_values_per_layer)
+    best_score = float("inf")
+    best_ratio = None
+    best_min = original_min
+    best_max = original_max
+    candidate_scores: dict[str, float] = {}
+
+    for ratio in mse_shrink_ratios:
+        candidate_min = original_min * float(ratio)
+        candidate_max = original_max * float(ratio)
+        if candidate_max - candidate_min < ACTIVATION_RANGE_EPS:
+            candidate_max = candidate_min + ACTIVATION_RANGE_EPS
+        quantized = _fake_quantize_with_range(sampled_values, candidate_min, candidate_max, n_levels=n_levels)
+        score = float((sampled_values - quantized).abs().pow(loss_p).mean().item())
+        candidate_scores[str(float(ratio))] = score
+        if score < best_score:
+            best_score = score
+            best_ratio = float(ratio)
+            best_min = candidate_min
+            best_max = candidate_max
+
+    if best_ratio is None:
+        raise RuntimeError("Failed to choose MSE-grid activation range.")
+    chosen_range = max(best_max - best_min, ACTIVATION_RANGE_EPS)
+    return {
+        "original_min": original_min,
+        "original_max": original_max,
+        "lower_value": best_min,
+        "upper_value": best_max,
+        "clipped_min": best_min,
+        "clipped_max": best_max,
+        "chosen_min": best_min,
+        "chosen_max": best_max,
+        "chosen_range": chosen_range,
+        "original_range": original_range,
+        "clipped_range": chosen_range,
+        "range_shrink_ratio": chosen_range / original_range,
+        "best_shrink_ratio": best_ratio,
+        "best_score": best_score,
+        "candidate_scores": candidate_scores,
+        "sampled": sampled,
+        "sample_count": int(sampled_values.numel()),
+        "numel": int(values.numel()),
+    }
+
+
+def _fake_quantize_with_range(values: torch.Tensor, min_value: float, max_value: float, *, n_levels: int) -> torch.Tensor:
+    delta_value = max((float(max_value) - float(min_value)) / float(n_levels - 1), ACTIVATION_RANGE_EPS)
+    delta = torch.tensor(delta_value, dtype=values.dtype, device=values.device)
+    zero_point = torch.tensor(round(-float(min_value) / delta_value), dtype=values.dtype, device=values.device)
+    x_int = torch.round(values / delta)
+    x_quant = torch.clamp(x_int + zero_point, 0, n_levels - 1)
+    return (x_quant - zero_point) * delta
 
 
 def _write_activation_quantizer_range(
@@ -196,6 +394,34 @@ def _validate_max_values(max_values_per_layer: int) -> int:
     if value <= 0:
         raise ValueError(f"range_max_values_per_layer must be positive, got {max_values_per_layer}")
     return value
+
+
+def _validate_loss_p(loss_p: float) -> float:
+    value = float(loss_p)
+    if value <= 0.0:
+        raise ValueError(f"range_loss_p must be positive, got {loss_p}")
+    return value
+
+
+def parse_mse_shrink_ratios(value: str | Iterable[float] | None) -> list[float]:
+    """Parse and validate MSE-grid shrink ratios."""
+    if value is None:
+        ratios = list(DEFAULT_MSE_SHRINK_RATIOS)
+    elif isinstance(value, str):
+        if not value.strip():
+            raise ValueError("range_mse_shrink_ratios must not be empty.")
+        try:
+            ratios = [float(part.strip()) for part in value.split(",") if part.strip()]
+        except ValueError as exc:
+            raise ValueError(f"range_mse_shrink_ratios contains a non-numeric value: {value}") from exc
+    else:
+        ratios = [float(item) for item in value]
+    if not ratios:
+        raise ValueError("range_mse_shrink_ratios must not be empty.")
+    for ratio in ratios:
+        if ratio <= 0.0:
+            raise ValueError(f"range_mse_shrink_ratios must be positive, got {ratio}")
+    return ratios
 
 
 def _lower_quantile(percentile: float) -> float:
