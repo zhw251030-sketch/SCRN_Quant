@@ -1,0 +1,12 @@
+{
+  "checkpoint": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E002c_init_sensitivity/quant/20260505_150842_e002c_init_n0064/checkpoints/quantized_scrn_brecq_pre_act_recon.pth",
+  "run_root": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E005_range_clipping/E005a_diagnostics",
+  "run_name": "e005a_conv2d_range_diagnostics",
+  "device": "cuda",
+  "cuda_device_index": 1,
+  "calibration_dataset_dir": "SCRN_BRECQ_app/scrn_repro/datasets/scrn_quant_10750_0_patches",
+  "num_samples": 128,
+  "batch_size": 16,
+  "num_workers": 0,
+  "seed": 20260427
+}

@@ -3311,3 +3311,189 @@ E005 最合理的主线是：
 - clipping / MSE range 是验证 outlier 假设的最小修复。
 - 如果最小修复有效，它更容易形成清晰、可解释、可部署的创新点。
 - 如果最小修复无效，再进入 per-channel / group-wise，证据链也更清楚。
+
+### 2026-05-06 E005a：Conv2d range diagnostics 基线
+
+#### 目标
+
+E005a 只做诊断增强和基线报告，不修改量化算法、不做 clipping、不跑 activation reconstruction。
+
+核心问题是确认 E004 定位出的 Conv2d A8 崩坏更像：
+
+- outlier range 主导；
+- channel imbalance 主导；
+- 或者二者混合。
+
+同时，把旧诊断中的 `role=unknown` 改成更准确的结构标签，避免后续把 stage 输出卷积误解成未知结构。
+
+#### 工具改动
+
+- activation diagnostics 新增高分位字段：
+  - `p99_99`
+  - `p99_999`
+  - `abs_p99_99`
+  - `abs_p99_999`
+  - `absmax_over_p99_99`
+  - `absmax_over_p99_999`
+- 新增 `conv2d_range_summary`：
+  - overall Conv2d 汇总；
+  - by stage；
+  - by branch；
+  - by role；
+  - by module type。
+- `model.stage1.1` 到 `model.stage5.1` 统一标记为：
+  - `branch=stage_output`
+  - `role=stage_output_conv`
+- `diagnose_activation_quantization.py` 新增 `--cuda-device-index`，用于显式选择 GPU，例如 `cuda:1`。
+- 大张量诊断说明：
+  - 对超过阈值的大张量，高分位和 fake-quant 局部误差使用确定性 stride sampling。
+  - 这样做是为了让 128-sample diagnostics 能稳定跑完。
+  - 该采样只影响诊断统计成本和近似程度，不改变模型行为、量化参数或 checkpoint。
+
+#### E005a 配置
+
+配置文件：
+
+`SCRN_BRECQ_app/scrn_brecq/configs/activation_quantization/e005a_conv2d_range_diagnostics.json`
+
+默认口径：
+
+- checkpoint：E002c A8 init n=64 / pre-act-recon checkpoint
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E002c_init_sensitivity/quant/20260505_150842_e002c_init_n0064/checkpoints/quantized_scrn_brecq_pre_act_recon.pth`
+- samples：128
+- batch size：16
+- seed：`20260427`
+- device：`cuda`
+- cuda device index：`1`
+- run root：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E005_range_clipping/E005a_diagnostics/`
+
+#### 运行记录
+
+smoke run：
+
+- run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E005_range_clipping/E005a_diagnostics/20260506_141020_e005a_smoke_conv2d_range_diagnostics_fast/`
+- `activation_quantizers=52`
+- `non_positive_delta_count=0`
+- `activation_stat_count=52`
+
+formal 128-sample run：
+
+- run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E005_range_clipping/E005a_diagnostics/20260506_141901_e005a_conv2d_range_diagnostics/`
+- device：`cuda:1`
+- `activation_quantizers=52`
+- `non_positive_delta_count=0`
+- `activation_stat_count=52`
+- `fake_quant_mse_max=9.82716228463687e-05`
+- `effective_int_levels_min=124`
+- `summary.json` 包含 `conv2d_range_summary`
+- run 产物位于 `.gitignore` 保护目录，不纳入 Git。
+
+#### Conv2d vs Linear / transformer
+
+module type 汇总：
+
+| module type | count | effective level min | effective level mean | relative MSE max | absmax/p99 max | absmax/p99.99 max | per-channel ratio max |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Conv2d | 32 | 124 | 210.34 | 0.2044677242 | 137.7856 | 29.3499 | 8.5134 |
+| Linear | 20 | 139 | 216.85 | 0.0002060855 | 6.6914 | 6.0692 | 5.2560 |
+
+可读结论：
+
+- Conv2d 的 worst relative MSE 比 Linear 高三个数量级左右。
+- Conv2d 的极端 outlier ratio 明显更强，尤其 `head/tail`。
+- Linear / transformer 仍有若干低 effective level 层，但从 E004 sensitivity 看，A8 init 崩坏主因不是 Linear / transformer。
+
+#### Conv2d branch / role 统计
+
+branch 汇总：
+
+| branch | count | effective level min | relative MSE max | absmax/p99.99 max | per-channel ratio max |
+|---|---:|---:|---:|---:|---:|
+| cnn | 15 | 200 | 0.0002860603 | 2.0014 | 8.5134 |
+| fusion | 10 | 184 | 0.0011164239 | 8.0258 | 3.0885 |
+| stage_output | 5 | 189 | 0.0010821137 | 1.0404 | 2.5581 |
+| head | 1 | 124 | 0.0874347530 | 29.3499 | 2.5129 |
+| tail | 1 | 140 | 0.2044677242 | 13.6724 | 1.0000 |
+
+role 汇总：
+
+| role | count | effective level min | relative MSE max | absmax/p99.99 max | per-channel ratio max |
+|---|---:|---:|---:|---:|---:|
+| conv | 15 | 200 | 0.0002860603 | 2.0014 | 8.5134 |
+| merge_proj | 5 | 190 | 0.0011164239 | 1.0524 | 2.5511 |
+| split_proj | 5 | 184 | 0.0009059406 | 8.0258 | 3.0885 |
+| stage_output_conv | 5 | 189 | 0.0010821137 | 1.0404 | 2.5581 |
+| head | 1 | 124 | 0.0874347530 | 29.3499 | 2.5129 |
+| tail | 1 | 140 | 0.2044677242 | 13.6724 | 1.0000 |
+
+解释：
+
+- `fusion/split_proj` 更像 outlier range 问题：`absmax/p99.99` 最高可到 `8.0258`。
+- `merge_proj/stage_output_conv` 的 extreme percentile ratio 不算最夸张，但 relative MSE 是内部 Conv2d 中最高的一批，说明它们可能需要 MSE range 或结构化 clipping，而不只是盯着最大 outlier。
+- `stage5/cnn conv_branch.6` 有最强 per-channel imbalance：`per_channel_absmax_ratio=8.5134`，但 `cnn branch` 整体 sensitivity 不高，因此它更像后续粒度实验的候选，而不是 E005 第一优先级。
+- `head/tail` 的 outlier 和 relative MSE 极强，但 E004 sensitivity 中输出 activation quantizer 默认不参与候选，且 head 单点关闭恢复有限。因此它们是诊断警报，不是当前首要修复对象。
+
+#### Top 问题层
+
+top outlier layers：
+
+1. `model.head`：Conv2d，`absmax/p99=137.7856`
+2. `model.tail`：Conv2d，`absmax/p99=86.2140`
+3. `model.stage1.0.block.split_proj`：Conv2d，`absmax/p99=8.2788`
+4. `model.stage1.0.block.trans_branch.mlp.2`：Linear，`absmax/p99=6.6914`
+5. `model.stage2.0.block.trans_branch.mlp.0`：Linear，`absmax/p99=6.0676`
+
+top per-channel imbalance：
+
+1. `model.stage5.0.block.conv_branch.6`：Conv2d，ratio `8.5134`
+2. `model.stage1.0.block.trans_branch.mlp.2`：Linear，ratio `5.2560`
+3. `model.stage2.0.block.conv_branch.6`：Conv2d，ratio `3.4124`
+4. `model.stage1.0.block.split_proj`：Conv2d，ratio `3.0885`
+5. `model.stage2.1`：stage output Conv2d，ratio `2.5581`
+
+worst relative MSE：
+
+1. `model.tail`：Conv2d，`0.2044677242`
+2. `model.head`：Conv2d，`0.0874347530`
+3. `model.stage2.0.block.merge_proj`：Conv2d，`0.0011164239`
+4. `model.stage2.1`：stage output Conv2d，`0.0010821137`
+5. `model.stage3.0.block.merge_proj`：Conv2d，`0.0010705261`
+
+lowest effective levels：
+
+1. `model.head`：Conv2d，`124`
+2. `model.stage2.0.block.trans_branch.mlp.0`：Linear，`139`
+3. `model.tail`：Conv2d，`140`
+4. `model.stage5.0.block.trans_branch.mlp.0`：Linear，`154`
+5. `model.stage1.0.block.trans_branch.mlp.0`：Linear，`172`
+
+#### E005a 结论
+
+E005a 支持下面判断：
+
+- 当前 A8 init 崩坏不是单纯 attention/Linear 问题。
+- Conv2d activation 的 range 问题是真实强信号。
+- 但 Conv2d 内部不是一种问题：
+  - `fusion/split_proj` 偏 outlier range；
+  - `merge_proj/stage_output_conv` 偏高 relative MSE；
+  - `stage5/cnn conv_branch.6` 偏 channel imbalance；
+  - `head/tail` 是高 outlier 警报，但暂不作为主修复目标。
+- 因此 E005b 不应直接上 per-channel/group-wise，而应先验证 Conv2d tensor-wise percentile clipping 是否能恢复 128-sample SNR。
+
+#### 对后续 E005 的影响
+
+下一步建议：
+
+1. E005b：先做 all Conv2d percentile clipping sweep。
+2. 同步保留结构化作用范围：
+   - all Conv2d；
+   - `fusion/split_proj`；
+   - `merge_proj`；
+   - `stage_output_conv`；
+   - `stage5`。
+3. 如果 percentile clipping 对 `fusion/split_proj` 有效，但对 `merge_proj/stage_output_conv` 不足，再进入 E005c MSE range calibration。
+4. 如果 clipping 有明显恢复但 stage5 仍拖后腿，再考虑 per-channel/group-wise。
+5. Linear / transformer 继续作为 sanity check，不作为 E005 第一阶段主线。

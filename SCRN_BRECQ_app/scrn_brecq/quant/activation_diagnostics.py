@@ -18,7 +18,7 @@ from SCRN_BRECQ_app.scrn_brecq.quant.quant_layer import QuantModule
 
 
 EPS = 1e-12
-TORCH_QUANTILE_MAX_EXACT_VALUES = 16_000_000
+TORCH_QUANTILE_MAX_EXACT_VALUES = 500_000
 
 
 def collect_quantizer_rows(model: nn.Module) -> list[dict[str, Any]]:
@@ -178,12 +178,14 @@ def summarize_activation_stats(rows: Iterable[dict[str, Any]]) -> dict[str, Any]
         "stage_summary": _group_activation_stats(materialized, "stage"),
         "role_summary": _group_activation_stats(materialized, "role"),
         "module_type_summary": _group_activation_stats(materialized, "module_type"),
+        "conv2d_range_summary": _conv2d_range_summary(materialized),
     }
 
 
 def infer_quantizer_structure(name: str) -> dict[str, str]:
     """Infer SCRN structural labels from a QuantModule path."""
     stage_match = re.search(r"(?:^|\.)stage(\d+)(?:\.|$)", name)
+    is_stage_output_conv = re.search(r"(?:^|\.)stage\d+\.1$", name) is not None
     if stage_match:
         stage = f"stage{stage_match.group(1)}"
     elif "head" in name:
@@ -192,7 +194,9 @@ def infer_quantizer_structure(name: str) -> dict[str, str]:
         stage = "tail"
     else:
         stage = _top_level_stage(name)
-    if "trans_branch" in name:
+    if is_stage_output_conv:
+        branch = "stage_output"
+    elif "trans_branch" in name:
         branch = "transformer"
     elif "cnn_branch" in name or "conv_branch" in name:
         branch = "cnn"
@@ -209,7 +213,9 @@ def infer_quantizer_structure(name: str) -> dict[str, str]:
     else:
         branch = "unknown"
 
-    if ".attn.qkv" in name or name.endswith(".qkv"):
+    if is_stage_output_conv:
+        role = "stage_output_conv"
+    elif ".attn.qkv" in name or name.endswith(".qkv"):
         role = "attention_qkv"
     elif ".attn.proj" in name or name.endswith(".proj"):
         role = "attention_proj"
@@ -260,21 +266,29 @@ def _activation_value_stats(tensor: torch.Tensor) -> dict[str, Any]:
     values = tensor.detach().float().reshape(-1)
     abs_values = values.abs()
     absmax = float(abs_values.max().item()) if values.numel() else None
-    p99_abs = _quantile(abs_values, 0.99)
-    p999_abs = _quantile(abs_values, 0.999)
+    quantile_levels = (0.99, 0.999, 0.9999, 0.99999)
+    value_quantiles = _quantiles(values, quantile_levels)
+    abs_quantiles = _quantiles(abs_values, quantile_levels)
+    p99_abs, p999_abs, p9999_abs, p99999_abs = abs_quantiles
     return {
         "numel": int(values.numel()),
         "min": _float(values.min()) if values.numel() else None,
         "max": _float(values.max()) if values.numel() else None,
         "mean": _float(values.mean()) if values.numel() else None,
         "std": _float(values.std(unbiased=False)) if values.numel() else None,
-        "p99": _quantile(values, 0.99),
-        "p99_9": _quantile(values, 0.999),
+        "p99": value_quantiles[0],
+        "p99_9": value_quantiles[1],
+        "p99_99": value_quantiles[2],
+        "p99_999": value_quantiles[3],
         "abs_p99": p99_abs,
         "abs_p99_9": p999_abs,
+        "abs_p99_99": p9999_abs,
+        "abs_p99_999": p99999_abs,
         "absmax": absmax,
         "absmax_over_p99": _safe_ratio(absmax, p99_abs),
         "absmax_over_p99_9": _safe_ratio(absmax, p999_abs),
+        "absmax_over_p99_99": _safe_ratio(absmax, p9999_abs),
+        "absmax_over_p99_999": _safe_ratio(absmax, p99999_abs),
         **_per_channel_absmax_stats(tensor),
     }
 
@@ -291,6 +305,14 @@ def _fake_quant_stats(tensor: torch.Tensor, quantizer: nn.Module) -> dict[str, A
         zero_point_tensor = _detach_tensor(zero_point).to(device=values.device, dtype=values.dtype)
         if bool((delta_tensor == 0).any().item()):
             return _skipped_fake_quant_stats("zero_delta")
+        sampled = False
+        if (
+            values.numel() > TORCH_QUANTILE_MAX_EXACT_VALUES
+            and delta_tensor.numel() == 1
+            and zero_point_tensor.numel() == 1
+        ):
+            values = _sample_large_tensor(values)
+            sampled = True
         q_int = torch.round(values / delta_tensor) + zero_point_tensor
         q_int = torch.clamp(q_int, 0, int(getattr(quantizer, "n_levels", 2 ** getattr(quantizer, "n_bits", 8))) - 1)
         quantized = (q_int - zero_point_tensor) * delta_tensor
@@ -310,6 +332,8 @@ def _fake_quant_stats(tensor: torch.Tensor, quantizer: nn.Module) -> dict[str, A
             "effective_int_levels": int(torch.unique(q_int.detach().cpu()).numel()),
             "int_min": int(q_int.min().item()),
             "int_max": int(q_int.max().item()),
+            "fake_quant_sampled": sampled,
+            "fake_quant_sample_count": int(values.numel()),
         }
     except Exception as exc:  # pragma: no cover - keeps CLI diagnostic robust.
         return _skipped_fake_quant_stats(f"{type(exc).__name__}: {exc}")
@@ -326,6 +350,8 @@ def _skipped_fake_quant_stats(reason: str) -> dict[str, Any]:
         "effective_int_levels": None,
         "int_min": None,
         "int_max": None,
+        "fake_quant_sampled": None,
+        "fake_quant_sample_count": None,
     }
 
 
@@ -408,11 +434,25 @@ def _group_activation_stats(rows: Iterable[dict[str, Any]], group_key: str) -> d
     return {name: _summarize_activation_group(group_rows) for name, group_rows in sorted(groups.items())}
 
 
+def _conv2d_range_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    conv2d_rows = [row for row in rows if row.get("module_type") == "Conv2d"]
+    return {
+        "overall": _summarize_activation_group(conv2d_rows),
+        "by_stage": _group_activation_stats(conv2d_rows, "stage"),
+        "by_branch": _group_activation_stats(conv2d_rows, "branch"),
+        "by_role": _group_activation_stats(conv2d_rows, "role"),
+        "by_module_type": _group_activation_stats(conv2d_rows, "module_type"),
+    }
+
+
 def _summarize_activation_group(rows: list[dict[str, Any]]) -> dict[str, Any]:
     fake_quant_mse = _numeric_values(rows, "fake_quant_mse")
     relative_mse = _numeric_values(rows, "fake_quant_relative_mse")
     effective_levels = _numeric_values(rows, "effective_int_levels")
     outlier_ratio = _numeric_values(rows, "absmax_over_p99")
+    outlier_ratio_p999 = _numeric_values(rows, "absmax_over_p99_9")
+    outlier_ratio_p9999 = _numeric_values(rows, "absmax_over_p99_99")
+    outlier_ratio_p99999 = _numeric_values(rows, "absmax_over_p99_999")
     channel_ratio = _numeric_values(rows, "per_channel_absmax_ratio")
     return {
         "count": len(rows),
@@ -424,6 +464,12 @@ def _summarize_activation_group(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "effective_int_levels_mean": _mean(effective_levels),
         "absmax_over_p99_mean": _mean(outlier_ratio),
         "absmax_over_p99_max": max(outlier_ratio) if outlier_ratio else None,
+        "absmax_over_p99_9_mean": _mean(outlier_ratio_p999),
+        "absmax_over_p99_9_max": max(outlier_ratio_p999) if outlier_ratio_p999 else None,
+        "absmax_over_p99_99_mean": _mean(outlier_ratio_p9999),
+        "absmax_over_p99_99_max": max(outlier_ratio_p9999) if outlier_ratio_p9999 else None,
+        "absmax_over_p99_999_mean": _mean(outlier_ratio_p99999),
+        "absmax_over_p99_999_max": max(outlier_ratio_p99999) if outlier_ratio_p99999 else None,
         "per_channel_absmax_ratio_mean": _mean(channel_ratio),
         "per_channel_absmax_ratio_max": max(channel_ratio) if channel_ratio else None,
     }
@@ -496,13 +542,24 @@ def _row_min_max(row: dict[str, Any], prefix: str) -> list[float]:
 
 
 def _quantile(values: torch.Tensor, q: float) -> float | None:
+    return _quantiles(values, (q,))[0]
+
+
+def _quantiles(values: torch.Tensor, qs: tuple[float, ...]) -> list[float | None]:
     if values.numel() == 0:
-        return None
+        return [None for _ in qs]
+    flattened = values.reshape(-1)
     if values.numel() > TORCH_QUANTILE_MAX_EXACT_VALUES:
-        kth = int(round(q * (values.numel() - 1))) + 1
-        kth = max(1, min(kth, values.numel()))
-        return float(torch.kthvalue(values.reshape(-1), kth).values.item())
-    return float(torch.quantile(values, q).item())
+        flattened = _sample_large_tensor(flattened)
+    q_tensor = torch.tensor(qs, device=flattened.device, dtype=flattened.dtype)
+    quantiles = torch.quantile(flattened, q_tensor)
+    return [float(value.item()) for value in quantiles.reshape(-1)]
+
+
+def _sample_large_tensor(values: torch.Tensor) -> torch.Tensor:
+    flattened = values.reshape(-1)
+    stride = max(1, (flattened.numel() + TORCH_QUANTILE_MAX_EXACT_VALUES - 1) // TORCH_QUANTILE_MAX_EXACT_VALUES)
+    return flattened[::stride]
 
 
 def _safe_ratio(numerator: float | None, denominator: float | None) -> float | None:

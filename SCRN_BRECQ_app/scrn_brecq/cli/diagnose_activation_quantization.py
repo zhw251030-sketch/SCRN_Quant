@@ -15,8 +15,8 @@ from SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn import (
     build_quant_model_from_checkpoint,
     load_quant_checkpoint,
     restore_quantizer_state_shapes,
-    select_device,
 )
+from SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi import select_eval_device
 from SCRN_BRECQ_app.scrn_brecq.data import CalibrationDataConfig, load_calibration_data
 from SCRN_BRECQ_app.scrn_brecq.quant.activation_diagnostics import build_activation_diagnostics_report
 from SCRN_BRECQ_app.scrn_brecq.utils import load_json, require_file
@@ -44,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=None, help="Calibration DataLoader batch size")
     parser.add_argument("--num-workers", type=int, default=None, help="Calibration DataLoader workers")
     parser.add_argument("--seed", type=int, default=None, help="Calibration dataset seed")
+    parser.add_argument("--cuda-device-index", type=int, default=None, help="Explicit CUDA device index, e.g. 1 for cuda:1")
     return parser
 
 
@@ -51,7 +52,7 @@ def main() -> None:
     """Run E001 activation quantization diagnostics."""
     args = build_parser().parse_args()
     config = load_and_resolve_config(args)
-    device = select_device(str(config["device"]))
+    device = select_eval_device(str(config["device"]), config.get("cuda_device_index"))
     checkpoint_path = require_file(config["checkpoint"], "quantized checkpoint")
     checkpoint = load_quant_checkpoint(checkpoint_path)
 
@@ -146,6 +147,8 @@ def normalize_config(config: Mapping[str, Any]) -> dict[str, Any]:
     normalized["run_root"] = str(normalized["run_root"])
     normalized["run_name"] = str(normalized["run_name"])
     normalized["device"] = str(normalized["device"])
+    cuda_device_index = normalized.get("cuda_device_index")
+    normalized["cuda_device_index"] = None if cuda_device_index is None else int(cuda_device_index)
     normalized["calibration_dataset_dir"] = str(Path(normalized["calibration_dataset_dir"]))
     for key in ("num_samples", "batch_size"):
         normalized[key] = int(normalized[key])
@@ -171,6 +174,7 @@ def build_run_config(
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "environment": collect_environment(),
         "device": str(device),
+        "cuda_device_index": config.get("cuda_device_index"),
         "checkpoint": str(checkpoint_path),
         "source_checkpoint": checkpoint.get("source_checkpoint"),
         "final_quant_state": checkpoint.get("final_quant_state", {}),

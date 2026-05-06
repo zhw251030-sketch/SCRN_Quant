@@ -9,6 +9,7 @@ from SCRN_BRECQ_app.scrn_brecq.quant.activation_diagnostics import (
     build_activation_diagnostics_report,
     collect_activation_stats,
     collect_quantizer_rows,
+    infer_quantizer_structure,
     summarize_activation_stats,
     summarize_activation_quantizers,
 )
@@ -69,8 +70,19 @@ class ActivationDiagnosticsTest(unittest.TestCase):
         self.assertAlmostEqual(stats[0]["min"], 0.0)
         self.assertAlmostEqual(stats[0]["max"], 100.0)
         self.assertGreater(stats[0]["absmax_over_p99"], 1.0)
+        self.assertIn("abs_p99_99", stats[0])
+        self.assertIn("abs_p99_999", stats[0])
+        self.assertGreater(stats[0]["absmax_over_p99_99"], 1.0)
+        self.assertGreater(stats[0]["absmax_over_p99_999"], 1.0)
         self.assertGreaterEqual(stats[0]["effective_int_levels"], 3)
         self.assertIn("fake_quant_mse", stats[0])
+
+    def test_infer_quantizer_structure_labels_stage_output_conv(self) -> None:
+        structure = infer_quantizer_structure("model.stage5.1")
+
+        self.assertEqual(structure["stage"], "stage5")
+        self.assertEqual(structure["branch"], "stage_output")
+        self.assertEqual(structure["role"], "stage_output_conv")
 
     def test_collect_activation_stats_reports_per_channel_absmax_ratio_for_4d_outputs(self) -> None:
         module = QuantModule(
@@ -108,12 +120,15 @@ class ActivationDiagnosticsTest(unittest.TestCase):
         rows = [
             {
                 "index": 0,
-                "name": "model.stage1.0.block.conv_branch.0",
+                "name": "model.stage1.1",
                 "stage": "stage1",
-                "branch": "cnn",
-                "role": "conv",
+                "branch": "stage_output",
+                "role": "stage_output_conv",
                 "module_type": "Conv2d",
                 "absmax_over_p99": 2.0,
+                "absmax_over_p99_9": 1.8,
+                "absmax_over_p99_99": 1.6,
+                "absmax_over_p99_999": 1.4,
                 "fake_quant_mse": 0.01,
                 "fake_quant_relative_mse": 0.1,
                 "effective_int_levels": 128,
@@ -127,6 +142,9 @@ class ActivationDiagnosticsTest(unittest.TestCase):
                 "role": "attention_proj",
                 "module_type": "Linear",
                 "absmax_over_p99": 10.0,
+                "absmax_over_p99_9": 9.0,
+                "absmax_over_p99_99": 8.0,
+                "absmax_over_p99_999": 7.0,
                 "fake_quant_mse": 0.02,
                 "fake_quant_relative_mse": 0.4,
                 "effective_int_levels": 17,
@@ -141,9 +159,16 @@ class ActivationDiagnosticsTest(unittest.TestCase):
         self.assertEqual(summary["worst_fake_quant_mse_layers"][0]["branch"], "transformer")
         self.assertEqual(summary["worst_relative_mse_layers"][0]["fake_quant_relative_mse"], 0.4)
         self.assertEqual(summary["top_per_channel_imbalance_layers"][0]["per_channel_absmax_ratio"], 8.0)
-        self.assertEqual(summary["branch_summary"]["cnn"]["count"], 1)
+        self.assertEqual(summary["branch_summary"]["stage_output"]["count"], 1)
         self.assertEqual(summary["branch_summary"]["transformer"]["effective_int_levels_min"], 17)
         self.assertEqual(summary["role_summary"]["attention_proj"]["fake_quant_mse_max"], 0.02)
+        self.assertEqual(summary["conv2d_range_summary"]["overall"]["count"], 1)
+        self.assertEqual(summary["conv2d_range_summary"]["by_role"]["stage_output_conv"]["count"], 1)
+        self.assertNotIn("attention_proj", summary["conv2d_range_summary"]["by_role"])
+        self.assertEqual(
+            summary["conv2d_range_summary"]["by_branch"]["stage_output"]["effective_int_levels_min"],
+            128,
+        )
 
     def test_build_activation_diagnostics_report_combines_rows_and_stats(self) -> None:
         module = QuantModule(

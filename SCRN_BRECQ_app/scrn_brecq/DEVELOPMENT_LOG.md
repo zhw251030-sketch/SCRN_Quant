@@ -1758,3 +1758,50 @@
 - baseline all_on A8 init：SNR mean `-7.1021 dB`。
 - all_off / W4A32 近似：SNR mean `4.7973 dB`。
 - E005 成败必须看 128-sample SNR / SSIM 和 E001 diagnostics，不能回到单样本 SNR。
+
+## 2026-05-06 E005a Conv2d range diagnostics
+
+### 修改内容
+
+- 扩展 `quant/activation_diagnostics.py`：
+  - 新增 `p99_99/p99_999` 与 `abs_p99_99/abs_p99_999`。
+  - 新增 `absmax_over_p99_99/absmax_over_p99_999`。
+  - 新增 `conv2d_range_summary`，按 stage、branch、role、module type 汇总 Conv2d activation range、relative MSE、effective levels 和 per-channel imbalance。
+  - 将 `model.stage1.1` 到 `model.stage5.1` 标记为 `branch=stage_output`、`role=stage_output_conv`，替代旧诊断中的 `unknown/unknown`。
+- 扩展 `cli/diagnose_activation_quantization.py`：
+  - 新增 `--cuda-device-index`，复用 multi-eval 的 device selection，支持显式选择 `cuda:1/2/3`。
+- 新增 E005a 配置：
+  - `configs/activation_quantization/e005a_conv2d_range_diagnostics.json`
+- 更新 `tests/test_activation_diagnostics.py`，覆盖 stage output 标签、高分位字段和 Conv2d summary。
+- 为避免 128-sample 大张量诊断时间过长，diagnostics 对大张量高分位和 fake-quant 局部误差使用确定性 stride sampling；小张量仍使用精确统计。本改动只影响诊断开销，不改变模型推理或量化算法。
+
+### 验证
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`
+  - 结果：7 tests passed。
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/activation_diagnostics.py SCRN_BRECQ_app/scrn_brecq/cli/diagnose_activation_quantization.py`
+  - 结果：通过。
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.diagnose_activation_quantization --help`
+  - 结果：通过，help 中包含 `--cuda-device-index`。
+
+### 实验产物
+
+- smoke：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E005_range_clipping/E005a_diagnostics/20260506_141020_e005a_smoke_conv2d_range_diagnostics_fast/`
+  - `activation_quantizers=52`
+  - `non_positive_delta_count=0`
+- formal 128-sample：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E005_range_clipping/E005a_diagnostics/20260506_141901_e005a_conv2d_range_diagnostics/`
+  - device：`cuda:1`
+  - `activation_quantizers=52`
+  - `non_positive_delta_count=0`
+  - `effective_int_levels_min=124`
+  - `conv2d_range_summary` 已写入 `summary.json`
+- run 产物位于 `.gitignore` 保护目录，不纳入 Git。
+
+### 初步结论
+
+- E005a 支持 E004 的判断：A8 init 崩坏主信号集中在 Conv2d activation，而不是 Linear / transformer。
+- Conv2d 的 worst relative MSE 和 outlier ratio 明显高于 Linear。
+- 旧 `role=unknown` 已明确为 stage output 3x3 Conv2d，后续统一称为 `stage_output_conv`。
+- 下一步进入 E005b：先做 Conv2d tensor-wise percentile clipping，而不是直接做 per-channel/group-wise 或 attention SmoothQuant。
