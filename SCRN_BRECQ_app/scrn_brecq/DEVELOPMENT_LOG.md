@@ -1820,3 +1820,48 @@
 - E005a 进一步解释 Conv2d 问题由 outlier range、relative MSE 偏高和部分 channel imbalance 混合构成。
 - Linear / transformer 在 A8 init 阶段不是第一修复对象，但保留为后续 sanity check。
 - E005b 入口明确为 Conv2d tensor-wise percentile clipping。
+
+## 2026-05-06 E005b percentile clipping workflow
+
+### 修改内容
+
+- 新增 `quant/activation_range.py`，支持对选中 activation quantizer 执行 two-sided percentile range calibration。
+- 扩展 `cli/activation_only_quantize_scrn.py`：
+  - 支持 `--config`。
+  - 支持 `--cuda-device-index`。
+  - 支持 `--activation-range-method percentile`、`--activation-percentile` 和 range selector 参数。
+  - 在 A8 init 后、保存 pre-act-recon checkpoint 前写入 percentile-calibrated `delta/zero_point`。
+- 新增 E005b 配置：
+  - `configs/activation_quantization/e005b_conv2d_percentile_clipping.json`
+- 新增/更新单元测试：
+  - `tests/test_activation_range.py`
+  - `tests/test_activation_only_quantize_scrn.py`
+
+### 验证
+
+- TDD red：
+  - `test_activation_range` 初始失败于缺少 `activation_range` 模块。
+  - `test_activation_only_quantize_scrn` 初始失败于缺少新增 CLI/config 参数。
+- Green checks：
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_range`
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_only_quantize_scrn`
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`
+  - `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/activation_range.py SCRN_BRECQ_app/scrn_brecq/cli/activation_only_quantize_scrn.py`
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.activation_only_quantize_scrn --help`
+
+### Smoke
+
+- run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E005_range_clipping/E005b_percentile/quant/20260506_163005_e005b_smoke_percentile_p999/`
+- device：`cuda:1`
+- config：
+  - `num_samples=2`
+  - `init_batch_size=2`
+  - `activation_percentile=99.9`
+  - `range_module_type=Conv2d`
+- 结果：
+  - `activation_quantizers=52`
+  - `non_positive_delta_count=0`
+  - selected Conv2d quantizers：31
+  - single-sample `quant_pre_act_recon_snr_db=0.4362 dB`
+- 该 smoke 只验证工具链和 checkpoint 保存，不作为正式 E005b 结论。

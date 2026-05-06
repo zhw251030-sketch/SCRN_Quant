@@ -18,8 +18,8 @@ from SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn import (
     load_quant_checkpoint,
     restore_quantizer_state_shapes,
     scrn_config_from_mapping,
-    select_device,
 )
+from SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_multi import select_eval_device
 from SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn import (
     initialize_activation_quantization,
     load_eval_arrays,
@@ -29,9 +29,10 @@ from SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn import (
     serializable_config,
 )
 from SCRN_BRECQ_app.scrn_brecq.data import CalibrationDataConfig, load_calibration_data
+from SCRN_BRECQ_app.scrn_brecq.quant.activation_range import apply_percentile_activation_ranges
 from SCRN_BRECQ_app.scrn_brecq.quant.activation_diagnostics import summarize_activation_quantizers
 from SCRN_BRECQ_app.scrn_brecq.quant.activation_diagnostics import collect_quantizer_rows
-from SCRN_BRECQ_app.scrn_brecq.utils import build_model_size_report, require_file
+from SCRN_BRECQ_app.scrn_brecq.utils import build_model_size_report, load_json, require_file
 from SCRN_BRECQ_app.scrn_repro.training import collect_environment, create_run_dir, write_json, write_summary
 from SCRN_BRECQ_app.scrn_repro.utils import set_random_seed, snr_db, ssim_score
 
@@ -48,9 +49,10 @@ DEFAULT_CALIBRATION_DATASET_DIR = Path("SCRN_BRECQ_app/scrn_repro/datasets/scrn_
 def build_parser() -> argparse.ArgumentParser:
     """Build the E002c activation-only quantization parser."""
     parser = argparse.ArgumentParser(description="Run activation-only SCRN-BRECQ quantization from a W4 checkpoint.")
+    parser.add_argument("--config", default=None, help="Activation-only quantization config JSON")
     parser.add_argument(
         "--weight-recon-checkpoint",
-        default=str(DEFAULT_WEIGHT_RECON_CHECKPOINT),
+        default=None,
         help="W4 weight-reconstruction checkpoint to resume from",
     )
     parser.add_argument("--calibration-dataset-dir", default=None, help="Calibration clean patch directory")
@@ -60,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-name", default=None, help="Run name suffix")
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default=None)
     parser.add_argument("--gpus", default=None, help="Visible GPU ids, e.g. `0`")
+    parser.add_argument("--cuda-device-index", type=int, default=None, help="Explicit CUDA device index, e.g. 1 for cuda:1")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--num-samples", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
@@ -69,6 +72,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--activation-lr", type=float, default=None)
     parser.add_argument("--lp-norm", type=float, default=None)
     parser.add_argument("--skip-act-recon", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--activation-range-method", choices=["none", "percentile"], default=None)
+    parser.add_argument("--activation-percentile", type=float, default=None)
+    parser.add_argument("--range-index", type=int, default=None)
+    parser.add_argument("--range-name-contains", default=None)
+    parser.add_argument("--range-stage", default=None)
+    parser.add_argument("--range-branch", default=None)
+    parser.add_argument("--range-role", default=None)
+    parser.add_argument("--range-module-type", default=None)
+    parser.add_argument("--range-max-values-per-layer", type=int, default=None)
+    parser.add_argument("--include-output-quantizer", action=argparse.BooleanOptionalAction, default=None)
     return parser
 
 
@@ -76,11 +89,12 @@ def main() -> None:
     """Run activation initialization, optional act recon, and save traceable artifacts."""
     run_start_time = time.time()
     args = build_parser().parse_args()
-    weight_recon_checkpoint = require_file(args.weight_recon_checkpoint, "weight-recon checkpoint")
+    initial_config = load_initial_config(args)
+    weight_recon_checkpoint = require_file(initial_config["weight_recon_checkpoint"], "weight-recon checkpoint")
     checkpoint = load_quant_checkpoint(weight_recon_checkpoint)
     config = load_and_resolve_config(args, checkpoint)
     configure_visible_gpus(config)
-    device = select_device(str(config["device"]))
+    device = select_eval_device(str(config["device"]), config.get("cuda_device_index"))
     set_random_seed(int(config["seed"]))
 
     run_dir = create_run_dir(config["run_root"], run_name=str(config["run_name"]))
@@ -111,6 +125,7 @@ def main() -> None:
 
     init_start_time = time.time()
     initialize_activation_quantization(quant_model, calibration_data, config)
+    activation_range_summary = apply_activation_range_calibration(quant_model, calibration_data, config)
     activation_initialization_seconds = time.time() - init_start_time
 
     quant_model.set_quant_state(True, True)
@@ -131,6 +146,7 @@ def main() -> None:
     metrics["elapsed_seconds"] = float(time.time() - run_start_time)
     metrics["elapsed_minutes"] = metrics["elapsed_seconds"] / 60.0
     metrics["activation_quantizer_summary"] = summarize_activation_quantizers(collect_quantizer_rows(quant_model))
+    metrics["activation_range_summary"] = activation_range_summary
     metrics["source_weight_recon_metrics"] = checkpoint.get("metrics", {})
     metrics["model_size"] = build_model_size_report(
         quant_model,
@@ -212,6 +228,9 @@ def main() -> None:
                 "num_samples": config["num_samples"],
                 "init_batch_size": config["init_batch_size"],
                 "skip_act_recon": config["skip_act_recon"],
+                "activation_range_method": config["activation_range_method"],
+                "activation_percentile": config["activation_percentile"],
+                "range_selector": activation_range_summary.get("selector", {}),
             },
         },
     )
@@ -231,6 +250,8 @@ def main() -> None:
 def load_and_resolve_config(args: argparse.Namespace, checkpoint: Mapping[str, Any]) -> dict[str, Any]:
     """Resolve CLI args over checkpoint quant config and local defaults."""
     config = default_config()
+    if args.config:
+        config.update(dict(load_json(args.config)))
     checkpoint_override_keys = {
         "calibration_dataset_dir",
         "eval_clean_path",
@@ -251,6 +272,16 @@ def load_and_resolve_config(args: argparse.Namespace, checkpoint: Mapping[str, A
         "lp_norm",
         "asym",
         "save_figure",
+        "activation_range_method",
+        "activation_percentile",
+        "range_index",
+        "range_name_contains",
+        "range_stage",
+        "range_branch",
+        "range_role",
+        "range_module_type",
+        "range_max_values_per_layer",
+        "include_output_quantizer",
     }
     config.update(
         {
@@ -260,12 +291,21 @@ def load_and_resolve_config(args: argparse.Namespace, checkpoint: Mapping[str, A
         }
     )
     for key, value in vars(args).items():
-        if value is None:
+        if key == "config" or value is None:
             continue
         config[key] = value
-    config["weight_recon_checkpoint"] = str(args.weight_recon_checkpoint)
     config["act_quant"] = True
     config["distributed"] = False
+    return normalize_config(config)
+
+
+def load_initial_config(args: argparse.Namespace) -> dict[str, Any]:
+    """Load enough config to locate the starting weight-recon checkpoint."""
+    config = default_config()
+    if args.config:
+        config.update(dict(load_json(args.config)))
+    if args.weight_recon_checkpoint is not None:
+        config["weight_recon_checkpoint"] = str(args.weight_recon_checkpoint)
     return normalize_config(config)
 
 
@@ -280,6 +320,7 @@ def default_config() -> dict[str, Any]:
         "run_name": "activation_only_init",
         "device": "cuda",
         "gpus": "",
+        "cuda_device_index": None,
         "seed": 1005,
         "num_samples": 1024,
         "batch_size": 16,
@@ -295,6 +336,16 @@ def default_config() -> dict[str, Any]:
         "activation_lr": 0.0004,
         "lp_norm": 2.4,
         "skip_act_recon": True,
+        "activation_range_method": "none",
+        "activation_percentile": 99.99,
+        "range_index": None,
+        "range_name_contains": None,
+        "range_stage": None,
+        "range_branch": None,
+        "range_role": None,
+        "range_module_type": None,
+        "range_max_values_per_layer": 500_000,
+        "include_output_quantizer": False,
         "distributed": False,
         "asym": True,
         "save_figure": False,
@@ -313,20 +364,52 @@ def normalize_config(config: Mapping[str, Any]) -> dict[str, Any]:
     normalized["run_name"] = str(normalized["run_name"])
     normalized["device"] = str(normalized["device"])
     normalized["gpus"] = str(normalized.get("gpus", "") or "")
-    int_keys = ["seed", "num_samples", "batch_size", "num_workers", "init_batch_size", "n_bits_w", "n_bits_a", "iters_a"]
+    cuda_device_index = normalized.get("cuda_device_index")
+    normalized["cuda_device_index"] = None if cuda_device_index is None else int(cuda_device_index)
+    range_index = normalized.get("range_index")
+    normalized["range_index"] = None if range_index is None else int(range_index)
+    int_keys = [
+        "seed",
+        "num_samples",
+        "batch_size",
+        "num_workers",
+        "init_batch_size",
+        "n_bits_w",
+        "n_bits_a",
+        "iters_a",
+        "range_max_values_per_layer",
+    ]
     for key in int_keys:
         normalized[key] = int(normalized[key])
-    for key in ["num_samples", "batch_size", "init_batch_size", "n_bits_w", "n_bits_a", "iters_a"]:
+    for key in ["num_samples", "batch_size", "init_batch_size", "n_bits_w", "n_bits_a", "iters_a", "range_max_values_per_layer"]:
         if normalized[key] <= 0:
             raise ValueError(f"{key} must be positive, got {normalized[key]}")
     if normalized["num_workers"] < 0:
         raise ValueError(f"num_workers must be non-negative, got {normalized['num_workers']}")
     normalized["activation_lr"] = float(normalized["activation_lr"])
     normalized["lp_norm"] = float(normalized["lp_norm"])
+    normalized["activation_percentile"] = float(normalized["activation_percentile"])
     if normalized["activation_lr"] <= 0.0:
         raise ValueError(f"activation_lr must be positive, got {normalized['activation_lr']}")
-    for key in ["channel_wise", "act_quant", "disable_8bit_head_stem", "skip_act_recon", "distributed", "asym", "save_figure"]:
+    if normalized["activation_percentile"] <= 0.0 or normalized["activation_percentile"] >= 100.0:
+        raise ValueError(f"activation_percentile must be between 0 and 100, got {normalized['activation_percentile']}")
+    if normalized["activation_range_method"] not in {"none", "percentile"}:
+        raise ValueError(f"Unsupported activation_range_method: {normalized['activation_range_method']}")
+    if normalized["cuda_device_index"] is not None and normalized["cuda_device_index"] < 0:
+        raise ValueError(f"cuda_device_index must be non-negative, got {normalized['cuda_device_index']}")
+    for key in [
+        "channel_wise",
+        "act_quant",
+        "disable_8bit_head_stem",
+        "skip_act_recon",
+        "include_output_quantizer",
+        "distributed",
+        "asym",
+        "save_figure",
+    ]:
         normalized[key] = bool(normalized[key])
+    for key in ["range_name_contains", "range_stage", "range_branch", "range_role", "range_module_type"]:
+        normalized[key] = None if normalized.get(key) is None else str(normalized[key])
     if not Path(normalized["calibration_dataset_dir"]).is_dir():
         raise FileNotFoundError(f"calibration_dataset_dir does not exist: {normalized['calibration_dataset_dir']}")
     return normalized
@@ -337,6 +420,35 @@ def configure_visible_gpus(config: Mapping[str, Any]) -> None:
     gpus = str(config.get("gpus", "")).strip()
     if gpus:
         os.environ["CUDA_VISIBLE_DEVICES"] = gpus
+
+
+def apply_activation_range_calibration(
+    quant_model: torch.nn.Module,
+    calibration_data: torch.Tensor,
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Apply optional post-init activation range calibration."""
+    method = str(config["activation_range_method"])
+    if method == "none":
+        return {"method": "none"}
+    if method != "percentile":
+        raise ValueError(f"Unsupported activation_range_method: {method}")
+    device = next(quant_model.parameters()).device
+    init_inputs = calibration_data[: min(int(config["init_batch_size"]), int(calibration_data.size(0)))].to(device)
+    return apply_percentile_activation_ranges(
+        quant_model,
+        init_inputs,
+        percentile=float(config["activation_percentile"]),
+        index=config.get("range_index"),
+        name_contains=config.get("range_name_contains"),
+        stage=config.get("range_stage"),
+        branch=config.get("range_branch"),
+        role=config.get("range_role"),
+        module_type=config.get("range_module_type"),
+        include_output_quantizer=bool(config["include_output_quantizer"]),
+        max_values_per_layer=int(config["range_max_values_per_layer"]),
+        weight_quant=True,
+    )
 
 
 def build_activation_only_metrics(

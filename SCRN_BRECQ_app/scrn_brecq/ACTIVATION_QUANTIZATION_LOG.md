@@ -3679,3 +3679,160 @@ E005b 应优先做：
 - activation reconstruction 学习率大 sweep。
 
 原因是 E004-E005a 的证据链已经把第一优先级指向了 Conv2d tensor-wise range 修复。直接跳到更复杂策略会让变量过多，难以判断真正有效的机制。
+
+### 2026-05-06 E005b：Conv2d percentile clipping 工具与 smoke
+
+#### 目标
+
+E005b 开始验证 Conv2d activation tensor-wise range 是否被 outlier 拉坏。
+
+本阶段只做：
+
+- 从 W4 weight-recon checkpoint 出发。
+- A8 init。
+- 对选中的 activation quantizer 执行 percentile range calibration。
+- 保存 pre-act-recon checkpoint。
+
+本阶段不做：
+
+- activation reconstruction。
+- per-channel / group-wise。
+- attention SmoothQuant。
+- W20000 weight reconstruction 重跑。
+
+#### 工具实现
+
+新增 `quant/activation_range.py`：
+
+- 支持 two-sided percentile range：
+  - `lower_q=(1-p/100)/2`
+  - `upper_q=1-lower_q`
+  - `clipped_min=min(q(lower_q), 0)`
+  - `clipped_max=max(q(upper_q), 0)`
+- 复用 E004 selector 语义：
+  - `index`
+  - `name_contains`
+  - `stage`
+  - `branch`
+  - `role`
+  - `module_type`
+- 默认排除最后一个 output activation quantizer。
+- 只写选中 activation quantizer 的 `delta/zero_point`。
+- 不修改 `UniformAffineQuantizer.forward()`。
+- 大张量每层最多采样 `500000` 个 activation 值，使用确定性 stride sampling。
+
+扩展 `activation_only_quantize_scrn.py`：
+
+- 新增 `--config`。
+- 新增 `--cuda-device-index`。
+- 新增：
+  - `--activation-range-method {none,percentile}`
+  - `--activation-percentile`
+  - `--range-index`
+  - `--range-name-contains`
+  - `--range-stage`
+  - `--range-branch`
+  - `--range-role`
+  - `--range-module-type`
+  - `--range-max-values-per-layer`
+  - `--include-output-quantizer`
+- 在 metrics 中记录 `activation_range_summary`：
+  - method
+  - percentile
+  - selected count
+  - selected names
+  - per-layer original range / clipped range / shrink ratio
+  - sampled 与 sample count
+
+新增配置：
+
+- `SCRN_BRECQ_app/scrn_brecq/configs/activation_quantization/e005b_conv2d_percentile_clipping.json`
+
+默认设置：
+
+- checkpoint：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260504_221242_e002b_w4a8_positive_scale_1024samples_w20000_a5000/checkpoints/quantized_scrn_brecq_weight_recon.pth`
+- run root：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E005_range_clipping/E005b_percentile/quant`
+- `num_samples=64`
+- `init_batch_size=64`
+- `batch_size=16`
+- `seed=1005`
+- `activation_range_method=percentile`
+- `activation_percentile=99.99`
+- `range_module_type=Conv2d`
+- `include_output_quantizer=false`
+
+#### TDD 与最小验证
+
+已新增/更新测试：
+
+- `tests/test_activation_range.py`
+- `tests/test_activation_only_quantize_scrn.py`
+
+TDD red：
+
+- `test_activation_range` 初始失败于缺少 `activation_range` 模块。
+- `test_activation_only_quantize_scrn` 初始失败于缺少新增 CLI/config 参数。
+
+已通过检查：
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_range`
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_only_quantize_scrn`
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/activation_range.py SCRN_BRECQ_app/scrn_brecq/cli/activation_only_quantize_scrn.py`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.activation_only_quantize_scrn --help`
+
+#### E005b-0 smoke
+
+命令口径：
+
+- `num_samples=2`
+- `init_batch_size=2`
+- `batch_size=1`
+- `activation_percentile=99.9`
+- `range_module_type=Conv2d`
+- `device=cuda`
+- `cuda_device_index=1`
+- `skip_act_recon=true`
+
+run dir：
+
+- `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E005_range_clipping/E005b_percentile/quant/20260506_163005_e005b_smoke_percentile_p999/`
+
+结果：
+
+- device：`cuda:1`
+- `activation_quantizers=52`
+- `non_positive_delta_count=0`
+- selected Conv2d quantizers：31
+- first selected names：
+  - `model.head`
+  - `model.stage1.0.block.split_proj`
+  - `model.stage1.0.block.merge_proj`
+  - `model.stage1.0.block.conv_branch.0`
+  - `model.stage1.0.block.conv_branch.3`
+- single-sample `quant_pre_act_recon_snr_db=0.4362 dB`
+
+解释：
+
+- smoke 证明 E005b percentile clipping workflow 可以完成 checkpoint 生成。
+- 默认排除 output quantizer 后，Conv2d selector 选中 31 个 quantizers。
+- `non_positive_delta_count=0`，说明 percentile 写入没有引入非法 scale。
+- single-sample SNR 只用于 smoke sanity check，不作为 E005b 正式结论。
+
+#### 下一步
+
+进入 E005b-1 all Conv2d percentile sweep：
+
+- `99.9`
+- `99.99`
+- `99.995`
+- `99.999`
+
+每个 run 必须做：
+
+- A8 init + percentile range。
+- 128-sample multi eval。
+- 128-sample E005a diagnostics。
+- 记录相对 `all_on=-7.1021 dB` 的 SNR 恢复和 diagnostics 指标变化。

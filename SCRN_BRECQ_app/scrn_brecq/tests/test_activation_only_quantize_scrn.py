@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,6 +26,9 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
         self.assertEqual(config["init_batch_size"], 64)
         self.assertTrue(config["skip_act_recon"])
         self.assertEqual(config["run_name"], "activation_only_init")
+        self.assertEqual(config["activation_range_method"], "none")
+        self.assertEqual(config["activation_percentile"], 99.99)
+        self.assertIsNone(config["cuda_device_index"])
 
     def test_checkpoint_quant_config_does_not_override_e002c_run_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -39,6 +43,94 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
 
         self.assertIn("E002c_init_sensitivity/quant", config["run_root"])
         self.assertEqual(config["run_name"], "activation_only_init")
+
+    def test_config_file_supplies_activation_range_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = Path(tmpdir) / "weight_recon.pth"
+            checkpoint.write_bytes(b"placeholder")
+            config_path = Path(tmpdir) / "e005b.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "weight_recon_checkpoint": str(checkpoint),
+                        "run_root": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E005_range_clipping/E005b_percentile/quant",
+                        "run_name": "e005b_test",
+                        "activation_range_method": "percentile",
+                        "activation_percentile": 99.9,
+                        "range_module_type": "Conv2d",
+                        "cuda_device_index": 1,
+                    }
+                )
+            )
+            args = build_parser().parse_args(["--config", str(config_path)])
+
+            config = load_and_resolve_config(args, {"quant_config": {}})
+
+        self.assertEqual(config["weight_recon_checkpoint"], str(checkpoint))
+        self.assertEqual(config["run_name"], "e005b_test")
+        self.assertEqual(config["activation_range_method"], "percentile")
+        self.assertEqual(config["activation_percentile"], 99.9)
+        self.assertEqual(config["range_module_type"], "Conv2d")
+        self.assertEqual(config["cuda_device_index"], 1)
+
+    def test_parser_accepts_activation_range_arguments(self) -> None:
+        args = build_parser().parse_args(
+            [
+                "--activation-range-method",
+                "percentile",
+                "--activation-percentile",
+                "99.9",
+                "--range-module-type",
+                "Conv2d",
+                "--range-stage",
+                "stage5",
+                "--range-branch",
+                "fusion",
+                "--range-role",
+                "merge_proj",
+                "--range-name-contains",
+                "stage5.1",
+                "--range-index",
+                "42",
+                "--include-output-quantizer",
+                "--range-max-values-per-layer",
+                "1234",
+                "--cuda-device-index",
+                "2",
+            ]
+        )
+
+        self.assertEqual(args.activation_range_method, "percentile")
+        self.assertEqual(args.activation_percentile, 99.9)
+        self.assertEqual(args.range_module_type, "Conv2d")
+        self.assertEqual(args.range_stage, "stage5")
+        self.assertEqual(args.range_branch, "fusion")
+        self.assertEqual(args.range_role, "merge_proj")
+        self.assertEqual(args.range_name_contains, "stage5.1")
+        self.assertEqual(args.range_index, 42)
+        self.assertTrue(args.include_output_quantizer)
+        self.assertEqual(args.range_max_values_per_layer, 1234)
+        self.assertEqual(args.cuda_device_index, 2)
+
+    def test_normalize_config_records_cuda_device_index_with_cuda(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = Path(tmpdir) / "weight_recon.pth"
+            checkpoint.write_bytes(b"placeholder")
+
+            config = normalize_config(
+                {
+                    "weight_recon_checkpoint": str(checkpoint),
+                    "device": "cuda",
+                    "cuda_device_index": 2,
+                    "activation_range_method": "percentile",
+                    "range_module_type": "Conv2d",
+                }
+            )
+
+        self.assertEqual(config["device"], "cuda")
+        self.assertEqual(config["cuda_device_index"], 2)
+        self.assertEqual(config["activation_range_method"], "percentile")
+        self.assertEqual(config["range_module_type"], "Conv2d")
 
     def test_build_activation_only_metrics_records_pre_act_recon_delta(self) -> None:
         clean = np.arange(256, dtype=np.float32).reshape(16, 16)

@@ -1,0 +1,19 @@
+{
+  "weight_recon_checkpoint": "SCRN_BRECQ_app/scrn_brecq/runs/quant/20260504_221242_e002b_w4a8_positive_scale_1024samples_w20000_a5000/checkpoints/quantized_scrn_brecq_weight_recon.pth",
+  "calibration_dataset_dir": "SCRN_BRECQ_app/scrn_repro/datasets/scrn_quant_10750_0_patches",
+  "run_root": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E005_range_clipping/E005b_percentile/quant",
+  "run_name": "e005b_conv2d_percentile_p9999",
+  "device": "cuda",
+  "cuda_device_index": 1,
+  "seed": 1005,
+  "num_samples": 64,
+  "batch_size": 16,
+  "num_workers": 0,
+  "init_batch_size": 64,
+  "activation_range_method": "percentile",
+  "activation_percentile": 99.99,
+  "range_module_type": "Conv2d",
+  "range_max_values_per_layer": 500000,
+  "include_output_quantizer": false,
+  "skip_act_recon": true
+}
