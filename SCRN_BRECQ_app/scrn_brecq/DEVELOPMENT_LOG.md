@@ -2060,3 +2060,23 @@ baseline：
 - 排除 stage5 的 all Conv2d percentile 反而下降到 `-7.5204 dB`，说明“排除有害 stage5 后扩大 clipping 覆盖面”并不能修复 A8 init。
 - MSE conservative 的 all Conv2d except stage5 单样本达到 `8.8828 dB`，但 128-sample mean 只有 `-7.0689 dB`，再次确认单样本 SNR 不可靠。
 - E005b/E005c/E005D 合起来应停止 tensor-wise clipping 主线，后续进入 activation per-channel / group-wise 或 E006 mixed precision。
+
+## 2026-05-06 E005/E006 experiment numbering update
+
+### 记录内容
+
+- 将 E005 明确收束为离群值、range、clipping 实验线。
+- 将 E006 明确定义为 activation 量化粒度实验线。
+- 前文中提到的 “E005E：activation per-channel / group-wise feasibility” 统一重命名为 “E006a：Conv2d activation per-channel feasibility”。
+
+### 原因
+
+- E005b/E005c/E005D 已经覆盖 tensor-wise percentile、MSE/max range、结构化 clipping 组合与排除实验。
+- 所有 tensor-wise clipping / range calibration 方案均没有产生超过 `+0.2 dB` 的有效恢复。
+- 继续扩大 E005 tensor-wise sweep 价值较低；下一阶段应验证新的假设：activation tensor-wise 粒度过粗是否是主要瓶颈。
+
+### 下一步入口
+
+- E006a 应先做 feasibility，不直接做完整部署策略。
+- E006a 重点验证 Conv2d activation per-channel 的 scale shape、forward 广播、checkpoint 保存/恢复、diagnostics 兼容和 128-sample eval。
+- 注意不能直接复用权重量化的 `channel_wise=True` 语义；Conv2d activation per-channel 应按 `[N, C, H, W]` 的 `C` 维，目标 `delta/zero_point` 形状为 `[1, C, 1, 1]`。

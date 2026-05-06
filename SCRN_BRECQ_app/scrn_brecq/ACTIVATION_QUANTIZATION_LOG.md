@@ -4184,3 +4184,59 @@ E005b、E005c、E005D 三组实验已经覆盖：
    - 如果 E005E 实现成本过高或效果仍弱，则根据 E004g sensitivity 表保留高敏感 Conv2d activation quantizer 为 FP32。
 3. Linear / transformer 继续作为 sanity check。
    - 当前不作为第一修复对象，但后续任何 Conv2d 粒度或混精度策略都要确认没有把瓶颈转移到 attention / Linear。
+
+### 2026-05-06 E005 / E006 编号修订：E005 收束为离群值实验，E006 定义为粒度实验
+
+为避免后续实验线索混乱，从本节点开始重新明确编号语义：
+
+- E005：离群值、range、clipping 相关实验。
+- E006：activation 量化粒度相关实验。
+
+因此，前文中提到的 “E005E：activation per-channel / group-wise feasibility” 不再作为 E005 的延续实验执行，统一重命名为：
+
+- E006a：Conv2d activation per-channel feasibility。
+
+#### E005 的最终边界
+
+E005 的研究问题是：W4A8 A8 init 崩坏是否主要由 tensor-wise activation range 被 outlier 拉坏导致，并且能否通过 tensor-wise clipping / range calibration 修复。
+
+目前已经完成：
+
+- E005a：Conv2d range diagnostics。
+- E005b：Conv2d percentile clipping。
+- E005c：Conv2d max / MSE range calibration。
+- E005D：结构化 Conv2d tensor-wise clipping 组合与排除实验。
+
+E005 的结论：
+
+- Conv2d activation 是敏感区域。
+- Conv2d 的 outlier、relative MSE、per-channel imbalance 均明显强于 Linear。
+- 但 tensor-wise percentile clipping、MSE/max range calibration、结构化组合 clipping 都没有恢复 128-sample SNR。
+- 因此 E005 不应继续扩展 tensor-wise clipping sweep。
+
+E005 的作用不是“修复成功”，而是排除了一个重要方向：单纯修 tensor-wise range / outlier clipping 不足以解决当前 W4A8 激活量化失败。
+
+#### E006 的新定位
+
+E006 的研究问题是：W4A8 A8 init 崩坏是否来自 tensor-wise activation 量化粒度过粗，尤其是 Conv2d activation 的通道间尺度差异。
+
+E006 不再以 outlier clipping 为主线，而以量化粒度为主线：
+
+- Conv2d activation per-channel。
+- Conv2d activation group-wise。
+- structure-wise granularity，例如只对 fusion / merge_proj / stage_output_conv / stage5 使用更细粒度。
+- Linear / transformer 作为 sanity check，避免修复 Conv2d 后把瓶颈转移到 attention 或 Linear。
+
+#### E006a 进入前注意事项
+
+- 不能直接把现有 `channel_wise=True` 用到 activation 上。
+  - 当前 `channel_wise=True` 是权重量化路径，默认按权重第 0 维做输出通道。
+  - Conv2d activation 通常是 `[N, C, H, W]`，per-channel 应该按 `C` 维，即 dim=1。
+- E006a 应先做 feasibility，不应一开始就做完整部署策略。
+- E006a 的最小目标：
+  - 给 Conv2d activation quantizer 写入 `[1, C, 1, 1]` 形状的 `delta/zero_point`。
+  - 验证 forward 广播正确。
+  - 验证 checkpoint 保存/恢复正确。
+  - 验证 E001/E005 diagnostics 能读取 per-channel activation quantizer。
+  - 跑小样本 smoke，再跑 128-sample eval。
+- 如果 E006a 有明显恢复，再进入 group-wise 和结构化粒度；如果仍无效，再转入 E007 / mixed precision / selective FP32 activation quantizer。
