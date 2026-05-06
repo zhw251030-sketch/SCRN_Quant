@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
+import json
 import os
 from pathlib import Path
 import time
@@ -31,6 +32,7 @@ from SCRN_BRECQ_app.scrn_brecq.cli.quantize_scrn import (
 from SCRN_BRECQ_app.scrn_brecq.data import CalibrationDataConfig, load_calibration_data
 from SCRN_BRECQ_app.scrn_brecq.quant.activation_range import (
     apply_activation_ranges,
+    normalize_selector_groups,
     parse_mse_shrink_ratios,
 )
 from SCRN_BRECQ_app.scrn_brecq.quant.activation_diagnostics import summarize_activation_quantizers
@@ -85,6 +87,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--range-branch", default=None)
     parser.add_argument("--range-role", default=None)
     parser.add_argument("--range-module-type", default=None)
+    parser.add_argument("--range-selector-groups-json", default=None)
+    parser.add_argument("--range-exclude-selector-groups-json", default=None)
     parser.add_argument("--range-max-values-per-layer", type=int, default=None)
     parser.add_argument("--include-output-quantizer", action=argparse.BooleanOptionalAction, default=None)
     return parser
@@ -287,6 +291,10 @@ def load_and_resolve_config(args: argparse.Namespace, checkpoint: Mapping[str, A
         "range_branch",
         "range_role",
         "range_module_type",
+        "range_selector_groups",
+        "range_exclude_selector_groups",
+        "range_selector_groups_json",
+        "range_exclude_selector_groups_json",
         "range_max_values_per_layer",
         "include_output_quantizer",
     }
@@ -353,6 +361,10 @@ def default_config() -> dict[str, Any]:
         "range_branch": None,
         "range_role": None,
         "range_module_type": None,
+        "range_selector_groups": None,
+        "range_exclude_selector_groups": None,
+        "range_selector_groups_json": None,
+        "range_exclude_selector_groups_json": None,
         "range_max_values_per_layer": 500_000,
         "include_output_quantizer": False,
         "distributed": False,
@@ -400,6 +412,18 @@ def normalize_config(config: Mapping[str, Any]) -> dict[str, Any]:
     normalized["activation_percentile"] = float(normalized["activation_percentile"])
     normalized["range_loss_p"] = float(normalized["range_loss_p"])
     normalized["range_mse_shrink_ratios"] = parse_mse_shrink_ratios(normalized["range_mse_shrink_ratios"])
+    normalized["range_selector_groups"] = _normalize_config_selector_groups(
+        normalized.get("range_selector_groups"),
+        normalized.get("range_selector_groups_json"),
+        "range_selector_groups",
+        "range_selector_groups_json",
+    )
+    normalized["range_exclude_selector_groups"] = _normalize_config_selector_groups(
+        normalized.get("range_exclude_selector_groups"),
+        normalized.get("range_exclude_selector_groups_json"),
+        "range_exclude_selector_groups",
+        "range_exclude_selector_groups_json",
+    )
     if normalized["activation_lr"] <= 0.0:
         raise ValueError(f"activation_lr must be positive, got {normalized['activation_lr']}")
     if normalized["range_loss_p"] <= 0.0:
@@ -426,6 +450,21 @@ def normalize_config(config: Mapping[str, Any]) -> dict[str, Any]:
     if not Path(normalized["calibration_dataset_dir"]).is_dir():
         raise FileNotFoundError(f"calibration_dataset_dir does not exist: {normalized['calibration_dataset_dir']}")
     return normalized
+
+
+def _normalize_config_selector_groups(
+    value: Any,
+    json_value: Any,
+    field_name: str,
+    json_field_name: str,
+) -> list[dict[str, Any]] | None:
+    """Parse optional selector group config from JSON CLI args or config objects."""
+    if json_value is not None:
+        try:
+            value = json.loads(str(json_value))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{json_field_name} must be valid JSON.") from exc
+    return normalize_selector_groups(value, field_name)
 
 
 def configure_visible_gpus(config: Mapping[str, Any]) -> None:
@@ -461,6 +500,8 @@ def apply_activation_range_calibration(
         branch=config.get("range_branch"),
         role=config.get("range_role"),
         module_type=config.get("range_module_type"),
+        selector_groups=config.get("range_selector_groups"),
+        exclude_selector_groups=config.get("range_exclude_selector_groups"),
         include_output_quantizer=bool(config["include_output_quantizer"]),
         max_values_per_layer=int(config["range_max_values_per_layer"]),
         weight_quant=True,

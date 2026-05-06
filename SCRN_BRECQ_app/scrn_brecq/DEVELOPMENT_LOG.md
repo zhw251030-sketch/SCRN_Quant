@@ -1848,6 +1848,9 @@
   - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`
   - `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/activation_range.py SCRN_BRECQ_app/scrn_brecq/cli/activation_only_quantize_scrn.py`
   - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.activation_only_quantize_scrn --help`
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_diagnostics`
+  - `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/quant/activation_range.py SCRN_BRECQ_app/scrn_brecq/cli/activation_only_quantize_scrn.py`
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.activation_only_quantize_scrn --help`
 
 ### Smoke
 
@@ -1992,3 +1995,68 @@ all Conv2d controls：
 - standard MSE grid 允许更强 shrink，反而下降 `0.6550 dB`，说明局部 fake-quant loss 搜索更激进时不等于最终 SNR 更好。
 - E005b/E005c 合起来基本否定了 Conv2d tensor-wise percentile/MSE range calibration 作为主修复路径。
 - 后续应转入 activation per-channel / group-wise feasibility，而不是继续扩大 tensor-wise range sweep。
+
+## 2026-05-06 E005D structured Conv2d clipping selectors
+
+### 修改内容
+
+- 扩展 `quant/activation_range.py`：
+  - 新增 `range_selector_groups`，支持多个 selector 取并集。
+  - 新增 `range_exclude_selector_groups`，支持从候选集合中排除指定结构。
+  - selector 支持 `index/name_contains/stage/branch/role/module_type`。
+  - `range_selector_groups` 与旧单 selector 字段互斥，避免组合语义不清。
+- 扩展 `cli/activation_only_quantize_scrn.py`：
+  - 新增 `--range-selector-groups-json`。
+  - 新增 `--range-exclude-selector-groups-json`。
+  - config normalize 阶段解析和校验 selector group JSON / list。
+- 新增配置：
+  - `configs/activation_quantization/e005d_structured_clipping.json`
+- 更新测试：
+  - `tests/test_activation_range.py`
+  - `tests/test_activation_only_quantize_scrn.py`
+
+### 验证
+
+- TDD red：
+  - `test_activation_range` 初始失败于 `apply_activation_ranges()` 不接受 `selector_groups` / `exclude_selector_groups`。
+  - `test_activation_only_quantize_scrn` 初始失败于 CLI 不接受 selector group JSON 参数，normalize config 不解析 selector groups。
+- Green checks：
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_range`
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_only_quantize_scrn`
+
+### Smoke
+
+- run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E005_range_clipping/E005d_structured_clipping/quant/20260506_195451_e005d_smoke_p99999_merge_stageout/`
+- device：`cuda:1`
+- result：
+  - selected Conv2d quantizers：10
+  - `activation_quantizers=52`
+  - `non_positive_delta_count=0`
+  - single-sample `quant_pre_act_recon_snr_db=8.3784 dB`
+- 该 smoke 只验证 selector union、checkpoint 保存和正 scale 状态。
+
+### 正式实验结果
+
+baseline：
+
+- all_on A8 init：SNR mean `-7.1021 dB`。
+- all_off / W4A32 近似：SNR mean `4.7973 dB`。
+- all_on 到 all_off gap：`11.8993 dB`。
+
+| run | method | selected | single-sample SNR | 128-sample SNR mean | median | min | SSIM mean | delta vs all_on | recovery |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| p99.999 merge + stage_output | percentile | 10 | 4.9862 | -7.0700 | -7.8076 | -14.3644 | 0.2147 | +0.0321 | 0.003 |
+| p99.999 split + merge + stage_output | percentile | 15 | 4.8327 | -7.0633 | -7.8080 | -14.3794 | 0.2144 | +0.0388 | 0.003 |
+| p99.999 all Conv2d except stage5 | percentile | 25 | 3.0929 | -7.5204 | -8.1969 | -14.7713 | 0.2039 | -0.4183 | -0.035 |
+| p99.999 all Conv2d except head + stage5 | percentile | 24 | 4.8333 | -7.4515 | -8.2368 | -14.6998 | 0.2082 | -0.3494 | -0.029 |
+| MSE conservative merge + stage_output | mse_grid | 10 | 4.9797 | -7.1323 | -7.9026 | -14.4646 | 0.2017 | -0.0302 | -0.003 |
+| MSE conservative all Conv2d except stage5 | mse_grid | 25 | 8.8828 | -7.0689 | -7.9072 | -14.3853 | 0.1948 | +0.0332 | 0.003 |
+
+### 结论
+
+- E005D 组合 / 排除结构实验没有产生超过 `+0.2 dB` 的弱有效恢复。
+- 最好的 128-sample SNR mean 是 `p99.999 split+merge+stage_output` 的 `-7.0633 dB`，仅比 all_on 高 `+0.0388 dB`。
+- 排除 stage5 的 all Conv2d percentile 反而下降到 `-7.5204 dB`，说明“排除有害 stage5 后扩大 clipping 覆盖面”并不能修复 A8 init。
+- MSE conservative 的 all Conv2d except stage5 单样本达到 `8.8828 dB`，但 128-sample mean 只有 `-7.0689 dB`，再次确认单样本 SNR 不可靠。
+- E005b/E005c/E005D 合起来应停止 tensor-wise clipping 主线，后续进入 activation per-channel / group-wise 或 E006 mixed precision。

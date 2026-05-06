@@ -99,6 +99,10 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
                 "--include-output-quantizer",
                 "--range-max-values-per-layer",
                 "1234",
+                "--range-selector-groups-json",
+                '[{"role":"merge_proj","module_type":"Conv2d"}]',
+                "--range-exclude-selector-groups-json",
+                '[{"stage":"stage5","module_type":"Conv2d"}]',
                 "--cuda-device-index",
                 "2",
             ]
@@ -116,6 +120,8 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
         self.assertEqual(args.range_index, 42)
         self.assertTrue(args.include_output_quantizer)
         self.assertEqual(args.range_max_values_per_layer, 1234)
+        self.assertEqual(args.range_selector_groups_json, '[{"role":"merge_proj","module_type":"Conv2d"}]')
+        self.assertEqual(args.range_exclude_selector_groups_json, '[{"stage":"stage5","module_type":"Conv2d"}]')
         self.assertEqual(args.cuda_device_index, 2)
 
     def test_normalize_config_records_cuda_device_index_with_cuda(self) -> None:
@@ -160,6 +166,52 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
         self.assertEqual(config["activation_range_method"], "mse_grid")
         self.assertEqual(config["range_mse_shrink_ratios"], [1.0, 0.99, 0.95])
         self.assertEqual(config["range_loss_p"], 2.4)
+
+    def test_normalize_config_parses_selector_group_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = Path(tmpdir) / "weight_recon.pth"
+            checkpoint.write_bytes(b"placeholder")
+
+            config = normalize_config(
+                {
+                    "weight_recon_checkpoint": str(checkpoint),
+                    "activation_range_method": "percentile",
+                    "range_selector_groups_json": '[{"role":"merge_proj","module_type":"Conv2d"}]',
+                    "range_exclude_selector_groups_json": '[{"stage":"stage5","module_type":"Conv2d"}]',
+                }
+            )
+
+        self.assertEqual(config["range_selector_groups"], [{"role": "merge_proj", "module_type": "Conv2d"}])
+        self.assertEqual(config["range_exclude_selector_groups"], [{"stage": "stage5", "module_type": "Conv2d"}])
+
+    def test_normalize_config_rejects_invalid_selector_group_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = Path(tmpdir) / "weight_recon.pth"
+            checkpoint.write_bytes(b"placeholder")
+
+            with self.assertRaisesRegex(ValueError, "range_selector_groups_json"):
+                normalize_config(
+                    {
+                        "weight_recon_checkpoint": str(checkpoint),
+                        "range_selector_groups_json": "not-json",
+                    }
+                )
+
+            with self.assertRaisesRegex(ValueError, "range_selector_groups"):
+                normalize_config(
+                    {
+                        "weight_recon_checkpoint": str(checkpoint),
+                        "range_selector_groups": {"module_type": "Conv2d"},
+                    }
+                )
+
+            with self.assertRaisesRegex(ValueError, "Unsupported selector key"):
+                normalize_config(
+                    {
+                        "weight_recon_checkpoint": str(checkpoint),
+                        "range_selector_groups": [{"unsupported": "Conv2d"}],
+                    }
+                )
 
     def test_build_activation_only_metrics_records_pre_act_recon_delta(self) -> None:
         clean = np.arange(256, dtype=np.float32).reshape(16, 16)

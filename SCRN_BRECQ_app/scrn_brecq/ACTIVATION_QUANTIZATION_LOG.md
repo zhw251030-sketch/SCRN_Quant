@@ -4069,3 +4069,118 @@ E005 继续扩大 tensor-wise percentile/MSE sweep 的价值很低。
 2. 保留 Linear / transformer sanity check，确保 Conv2d 粒度策略不会把瓶颈转移到 attention。
 3. 如果 per-channel/group-wise 仍无效，再转入 E006：mixed precision / selective FP32 activation quantizer / reconstruction objective。
 4. 后续仍必须以 128-sample eval 为主，single-sample SNR 只能做 smoke。
+
+### 2026-05-06 E005D：结构化 Conv2d clipping 组合实验
+
+#### 目的
+
+E005D 继续结构化 clipping 对照，但不重复 E005b/E005c 已完成的单组实验。核心问题是：
+
+- 单组 percentile / MSE clipping 基本无效后，多个高敏感 Conv2d 子组联合处理是否会产生恢复。
+- 排除 stage5 或 head 等明显风险结构后，再扩大 Conv2d clipping 覆盖面是否更稳。
+- 如果组合仍无效，是否可以停止 tensor-wise clipping 主线。
+
+成功阈值：
+
+- `+0.2 dB`：弱有效，值得继续分析。
+- `+1.0 dB`：强信号，tensor-wise clipping 可继续作为主线。
+- 低于 `+0.2 dB`：视为噪声级或无效。
+
+baseline：
+
+- all_on A8 init：128-sample SNR mean `-7.1021 dB`。
+- all_off / W4A32 近似：128-sample SNR mean `4.7973 dB`。
+- all_on 到 all_off gap：`11.8993 dB`。
+
+#### 工具扩展
+
+新增 selector 组合能力：
+
+- `range_selector_groups`：多个 selector 取并集。
+- `range_exclude_selector_groups`：从候选集合中排除指定结构。
+- 每个 selector 支持：
+  - `index`
+  - `name_contains`
+  - `stage`
+  - `branch`
+  - `role`
+  - `module_type`
+- `range_selector_groups` 与旧单 selector 字段互斥，避免同时出现“并集”和“单条件 AND”的语义混乱。
+
+新增 CLI 参数：
+
+- `--range-selector-groups-json`
+- `--range-exclude-selector-groups-json`
+
+新增配置：
+
+- `SCRN_BRECQ_app/scrn_brecq/configs/activation_quantization/e005d_structured_clipping.json`
+
+#### Smoke
+
+- run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E005_range_clipping/E005d_structured_clipping/quant/20260506_195451_e005d_smoke_p99999_merge_stageout/`
+- method：`percentile`
+- percentile：`99.999`
+- selector union：
+  - `role=merge_proj + module_type=Conv2d`
+  - `role=stage_output_conv + module_type=Conv2d`
+- device：`cuda:1`
+- selected Conv2d quantizers：10
+- `activation_quantizers=52`
+- `non_positive_delta_count=0`
+- single-sample `quant_pre_act_recon_snr_db=8.3784 dB`
+
+该 smoke 只证明 selector union、生效路径、checkpoint 保存和正 scale 状态正常，不作为正式效果结论。
+
+#### 正式实验结果
+
+| run | method | selected | single-sample SNR | 128-sample SNR mean | median | min | SSIM mean | delta vs all_on | recovery |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| p99.999 merge + stage_output | percentile | 10 | 4.9862 | -7.0700 | -7.8076 | -14.3644 | 0.2147 | +0.0321 | 0.003 |
+| p99.999 split + merge + stage_output | percentile | 15 | 4.8327 | -7.0633 | -7.8080 | -14.3794 | 0.2144 | +0.0388 | 0.003 |
+| p99.999 all Conv2d except stage5 | percentile | 25 | 3.0929 | -7.5204 | -8.1969 | -14.7713 | 0.2039 | -0.4183 | -0.035 |
+| p99.999 all Conv2d except head + stage5 | percentile | 24 | 4.8333 | -7.4515 | -8.2368 | -14.6998 | 0.2082 | -0.3494 | -0.029 |
+| MSE conservative merge + stage_output | mse_grid | 10 | 4.9797 | -7.1323 | -7.9026 | -14.4646 | 0.2017 | -0.0302 | -0.003 |
+| MSE conservative all Conv2d except stage5 | mse_grid | 25 | 8.8828 | -7.0689 | -7.9072 | -14.3853 | 0.1948 | +0.0332 | 0.003 |
+
+诊断摘要：
+
+- 所有正式 run 均保持 `activation_quantizers=52`。
+- 所有正式 run 均保持 `non_positive_delta_count=0`。
+- 组合 clipping 没有降低全局最坏 Conv2d relative MSE；最坏层仍由 head/tail 等极端层主导。
+- p99.999 all Conv2d except stage5 / except head+stage5 的 diagnostics 中，`fake_quant_mse_max` 升至 `0.00388185`，说明大范围 percentile clipping 仍会引入明显饱和误差。
+- MSE conservative all Conv2d except stage5 的 Conv2d effective level min 为 `68`，低于 E005a 原始 A8 init 的 `124`，说明该策略没有改善有效 int level。
+
+#### 结论
+
+E005D 没有验证“结构组合 tensor-wise clipping 能恢复 W4A8 A8 init”。
+
+更准确的判断：
+
+- 最好的组合是 `p99.999 split+merge+stage_output`，只恢复 `+0.0388 dB`，远低于 `+0.2 dB` 弱有效阈值。
+- `merge+stage_output` 与 `MSE all Conv2d except stage5` 都只有约 `+0.03 dB`，属于噪声级弱信号。
+- 扩大覆盖面到 all Conv2d except stage5 / except head+stage5 反而明显变差，说明不是“去掉有害结构后大范围 clipping 就有效”。
+- MSE all Conv2d except stage5 单样本 SNR 很高，但 128-sample mean 仍接近 all_on，进一步确认单样本不能作为策略判断依据。
+
+#### E005D 后的路线判断
+
+E005b、E005c、E005D 三组实验已经覆盖：
+
+- all Conv2d percentile clipping。
+- Conv2d 子组 percentile clipping。
+- all Conv2d MSE/max range calibration。
+- Conv2d 子组 MSE range calibration。
+- Conv2d 组合与排除结构 clipping。
+
+这些 tensor-wise 方案都没有产生有效恢复。因此 E005 后续不应继续扩展 tensor-wise clipping sweep。
+
+下一步优先级：
+
+1. E005E：activation per-channel / group-wise feasibility。
+   - 原因：E005a 已显示 Conv2d 存在 channel imbalance，tensor-wise range 已基本排除。
+   - 注意不能直接复用 weight `channel_wise=True`，必须定义 activation channel 维度和广播 shape。
+2. E006：mixed precision / selective FP32 activation quantizer。
+   - 如果 E005E 实现成本过高或效果仍弱，则根据 E004g sensitivity 表保留高敏感 Conv2d activation quantizer 为 FP32。
+3. Linear / transformer 继续作为 sanity check。
+   - 当前不作为第一修复对象，但后续任何 Conv2d 粒度或混精度策略都要确认没有把瓶颈转移到 attention / Linear。

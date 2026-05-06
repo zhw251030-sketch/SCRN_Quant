@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterable, Iterator, Mapping
 
 import torch
 from torch import nn
@@ -35,6 +35,7 @@ DEFAULT_MSE_SHRINK_RATIOS = [
     0.55,
     0.5,
 ]
+RANGE_SELECTOR_KEYS = {"index", "name_contains", "stage", "branch", "role", "module_type"}
 
 
 def apply_activation_ranges(
@@ -51,6 +52,8 @@ def apply_activation_ranges(
     branch: str | None = None,
     role: str | None = None,
     module_type: str | None = None,
+    selector_groups: Iterable[Mapping[str, Any]] | None = None,
+    exclude_selector_groups: Iterable[Mapping[str, Any]] | None = None,
     include_output_quantizer: bool = False,
     max_values_per_layer: int = DEFAULT_MAX_VALUES_PER_LAYER,
     weight_quant: bool = True,
@@ -63,7 +66,9 @@ def apply_activation_ranges(
     max_values_per_layer = _validate_max_values(max_values_per_layer)
     loss_p = _validate_loss_p(loss_p)
     mse_ratios = parse_mse_shrink_ratios(mse_shrink_ratios)
-    selected_rows = select_activation_quantizers(
+    selector_groups = normalize_selector_groups(selector_groups, "range_selector_groups")
+    exclude_selector_groups = normalize_selector_groups(exclude_selector_groups, "range_exclude_selector_groups")
+    selected_rows = _select_range_quantizers(
         model,
         index=index,
         name_contains=name_contains,
@@ -71,6 +76,8 @@ def apply_activation_ranges(
         branch=branch,
         role=role,
         module_type=module_type,
+        selector_groups=selector_groups,
+        exclude_selector_groups=exclude_selector_groups,
         include_output_quantizer=include_output_quantizer,
     )
     if not selected_rows:
@@ -111,6 +118,8 @@ def apply_activation_ranges(
             "branch": branch,
             "role": role,
             "module_type": module_type,
+            "selector_groups": selector_groups,
+            "exclude_selector_groups": exclude_selector_groups,
             "include_output_quantizer": bool(include_output_quantizer),
         },
         "max_values_per_layer": max_values_per_layer,
@@ -140,6 +149,8 @@ def apply_percentile_activation_ranges(
     branch: str | None = None,
     role: str | None = None,
     module_type: str | None = None,
+    selector_groups: Iterable[Mapping[str, Any]] | None = None,
+    exclude_selector_groups: Iterable[Mapping[str, Any]] | None = None,
     include_output_quantizer: bool = False,
     max_values_per_layer: int = DEFAULT_MAX_VALUES_PER_LAYER,
     weight_quant: bool = True,
@@ -156,10 +167,91 @@ def apply_percentile_activation_ranges(
         branch=branch,
         role=role,
         module_type=module_type,
+        selector_groups=selector_groups,
+        exclude_selector_groups=exclude_selector_groups,
         include_output_quantizer=include_output_quantizer,
         max_values_per_layer=max_values_per_layer,
         weight_quant=weight_quant,
     )
+
+
+def normalize_selector_groups(
+    value: Iterable[Mapping[str, Any]] | None,
+    field_name: str,
+) -> list[dict[str, Any]] | None:
+    """Normalize selector group config for activation range calibration."""
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise ValueError(f"{field_name} must be a list of selector objects.")
+    groups: list[dict[str, Any]] = []
+    for group_index, group in enumerate(value):
+        if not isinstance(group, Mapping):
+            raise ValueError(f"{field_name}[{group_index}] must be a selector object.")
+        unsupported = sorted(set(group) - RANGE_SELECTOR_KEYS)
+        if unsupported:
+            raise ValueError(f"Unsupported selector key in {field_name}[{group_index}]: {unsupported[0]}")
+        normalized: dict[str, Any] = {}
+        for key in ["index", "name_contains", "stage", "branch", "role", "module_type"]:
+            if key not in group or group[key] is None:
+                continue
+            normalized[key] = int(group[key]) if key == "index" else str(group[key])
+        if not normalized:
+            raise ValueError(f"{field_name}[{group_index}] must not be empty.")
+        groups.append(normalized)
+    return groups
+
+
+def _select_range_quantizers(
+    model: nn.Module,
+    *,
+    index: int | None,
+    name_contains: str | None,
+    stage: str | None,
+    branch: str | None,
+    role: str | None,
+    module_type: str | None,
+    selector_groups: list[dict[str, Any]] | None,
+    exclude_selector_groups: list[dict[str, Any]] | None,
+    include_output_quantizer: bool,
+) -> list[dict[str, Any]]:
+    legacy_selector = {
+        "index": index,
+        "name_contains": name_contains,
+        "stage": stage,
+        "branch": branch,
+        "role": role,
+        "module_type": module_type,
+    }
+    if selector_groups is not None and any(value is not None for value in legacy_selector.values()):
+        raise ValueError("range_selector_groups cannot be combined with single range selector fields.")
+
+    candidates = select_activation_quantizers(model, include_output_quantizer=include_output_quantizer)
+    if selector_groups is None:
+        selected_rows = select_activation_quantizers(
+            model,
+            index=index,
+            name_contains=name_contains,
+            stage=stage,
+            branch=branch,
+            role=role,
+            module_type=module_type,
+            include_output_quantizer=include_output_quantizer,
+        )
+    else:
+        selected_indices: set[int] = set()
+        for group in selector_groups:
+            for row in select_activation_quantizers(model, include_output_quantizer=include_output_quantizer, **group):
+                selected_indices.add(int(row["index"]))
+        selected_rows = [row for row in candidates if int(row["index"]) in selected_indices]
+
+    if exclude_selector_groups:
+        excluded_indices: set[int] = set()
+        for group in exclude_selector_groups:
+            for row in select_activation_quantizers(model, include_output_quantizer=include_output_quantizer, **group):
+                excluded_indices.add(int(row["index"]))
+        selected_rows = [row for row in selected_rows if int(row["index"]) not in excluded_indices]
+    return selected_rows
 
 
 def _make_range_hook(

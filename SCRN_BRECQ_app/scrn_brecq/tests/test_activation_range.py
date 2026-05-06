@@ -48,6 +48,32 @@ class TwoConvModel(nn.Module):
         self.second.set_quant_state(weight_quant, act_quant)
 
 
+class StageConvModel(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.stage4 = nn.Sequential(
+            QuantModule(nn.Conv2d(1, 1, kernel_size=1, bias=False), act_quant_params={"n_bits": 8, "leaf_param": True})
+        )
+        self.stage5 = nn.Sequential(
+            QuantModule(nn.Conv2d(1, 1, kernel_size=1, bias=False), act_quant_params={"n_bits": 8, "leaf_param": True})
+        )
+        self.tail = QuantModule(nn.Conv2d(1, 1, kernel_size=1, bias=False), act_quant_params={"n_bits": 8, "leaf_param": True})
+        with torch.no_grad():
+            self.stage4[0].weight.fill_(1.0)
+            self.stage5[0].weight.fill_(1.0)
+            self.tail.weight.fill_(1.0)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.stage4(x)
+        x = self.stage5(x)
+        return self.tail(x)
+
+    def set_quant_state(self, weight_quant: bool = False, act_quant: bool = False) -> None:
+        self.stage4[0].set_quant_state(weight_quant, act_quant)
+        self.stage5[0].set_quant_state(weight_quant, act_quant)
+        self.tail.set_quant_state(weight_quant, act_quant)
+
+
 class ActivationRangeTest(unittest.TestCase):
     def test_percentile_range_keeps_zero_inside_clipped_range(self) -> None:
         model = TinyConvLinearModel()
@@ -164,6 +190,63 @@ class ActivationRangeTest(unittest.TestCase):
             parse_mse_shrink_ratios("1.0,not-a-number")
         with self.assertRaisesRegex(ValueError, "range_mse_shrink_ratios"):
             parse_mse_shrink_ratios("1.0,0.0")
+
+    def test_selector_groups_select_union_of_structures(self) -> None:
+        model = TinyConvLinearModel()
+        inputs = torch.tensor([[[[-10.0, -1.0], [2.0, 100.0]]]], dtype=torch.float32)
+
+        result = apply_activation_ranges(
+            model,
+            inputs,
+            method="max",
+            selector_groups=[{"module_type": "Conv2d"}, {"module_type": "Linear"}],
+            include_output_quantizer=True,
+        )
+
+        self.assertEqual(result["selected_count"], 2)
+        self.assertEqual([layer["name"] for layer in result["layers"]], ["conv", "fc"])
+
+    def test_exclude_selector_groups_remove_matching_candidates(self) -> None:
+        model = StageConvModel()
+        inputs = torch.tensor([[[[-2.0, -1.0], [1.0, 2.0]]]], dtype=torch.float32)
+
+        result = apply_activation_ranges(
+            model,
+            inputs,
+            method="max",
+            module_type="Conv2d",
+            exclude_selector_groups=[{"stage": "stage5", "module_type": "Conv2d"}],
+        )
+
+        self.assertEqual(result["selected_count"], 1)
+        self.assertEqual(result["layers"][0]["name"], "stage4.0")
+
+    def test_selector_groups_conflict_with_single_selector_fields(self) -> None:
+        model = TinyConvLinearModel()
+        inputs = torch.zeros(1, 1, 2, 2)
+
+        with self.assertRaisesRegex(ValueError, "range_selector_groups"):
+            apply_activation_ranges(
+                model,
+                inputs,
+                method="max",
+                module_type="Conv2d",
+                selector_groups=[{"module_type": "Linear"}],
+            )
+
+    def test_selector_groups_still_exclude_output_quantizer_by_default(self) -> None:
+        model = TwoConvModel()
+        inputs = torch.tensor([[[[-2.0, -1.0], [1.0, 2.0]]]], dtype=torch.float32)
+
+        result = apply_activation_ranges(
+            model,
+            inputs,
+            method="max",
+            selector_groups=[{"module_type": "Conv2d"}],
+        )
+
+        self.assertEqual(result["selected_count"], 1)
+        self.assertEqual(result["layers"][0]["name"], "first")
 
 
 if __name__ == "__main__":
