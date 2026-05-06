@@ -2315,3 +2315,59 @@ E006b-0 smoke：
 
 - E006b group-wise 实现、checkpoint 保存/恢复和 diagnostics 兼容性 smoke 已通过。
 - 该 smoke 不能作为正式效果结论；下一步必须跑 g4/g8/g16 固定 128-sample eval 和 diagnostics。
+
+## 2026-05-06 E006b formal group-wise 128-sample eval
+
+实验口径：
+
+- 起点：E002b W4 weight-recon checkpoint。
+- 不跑 activation reconstruction。
+- activation range：`mse_grid`。
+- activation granularity：`group_wise`。
+- selected quantizers：all Conv2d activation quantizers，`selected_count=31`。
+- eval：128 samples，`seed=20260427`，`batch_size=16`。
+- baseline：
+  - all_on tensor-wise A8 init：`-7.1021 dB`。
+  - E006a all Conv2d per-channel MSE：`-5.3817 dB`。
+  - E006a per-channel recovery：`+1.7203 dB`。
+  - E006b 70% threshold：`+1.204 dB`。
+
+Runs：
+
+- g4 quant：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/quant/20260506_220727_e006b_conv2d_group_wise_g4_mse/`
+- g8 quant：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/quant/20260506_220727_e006b_conv2d_group_wise_g8_mse/`
+- g16 quant：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/quant/20260506_220727_e006b_conv2d_group_wise_g16_mse/`
+- eval：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/eval/20260506_220836_e006b_group_wise_g4_eval128/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/eval/20260506_220837_e006b_group_wise_g8_eval128/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/eval/20260506_220837_e006b_group_wise_g16_eval128/`
+- diagnostics：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/diagnostics/20260506_220911_e006b_group_wise_g4_diagnostics128/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/diagnostics/20260506_220912_e006b_group_wise_g8_diagnostics128/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006b_conv2d_group_wise/diagnostics/20260506_220912_e006b_group_wise_g16_diagnostics128/`
+
+Formal results：
+
+| group size | SNR mean | median | min | max | SSIM mean | delta vs all_on | recovery vs E006a gain | improved vs all_on |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 4 | -6.1885 | -6.8713 | -13.2416 | 6.2019 | 0.4033 | +0.9136 | 53.1% | 120 / 128 |
+| 8 | -8.5523 | -9.4064 | -15.9452 | 6.6961 | 0.3927 | -1.4502 | -84.3% | 3 / 128 |
+| 16 | -7.4376 | -8.2121 | -14.7473 | 6.7325 | 0.2547 | -0.3355 | -19.5% | 1 / 128 |
+
+Diagnostics summary：
+
+| group size | activation quantizers | activation stats | non-positive delta count | fake quant MSE max |
+|---:|---:|---:|---:|---:|
+| 4 | 52 | 52 | 0 | 0.023934995755553246 |
+| 8 | 52 | 52 | 0 | 0.023966144770383835 |
+| 16 | 52 | 52 | 0 | 0.009504307061433792 |
+
+Conclusion：
+
+- g4 是 E006b 中唯一有正收益的 group-wise 设置，128-sample SNR mean 相对 all_on 提升 `+0.9136 dB`。
+- 但 g4 只达到 E006a per-channel 恢复量的约 `53.1%`，没有达到预设 `70%` / `+1.204 dB` 部署价值阈值。
+- g8 和 g16 明显不稳定，平均 SNR 低于 all_on；较粗 group-wise 不能替代 per-channel。
+- E006b 结论：group-wise 有方向信号，但当前简单连续分组不是足够强的折中方案。后续应进入 E006c 结构化粒度对照，优先测试 selective per-channel / selective group-wise，而不是把 all Conv2d group-wise 作为主策略。
