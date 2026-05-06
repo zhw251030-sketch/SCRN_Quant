@@ -2205,3 +2205,49 @@ Diagnostics：
 - 这超过 E006a 预设的 `+1 dB` 强信号阈值，说明 tensor-wise activation 粒度过粗是当前 W4A8 A8 init 崩坏的重要原因之一。
 - 但 per-channel 仍远低于 all_off / W4A32 的 `4.7973 dB`，只恢复了 all_on 到 all_off gap 的一部分，不能视为完整修复。
 - 下一步应进入 E006b group-wise feasibility，验证 group size 4/8/16 是否能以更低复杂度接近 per-channel 收益；同时 E006c 需要做结构化 per-channel 对照。
+
+## 2026-05-06 E006a default single-sample sanity check
+
+### 目的
+
+- 使用默认单图测试对：
+  - `SCRN-main/test_data/clear.npy`
+  - `SCRN-main/test_data/noise_and_miss.npy`
+- 对 E006a formal checkpoint 做单样本 reload eval。
+- 生成七面板图，对比旧 tensor-wise W4A8 init 和 E006a Conv2d per-channel W4A8 init。
+
+### 运行
+
+- E006a checkpoint：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006a_conv2d_per_channel/quant/20260506_210914_e006a_conv2d_per_channel_mse/checkpoints/quantized_scrn_brecq_pre_act_recon.pth`
+- eval run：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006a_conv2d_per_channel/single_eval/20260506_213432_e006a_clear_noise_single_cpu/`
+- CLI：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn --checkpoint ... --eval-clean-path SCRN-main/test_data/clear.npy --eval-input-path SCRN-main/test_data/noise_and_miss.npy --device cpu --save-figure`
+- 说明：
+  - `evaluate_quantized_scrn.py` 暂无 `--cuda-device-index`。
+  - 单图很小，本次用 CPU 跑，避免默认占用 GPU 0。
+
+### 结果
+
+| panel | SNR dB | SSIM |
+|---|---:|---:|
+| Input | 3.9693 | 0.6053 |
+| FP32 | 11.7869 | 0.8697 |
+| W4A32 pre weight recon | 11.4071 | 0.8255 |
+| W4A32 post weight recon | 11.6961 | 0.8660 |
+| W4A8 tensor-wise init | 4.9875 | 0.6576 |
+| W4A8 E006a per-channel init | 3.2318 | 0.5931 |
+
+- E006a per-channel vs tensor-wise init：`-1.7556 dB`。
+- E006a per-channel vs W4A32 post weight recon：`-8.4643 dB`。
+- 七面板图：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006a_conv2d_per_channel/single_eval/20260506_213432_e006a_clear_noise_single_cpu/seven_panel_tensor_vs_e006a.png`
+- 七面板指标：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006a_conv2d_per_channel/single_eval/20260506_213432_e006a_clear_noise_single_cpu/seven_panel_metrics.json`
+
+### 结论
+
+- 默认单图上，E006a per-channel A8 init 低于旧 tensor-wise A8 init。
+- 这与 128-sample eval 的结论相反：E006a 在 128-sample mean 上相对 all_on 提升 `+1.7203 dB`。
+- 因此该单图 sanity check 再次确认：单样本 SNR 只能用于可视化和 smoke，不能作为 E006 粒度策略的正式判断依据。

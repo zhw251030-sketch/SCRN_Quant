@@ -4526,3 +4526,70 @@ E006a 给出强正信号：
 1. 进入 E006b：Conv2d activation group-wise feasibility，优先 group size 4/8/16。
 2. 进入 E006c：结构化 per-channel 对照，判断 all Conv2d 是否必要，还是只处理 fusion / merge_proj / stage_output_conv / stage5。
 3. 保留 Linear / transformer sanity check；当前 Linear 指标没有变成 A8 init 主瓶颈。
+
+### 2026-05-06 E006a default single-sample sanity check
+
+#### 目的
+
+使用默认单图测试对复核 E006a：
+
+- clean：`SCRN-main/test_data/clear.npy`
+- degraded：`SCRN-main/test_data/noise_and_miss.npy`
+
+这次不是替代 128-sample eval，而是做可视化 sanity check，并生成七面板图，把旧 tensor-wise W4A8 init 和 E006a Conv2d per-channel W4A8 init 放在同一张图里。
+
+#### 运行
+
+- E006a checkpoint：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006a_conv2d_per_channel/quant/20260506_210914_e006a_conv2d_per_channel_mse/checkpoints/quantized_scrn_brecq_pre_act_recon.pth`
+- eval run：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006a_conv2d_per_channel/single_eval/20260506_213432_e006a_clear_noise_single_cpu/`
+- 命令：
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn --checkpoint ... --eval-clean-path SCRN-main/test_data/clear.npy --eval-input-path SCRN-main/test_data/noise_and_miss.npy --device cpu --save-figure`
+- 设备说明：
+  - `evaluate_quantized_scrn.py` 目前没有 `--cuda-device-index`。
+  - 尝试用 `CUDA_VISIBLE_DEVICES=1` 跑该 CLI 时当前环境报告 `torch.cuda.is_available() is False`。
+  - 因单图计算量很小，本次改用 CPU，避免默认占用 GPU 0。
+
+#### 七面板内容
+
+七面板不是重新跑 W20000，也不是跑 activation reconstruction。面板来源如下：
+
+1. Ground Truth：`clear.npy`
+2. Input：`noise_and_miss.npy`
+3. FP32：E002b source run 的 `fp32_prediction.npy`
+4. W4A32 pre weight recon：E002b source run 的 `quant_pre_recon_prediction.npy`
+5. W4A32 post weight recon：E002b source run 的 `quant_post_weight_recon_prediction.npy`
+6. W4A8 tensor-wise init：E002b source run 的 `quant_pre_act_recon_prediction.npy`
+7. W4A8 E006a per-channel init：本次 E006a checkpoint reload eval 的 `prediction.npy`
+
+输出：
+
+- `comparison.png`：`evaluate_quantized_scrn.py` 自带三面板图。
+- `seven_panel_tensor_vs_e006a.png`：自定义七面板图。
+- `seven_panel_metrics.json`：七面板指标。
+
+#### 结果
+
+| panel | SNR dB | SSIM |
+|---|---:|---:|
+| Input | 3.9693 | 0.6053 |
+| FP32 | 11.7869 | 0.8697 |
+| W4A32 pre weight recon | 11.4071 | 0.8255 |
+| W4A32 post weight recon | 11.6961 | 0.8660 |
+| W4A8 tensor-wise init | 4.9875 | 0.6576 |
+| W4A8 E006a per-channel init | 3.2318 | 0.5931 |
+
+差值：
+
+- E006a per-channel vs tensor-wise init：`-1.7556 dB`。
+- E006a per-channel vs W4A32 post weight recon：`-8.4643 dB`。
+
+#### 结论
+
+默认单图上，E006a per-channel A8 init 反而低于旧 tensor-wise A8 init。这和 128-sample eval 的方向相反：
+
+- 128-sample：E006a per-channel 相对 all_on 提升 `+1.7203 dB`。
+- 默认单图：E006a per-channel 相对 tensor-wise init 下降 `-1.7556 dB`。
+
+因此这次单样本 sanity check 进一步证明：单样本 SNR 只能用于 smoke / 可视化，不适合作为 E006 粒度策略的正式判断依据。正式结论仍以固定 128-sample eval 为准。
