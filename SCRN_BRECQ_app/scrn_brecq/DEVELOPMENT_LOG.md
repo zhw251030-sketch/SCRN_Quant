@@ -2750,3 +2750,85 @@ Run paths：
   - SNR: `8.286237604245681` vs `11.78722661219287`
   - SSIM: `0.7869134500690693` vs `0.8699862043155245`
 - 因此该 checkpoint 需要后续在 paper-style 478 test set 和任务协议上做多样本评估，不能仅凭旧单样本图判断是否替代历史 FP32 baseline。
+
+## 2026-05-07 FP32 SCRN two-model two-testset 478 multi-eval
+
+### 修改内容
+
+- 新增 `SCRN_BRECQ_app/scrn_repro/cli/evaluate_scrn_multi.py`。
+- 新增 `SCRN_BRECQ_app/scrn_repro/tests/test_evaluate_scrn_multi.py` 和测试包初始化文件。
+- CLI preset:
+  - `fp32-two-model-two-testset-478`
+- 固定两个 FP32 checkpoint：
+  - `old10750_main`: `SCRN_BRECQ_app/scrn_repro/runs/train/20260425_192916_four_gpu_train_quant_10750_0/checkpoints/best.pth`
+  - `paper5`: `SCRN_BRECQ_app/scrn_repro/runs/train/20260507_170001_paper5_10750_ddp3_seed20260425/checkpoints/best.pth`
+- 固定两个 478 clean patch test sets：
+  - `legacy478`: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_quant_test_478_legacy_logic`
+  - `paper5_478`: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_test_478`
+- 固定退化网格：
+  - SNR settings: `-2,-1,1,5,10`
+  - missing rates: `0.02,0.08,0.18,0.28,0.38`
+  - seed: `20260507`
+- 每行 per-sample 记录完整 input/output SNR/SSIM：
+  - `input_snr_db`
+  - `input_ssim`
+  - `output_snr_db`
+  - `output_ssim`
+  - `snr_gain_db`
+  - `ssim_gain`
+- 汇总包含 overall、by source、by SNR、by missing rate、by condition，以及 `paper5 - old10750_main` paired comparison。
+
+### 正式运行
+
+- Command:
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_repro.cli.evaluate_scrn_multi --preset fp32-two-model-two-testset-478 --device cuda --cuda-device-index 1 --batch-size 64 --seed 20260507`
+- Run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/test_multi/20260507_184439_fp32_two_model_two_testset_grid478_seed20260507`
+- Output:
+  - `per_sample_metrics.jsonl`: `47800` rows
+  - `metrics.json`
+  - `summary.md`
+  - `config.json`
+- Manifest source mapping:
+  - no warnings。
+
+### Overall 结果
+
+| model | testset | count | output SNR mean / median | output SSIM mean / median | SNR gain mean | SSIM gain mean |
+|---|---|---:|---:|---:|---:|---:|
+| old10750_main | legacy478 | 11950 | 5.6730 / 5.4099 | 0.7527 / 0.7519 | 4.6241 | 0.2214 |
+| old10750_main | paper5_478 | 11950 | -6.5491 / 5.1644 | 0.8096 / 0.7965 | -7.5467 | 0.2663 |
+| paper5 | legacy478 | 11950 | 4.7196 / 3.8869 | 0.6787 / 0.6592 | 3.6707 | 0.1475 |
+| paper5 | paper5_478 | 11950 | -3.0017 / 6.5355 | 0.8821 / 0.8976 | -3.9993 | 0.3388 |
+
+### Paired comparison
+
+- `legacy478`:
+  - `paper5 - old10750_main` SNR mean / median: `-0.9534 / -1.2126`
+  - `paper5 - old10750_main` SSIM mean / median: `-0.0740 / -0.0802`
+- `paper5_478`:
+  - `paper5 - old10750_main` SNR mean / median: `+3.5473 / +2.9373`
+  - `paper5 - old10750_main` SSIM mean / median: `+0.0725 / +0.0703`
+
+### Source-level notes
+
+- `legacy478`:
+  - `paper5` beats `old10750_main` on `Anisotropic` by SNR mean `+1.6871` and SSIM mean `+0.0583`。
+  - `paper5` is worse on `Kerry3D` by SNR mean `-4.0864` and SSIM mean `-0.1987`。
+  - `paper5` is worse on `Shots0001` by SNR mean `-1.3356` and SSIM mean `-0.0945`。
+- `paper5_478`:
+  - `paper5` beats `old10750_main` on `Anisotropic` by SNR mean `+3.9038` and SSIM mean `+0.0700`。
+  - `paper5` is worse on `Kerry3D` by SNR mean `-2.8750` but SSIM mean is slightly higher by `+0.0121`。
+  - `paper5` beats `old10750_main` on `Shots0001` by SNR mean `+3.7437` and SSIM mean `+0.0755`。
+- `paper5_478` contains `33` near-zero-energy clean patches, while `legacy478` contains `0`。
+  - These near-zero patches can drive output SNR mean to very negative values even when output SSIM is high.
+  - For paper5_478, median SNR is therefore more interpretable than mean SNR unless near-zero patches are filtered or reported separately.
+
+### 验证方式
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_repro.tests.test_evaluate_scrn_multi -v`
+  - 6 tests OK。
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_repro/cli/evaluate_scrn_multi.py`
+  - passed。
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_repro.cli.evaluate_scrn_multi --help`
+  - passed。

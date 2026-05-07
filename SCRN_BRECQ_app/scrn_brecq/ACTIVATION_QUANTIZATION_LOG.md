@@ -5115,3 +5115,66 @@ E006c 总结：
   - calibration set: legacy stratified 或 paper-style stratified
   - eval set: old 128-sample train-pool eval、legacy 478 test、或 paper-style 478 test
 - 旧单样本 eval 显示该 candidate 在 `SCRN-main/test_data/clear.npy` / `noise_and_miss.npy` 上低于旧 `10750_0` baseline，因此不能直接用作量化实验主起点，除非后续多样本 paper-style eval 支持切换。
+
+## 2026-05-07 激活量化评估数据口径补充：FP32 two-model two-testset 478 benchmark
+
+目的：
+
+- 建立两个 FP32 SCRN checkpoint 在两个 478 clean patch test sets 上的固定退化网格 benchmark。
+- 本次仍不重跑 BRECQ；结果用于判断后续量化实验应继续使用旧 FP32 起点，还是建立 paper-style FP32 起点的独立量化线。
+
+实现：
+
+- 新增 FP32 multi-eval CLI：
+  - `SCRN_BRECQ_app/scrn_repro/cli/evaluate_scrn_multi.py`
+- Preset:
+  - `fp32-two-model-two-testset-478`
+- Models:
+  - `old10750_main`: `20260425_192916_four_gpu_train_quant_10750_0/checkpoints/best.pth`
+  - `paper5`: `20260507_170001_paper5_10750_ddp3_seed20260425/checkpoints/best.pth`
+- Test sets:
+  - `legacy478`: `scrn_quant_test_478_legacy_logic`
+  - `paper5_478`: `scrn_paper5_test_478`
+- Degradation grid:
+  - SNR settings: `-2,-1,1,5,10`
+  - missing rates: `0.02,0.08,0.18,0.28,0.38`
+  - seed: `20260507`
+
+Run:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/test_multi/20260507_184439_fp32_two_model_two_testset_grid478_seed20260507`
+- `per_sample_metrics.jsonl`: `47800` rows。
+- 每行包含 input/output SNR/SSIM 和 gain，后续可作为 W4A32/W4A8 评估对照口径。
+
+Overall:
+
+| model | testset | output SNR mean / median | output SSIM mean / median |
+|---|---|---:|---:|
+| old10750_main | legacy478 | 5.6730 / 5.4099 | 0.7527 / 0.7519 |
+| old10750_main | paper5_478 | -6.5491 / 5.1644 | 0.8096 / 0.7965 |
+| paper5 | legacy478 | 4.7196 / 3.8869 | 0.6787 / 0.6592 |
+| paper5 | paper5_478 | -3.0017 / 6.5355 | 0.8821 / 0.8976 |
+
+Paired comparison:
+
+- On `legacy478`, `paper5 - old10750_main`:
+  - SNR mean / median: `-0.9534 / -1.2126`
+  - SSIM mean / median: `-0.0740 / -0.0802`
+- On `paper5_478`, `paper5 - old10750_main`:
+  - SNR mean / median: `+3.5473 / +2.9373`
+  - SSIM mean / median: `+0.0725 / +0.0703`
+
+Interpretation for quantization:
+
+- `paper5` is better on its corresponding `paper5_478` test set, but worse on `legacy478` overall。
+- `paper5_478` has `33` near-zero-energy clean patches; these produce extreme negative SNR values and make SNR mean less stable than SNR median.
+- For subsequent W4A8 comparisons, report both mean and median SNR/SSIM, and keep testset identity explicit:
+  - `legacy478` for continuity with old data construction。
+  - `paper5_478` for paper-style deterministic split evaluation。
+
+验证：
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_repro.tests.test_evaluate_scrn_multi -v`
+  - 6 tests OK。
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_repro.cli.evaluate_scrn_multi --preset fp32-two-model-two-testset-478 --device cuda --cuda-device-index 1 --batch-size 64 --seed 20260507`
+  - completed four groups and wrote `47800` rows。
