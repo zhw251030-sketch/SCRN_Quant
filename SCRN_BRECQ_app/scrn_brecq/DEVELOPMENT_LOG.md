@@ -3163,3 +3163,74 @@ Conclusion:
 - `old10750_main` is still best on `legacy478`, while `paper5_unfiltered` is best on both paper-style test sets.
 - The very negative SNR means on `paper5_478` reinforce that mean SNR is unstable when near-zero clean patches exist; median SNR and SSIM are more interpretable there.
 - Next step should be dataset energy diagnostics and an energy-balanced training protocol, not immediate W4A8 on `paper5_energy_filtered`.
+
+## 2026-05-07 Train dataset energy diagnostics
+
+目的：
+
+- 解释为什么 source count 配额保持一致时，FP32 结果仍会显著变化。
+- 对比三个 10750 train sets 的 patch energy 分布：
+  - `legacy10750_0`: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_quant_10750_0_patches`
+  - `paper5_unfiltered`: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_train_10750`
+  - `paper5_energy_filtered`: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_train_10750`
+- 使用 `std² sum` 作为普通 `MSELoss(sum)` 下的粗略训练影响 proxy。
+  - 这不是精确梯度归因，但能反映高幅值 patch 对 loss 的潜在支配能力。
+
+Report:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/dataset_diagnostics/20260507_232819_train_energy_diagnostics_10750`
+- Files:
+  - `summary.md`
+  - `energy_diagnostics.json`
+
+Overall:
+
+| dataset | count | std <= 1e-6 | std <= 1e-3 | std median | std q90 | dominant std² source | dominant std² share |
+|---|---:|---:|---:|---:|---:|---|---:|
+| `legacy10750_0` | 10750 | 0 | 0 | 0.002043 | 0.007039 | `Kerry3D` | 0.9493 |
+| `paper5_unfiltered` | 10750 | 5715 | 8400 | 0.000000 | 0.004135 | `Anisotropic_FD_Model` | 0.4976 |
+| `paper5_energy_filtered` | 10750 | 0 | 0 | 0.004090 | 0.014933 | `Kerry3D` | 0.9510 |
+
+Per-source observations:
+
+- `legacy10750_0`:
+  - `Shots0001_0200` count share is `0.5456`, but std² share is only `0.0091`.
+  - `Kerry3D` count share is `0.0447`, but std² share is `0.9493`.
+- `paper5_unfiltered`:
+  - It contains many near-zero patches:
+    - `std <= 1e-6`: `5715 / 10750`
+    - `std <= 1e-3`: `8400 / 10750`
+  - `Kerry3D` is entirely near-zero in this split:
+    - `480 / 480` have `std <= 1e-3`
+    - std² share is effectively `0.0`
+  - Training influence is spread mainly across:
+    - `Anisotropic_FD_Model`: std² share `0.4976`
+    - `Shots0001_0200`: `0.1850`
+    - `7m_shots_0201`: `0.1753`
+    - `1997_2.5D_shots`: `0.1420`
+- `paper5_energy_filtered`:
+  - It removes all `std <= 1e-3` patches.
+  - `Kerry3D` becomes extremely high energy:
+    - median std `0.150184`
+    - std² share `0.9510`
+  - `Shots0001_0200` still has count share `0.5456`, but std² share only `0.0108`.
+
+Interpretation:
+
+- Matching source patch counts is not enough under `MSELoss(sum)`.
+- The effective training objective can be dominated by a small high-energy source, even when that source has few patches.
+- However, `legacy10750_0` also has strong `Kerry3D` std² dominance and still performs best on `legacy478`, so std² dominance alone does not fully explain model ranking.
+- The current evidence points to a combination of:
+  - source/test protocol matching,
+  - selected spatial regions,
+  - near-zero patch distribution,
+  - and energy-scale imbalance.
+
+Next recommendation:
+
+- Do not directly use `paper5_energy_filtered` for BRECQ.
+- First design an energy-balanced paper-style train set:
+  - keep hard low-energy rejection,
+  - keep source count quotas,
+  - add per-source energy-bin selection or per-source std² share constraints,
+  - verify that no single source dominates the MSE-scale proxy before retraining.

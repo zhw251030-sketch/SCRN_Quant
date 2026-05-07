@@ -5411,3 +5411,52 @@ Implication for W4A8:
   - `paper5_unfiltered` for both paper-style test sets.
 - Since `paper5_energy_filtered` fixes low-energy pollution but loses overall FP32 quality, the next step should be energy diagnostics / energy-balanced data construction before any new W4A8 run.
 - Keep reporting mean and median SNR/SSIM together, especially for any test set that still contains near-zero clean patches.
+
+## 2026-05-07 Train energy diagnostics before new W4A8 runs
+
+本次仍不进入 BRECQ / W4A8，只分析 FP32 training data。
+
+Report:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/dataset_diagnostics/20260507_232819_train_energy_diagnostics_10750`
+- Artifacts:
+  - `summary.md`
+  - `energy_diagnostics.json`
+
+Purpose:
+
+- Check whether source-count quotas preserve training influence under the current SCRN FP32 loss:
+  - training uses `MSELoss(sum)`
+  - higher-energy patches can dominate loss even when source count is small
+- Use `std² sum` as a rough MSE-scale influence proxy.
+
+Key findings:
+
+| dataset | std <= 1e-3 | dominant std² source | dominant std² share |
+|---|---:|---|---:|
+| `legacy10750_0` | 0 | `Kerry3D` | 0.9493 |
+| `paper5_unfiltered` | 8400 | `Anisotropic_FD_Model` | 0.4976 |
+| `paper5_energy_filtered` | 0 | `Kerry3D` | 0.9510 |
+
+Important nuance:
+
+- `paper5_energy_filtered` is not weak merely because `Kerry3D` has high std² share.
+- `legacy10750_0` also has high `Kerry3D` std² share and is still best on `legacy478`.
+- Therefore the issue is broader than one source:
+  - train/test protocol matching matters,
+  - spatial region selection matters,
+  - near-zero patch distribution matters,
+  - energy-scale imbalance still must be controlled before retraining.
+
+Implication for quantization:
+
+- Do not start a new W4A8 run from `paper5_energy_filtered` yet.
+- Current BRECQ candidate choice remains unresolved:
+  - `old10750_main` is strongest for legacy continuity.
+  - `paper5_unfiltered` is strongest on paper-style test sets, but contains many near-zero train patches.
+  - `paper5_energy_filtered` has cleaner patches but weaker FP32 evaluation.
+- Next dataset protocol should be energy-balanced:
+  - keep low-energy rejection,
+  - preserve source count quotas,
+  - constrain per-source energy distribution or std² share,
+  - validate diagnostics before any new FP32 training or W4A8 quantization.
