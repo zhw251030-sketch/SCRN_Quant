@@ -5016,3 +5016,50 @@ E006c 总结：
   - generated `1024` clean calibration patches。
 - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.prepare_scrn_stratified_datasets --mode test`
   - generated `478` clean test patches。
+
+## 2026-05-07 激活量化评估数据口径补充：paper-style 5-source dataset rebuild
+
+目的：
+
+- 旧 `10750_0` 训练集来自整文件 sliding-window 后按文件 quota 随机保留，未严格执行 SCRN 原文 Table 2 的 `samples / traces / shots / augmentation` 约束。
+- 为后续 W4A8 calibration 和 multi-eval 提供更接近 SCRN 原文的 clean patch pool，新建 paper-style 5-source train / calibration / test 数据集。
+
+实现：
+
+- 新增 `data/paper_scrn_datasets.py` 和 `cli/prepare_scrn_paper_datasets.py`。
+- 新 train set：
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_train_10750`
+  - counts: `300 / 3355 / 750 / 480 / 5865`
+  - final total: `10750`
+- 新 calibration set：
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_cali_1024_stratified`
+  - stratified quotas: `28 / 320 / 71 / 46 / 559`
+  - final total: `1024`
+- 新 test set：
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_test_478`
+  - counts: `Anisotropic=75, Kerry3D=16, Shots0001=387`
+  - final total: `478`
+
+关键口径修订：
+
+- paper-style train/test 默认按 Table 2/3 几何窗口计数保留 patch，不套用旧 `10750_0` 的 `std > 1e-3` 过滤；否则 1997 和 Anisotropic 等来源无法达到原文 patch 数。
+- test 默认对新 train set 做 float32 patch SHA-256 exact hash 排除。
+- 因部分 deterministic next-region patch 与 train hash 完全重复，test 生成会从训练区域后继续读取连续 SourceX shot 或 Kerry3D trace window，直到满足固定 quota。
+- 本次 test manifest 记录：
+  - `training_hash_excluded_count=1079`
+  - `per_source_region_counts`: `Anisotropic=3, Kerry3D=7, Shots0001=3`
+  - `per_source_candidate_counts`: `Anisotropic=225, Kerry3D=168, Shots0001=1173`
+  - `per_source_training_hash_excluded_counts`: `Anisotropic=150, Kerry3D=144, Shots0001=785`
+
+对后续 W4A8 实验的影响：
+
+- 后续 calibration 可切换到 `scrn_paper5_cali_1024_stratified`，避免继续绑定旧 `10750_0` 的非 paper-style 构建口径。
+- 后续 multi-eval 可切换到 `scrn_paper5_test_478`，和旧 128-sample train-pool eval 明确区分。
+- 切换数据口径会影响 W4A8 all_on / all_off baseline，后续 E006/E007 结论需要注明使用的是 legacy calibration/test 还是 paper-style calibration/test。
+
+验证：
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_paper_scrn_datasets -v`
+  - 11 tests OK。
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.prepare_scrn_paper_datasets --mode all --overwrite`
+  - generated train `10750`、calibration `1024`、test `478`。

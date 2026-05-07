@@ -20,11 +20,26 @@ from .stratified_scrn_datasets import (
     prepare_test_dataset_from_segy_dir,
     select_stratified_calibration_files,
 )
+from .paper_scrn_datasets import (
+    DEFAULT_CALIBRATION_QUOTAS as PAPER_DEFAULT_CALIBRATION_QUOTAS,
+    DEFAULT_TEST_QUOTAS as PAPER_DEFAULT_TEST_QUOTAS,
+    DEFAULT_TRAIN_QUOTAS as PAPER_DEFAULT_TRAIN_QUOTAS,
+    PAPER_TEST_SOURCES,
+    PAPER_TRAIN_SOURCES,
+    prepare_calibration_dataset as prepare_paper_calibration_dataset,
+    prepare_test_dataset_from_segy_dir as prepare_paper_test_dataset_from_segy_dir,
+    prepare_train_dataset_from_segy_dir as prepare_paper_train_dataset_from_segy_dir,
+)
 
 __all__ = [
     "DEFAULT_CALIBRATION_DATASET_DIR",
     "DEFAULT_CALIBRATION_QUOTAS",
+    "PAPER_DEFAULT_CALIBRATION_QUOTAS",
+    "PAPER_DEFAULT_TEST_QUOTAS",
+    "PAPER_DEFAULT_TRAIN_QUOTAS",
     "DEFAULT_TEST_QUOTAS",
+    "PAPER_TEST_SOURCES",
+    "PAPER_TRAIN_SOURCES",
     "CalibrationDataConfig",
     "allocate_largest_remainder",
     "build_calibration_dataset",
@@ -32,6 +47,9 @@ __all__ = [
     "collect_calibration_inputs",
     "load_calibration_data",
     "prepare_calibration_dataset",
+    "prepare_paper_calibration_dataset",
+    "prepare_paper_test_dataset_from_segy_dir",
+    "prepare_paper_train_dataset_from_segy_dir",
     "prepare_test_dataset_from_segy_dir",
     "select_stratified_calibration_files",
 ]

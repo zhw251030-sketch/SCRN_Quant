@@ -1,0 +1,4386 @@
+{
+  "created_at": "2026-05-07T16:41:31",
+  "dataset_type": "paper_style_test",
+  "min_std": null,
+  "notes": [
+    "Data files are local artifacts and must not be committed.",
+    "This is a deterministic paper-style protocol, not the authors' unpublished exact split."
+  ],
+  "paper_test_sources": [
+    {
+      "filename": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "kind": "shot_gather",
+      "name": "Anisotropic",
+      "quota": 75,
+      "samples": 350,
+      "trace_start": 0,
+      "traces": 800,
+      "train_shots_before_test": 2,
+      "train_source_name": "Anisotropic_FD_Model"
+    },
+    {
+      "filename": "Kerry3D.segy",
+      "kind": "full_matrix",
+      "name": "Kerry3D",
+      "quota": 16,
+      "samples": 1252,
+      "trace_start": 287,
+      "traces": 128,
+      "train_shots_before_test": 0,
+      "train_source_name": "Kerry3D"
+    },
+    {
+      "filename": "shots0001_0200.segy",
+      "kind": "shot_gather",
+      "name": "Shots0001",
+      "quota": 387,
+      "samples": 900,
+      "trace_start": 0,
+      "traces": 1201,
+      "train_shots_before_test": 3,
+      "train_source_name": "Shots0001_0200"
+    }
+  ],
+  "patch_size": [
+    128,
+    128
+  ],
+  "per_source_candidate_counts": {
+    "Anisotropic": 225,
+    "Kerry3D": 168,
+    "Shots0001": 1173
+  },
+  "per_source_counts": {
+    "Anisotropic": 75,
+    "Kerry3D": 16,
+    "Shots0001": 387
+  },
+  "per_source_region_counts": {
+    "Anisotropic": 3,
+    "Kerry3D": 7,
+    "Shots0001": 3
+  },
+  "per_source_training_hash_excluded_counts": {
+    "Anisotropic": 150,
+    "Kerry3D": 144,
+    "Shots0001": 785
+  },
+  "quotas": {
+    "Anisotropic": 75,
+    "Kerry3D": 16,
+    "Shots0001": 387
+  },
+  "raw_segy_dir": "/home/data1/hanwen/project/Project/SCRN_quant/data/train",
+  "sample_count": 478,
+  "samples": [
+    {
+      "left": 576,
+      "output_file": "test_000001.npy",
+      "region_index": 0,
+      "sha256": "0d7a83e19b37fa0a1e642246663e66e5ef3434bbbd605f64b8dc94292ed199eb",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 0
+    },
+    {
+      "left": 624,
+      "output_file": "test_000002.npy",
+      "region_index": 0,
+      "sha256": "59034bb998dee7cfa602c122fc70fad86c10d933ca82a7f76da7573e6d2f0e7e",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 0
+    },
+    {
+      "left": 672,
+      "output_file": "test_000003.npy",
+      "region_index": 0,
+      "sha256": "fba35cee4d8952c7e3ce20c69e5aeadc4f3b40627d2baf6e448bea031a8be1b0",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 0
+    },
+    {
+      "left": 528,
+      "output_file": "test_000004.npy",
+      "region_index": 0,
+      "sha256": "cbec523a686e1a7c14865be93cb93c485a317e2f81eacc0bb96ebf5dbab61460",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 48
+    },
+    {
+      "left": 576,
+      "output_file": "test_000005.npy",
+      "region_index": 0,
+      "sha256": "47b9aa246335404d33c48f3a5e7d4d99bfd3e597b5435395b1492d85e4b286dc",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 48
+    },
+    {
+      "left": 624,
+      "output_file": "test_000006.npy",
+      "region_index": 0,
+      "sha256": "d9dc576bad6030ed4d41fb1fe8e7a4f41b277ed1fe31c1314cc3cf5109ba8c66",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 48
+    },
+    {
+      "left": 672,
+      "output_file": "test_000007.npy",
+      "region_index": 0,
+      "sha256": "c590148f59dbaf12bd1b76ec648a8c1ae9954cb4cea1099947a1f698c394ebce",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 48
+    },
+    {
+      "left": 480,
+      "output_file": "test_000008.npy",
+      "region_index": 0,
+      "sha256": "a93344d284f58ca5aad2058ba117d10b80d1038c00999eae1e72a34d1e781533",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 96
+    },
+    {
+      "left": 528,
+      "output_file": "test_000009.npy",
+      "region_index": 0,
+      "sha256": "c59436a6f7a5607130fe301f4d211b35842d5a0c9764ee388cae10b5480695c2",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 96
+    },
+    {
+      "left": 576,
+      "output_file": "test_000010.npy",
+      "region_index": 0,
+      "sha256": "505ea6d490c308969f6355fa2006398f75eb96a03bdf3693a67dcd4e597e391b",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 96
+    },
+    {
+      "left": 624,
+      "output_file": "test_000011.npy",
+      "region_index": 0,
+      "sha256": "c85ee3e1a78798c7eb4083d2e60252655d155128e868990f81bf4b8486b14c86",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 96
+    },
+    {
+      "left": 672,
+      "output_file": "test_000012.npy",
+      "region_index": 0,
+      "sha256": "2bc5b30e67b2f0dacc150e403cdcf6b22ca84adb0538f9ec47c8eac293b8b1fc",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 96
+    },
+    {
+      "left": 432,
+      "output_file": "test_000013.npy",
+      "region_index": 0,
+      "sha256": "975b5ae3ada03d7aa5ff9e918b93adb7c0172899279ba09fe9d8dceee46d7163",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 480,
+      "output_file": "test_000014.npy",
+      "region_index": 0,
+      "sha256": "d8bf6ddaca8d41b52a2bf594b6729c0bf5d68fbdf87f142e080fb71231bddee3",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 528,
+      "output_file": "test_000015.npy",
+      "region_index": 0,
+      "sha256": "39279d176318b27b6f7c0d1a285f909e83b35d1999bfe84f17361a3e268e27df",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 576,
+      "output_file": "test_000016.npy",
+      "region_index": 0,
+      "sha256": "e4c8c4153cf3a568d5991201534889ed1223adbee3e8f0891128657b63d6aac4",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 624,
+      "output_file": "test_000017.npy",
+      "region_index": 0,
+      "sha256": "f1925325d48c64a3a3f1553e433ff5d709cf248071af63202a75f8f2e90405eb",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 672,
+      "output_file": "test_000018.npy",
+      "region_index": 0,
+      "sha256": "7ba7021680c2cb1ab0949a0428a9f2e0ad0c614b667d45896929685de4dec815",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 384,
+      "output_file": "test_000019.npy",
+      "region_index": 0,
+      "sha256": "7589ba5199232169e7a316ab0f91dd5bd723b7eb6daf3e3e0aa8a9d00fe54095",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 432,
+      "output_file": "test_000020.npy",
+      "region_index": 0,
+      "sha256": "ea84638598bbf7f6017314199e5cdecf70a80a38584a09d13801d1d99f0cd7bc",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 480,
+      "output_file": "test_000021.npy",
+      "region_index": 0,
+      "sha256": "73f21f3d92b1be5bc1cb6f7ba4234e070bf193e12b70467d63a00d3c729e7b32",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 528,
+      "output_file": "test_000022.npy",
+      "region_index": 0,
+      "sha256": "4b086ebdf37f5300387ada0ed949334384e8130098f739863fc02c714b77ad7f",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 576,
+      "output_file": "test_000023.npy",
+      "region_index": 0,
+      "sha256": "4f3e23ccab77fc89df013ad5845ccfa04e0d1997b0492d26b20b6e501aeefbe6",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 624,
+      "output_file": "test_000024.npy",
+      "region_index": 0,
+      "sha256": "0e8c0239e180081f8263ca5f353e53da253d04ebfd80094979ee683a93a05123",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 672,
+      "output_file": "test_000025.npy",
+      "region_index": 0,
+      "sha256": "b8253fc15e6e08f69c4a33f2975794be1d01257abaea0dd48bb07ee8514543cd",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 576,
+      "output_file": "test_000026.npy",
+      "region_index": 1,
+      "sha256": "3092c9cfb49d934d72749fe5bd91437df20ff86b0ea88275d30e0a748b8280eb",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 0
+    },
+    {
+      "left": 624,
+      "output_file": "test_000027.npy",
+      "region_index": 1,
+      "sha256": "a9687146e0313fa17b824f1cf04fbdd31831ade81fd5002ae6c3a0f726e61599",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 0
+    },
+    {
+      "left": 672,
+      "output_file": "test_000028.npy",
+      "region_index": 1,
+      "sha256": "8df6cc32c0c69acce4e3543205df3136c47354aabc364d9cde13b04724c89376",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 0
+    },
+    {
+      "left": 528,
+      "output_file": "test_000029.npy",
+      "region_index": 1,
+      "sha256": "234d4f92aa75c8c831048b0f0dd3d0ea6951b80c6195580edb74ec54b7a0d5ba",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 48
+    },
+    {
+      "left": 576,
+      "output_file": "test_000030.npy",
+      "region_index": 1,
+      "sha256": "fbab2aab0b936c060aacbba4bd561752a37bc967fdc0a49ee879801587d08c8c",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 48
+    },
+    {
+      "left": 624,
+      "output_file": "test_000031.npy",
+      "region_index": 1,
+      "sha256": "d41ab45a2501f803d836894eac550ca53204dc07f414d7b10c2945544ebc349a",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 48
+    },
+    {
+      "left": 672,
+      "output_file": "test_000032.npy",
+      "region_index": 1,
+      "sha256": "94465934a51bc2a0d0e3641b4a38ced706409d54c67eaebdf9e60126c5407a27",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 48
+    },
+    {
+      "left": 480,
+      "output_file": "test_000033.npy",
+      "region_index": 1,
+      "sha256": "9c2f8ac1cf8b3eca1aa9a914fdeefd9a31909a1d93703019c6e1d574692aa06e",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 96
+    },
+    {
+      "left": 528,
+      "output_file": "test_000034.npy",
+      "region_index": 1,
+      "sha256": "5c4ba8399f74d5c8a0728f85045070e5ba8c2884f3973dc351bd85979798fd51",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 96
+    },
+    {
+      "left": 576,
+      "output_file": "test_000035.npy",
+      "region_index": 1,
+      "sha256": "cfaef49daf59525bd8b04513e714a2cb6ac39acfb4e781acd36c7dc8c14aff1e",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 96
+    },
+    {
+      "left": 624,
+      "output_file": "test_000036.npy",
+      "region_index": 1,
+      "sha256": "8f5b9ee50186865e046c3f1c109fd3e55d17b10f898d65ae89dc6e97c8432d21",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 96
+    },
+    {
+      "left": 672,
+      "output_file": "test_000037.npy",
+      "region_index": 1,
+      "sha256": "a2338396d36be92ddcf6752bd0ac764ac178ac3dbc3aa2a1c447c2f1ff9358d3",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 96
+    },
+    {
+      "left": 432,
+      "output_file": "test_000038.npy",
+      "region_index": 1,
+      "sha256": "9af472a04d17984357b70e8a86032d8e6ff4090d6133b173e8da76a51155d9e7",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 480,
+      "output_file": "test_000039.npy",
+      "region_index": 1,
+      "sha256": "07f7fea5087505072598949d5c5d0a1ce8de515f80dc6981de2ceec676740f0e",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 528,
+      "output_file": "test_000040.npy",
+      "region_index": 1,
+      "sha256": "3e8be0036a7dd328223b32a06d54cba6a80355d496f3601341c097c8f4b85ba7",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 576,
+      "output_file": "test_000041.npy",
+      "region_index": 1,
+      "sha256": "77081141eef78e3a77b49485a1415b645b2abed05e267582b7c98984375400a4",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 624,
+      "output_file": "test_000042.npy",
+      "region_index": 1,
+      "sha256": "ee2c79d0774e34299746a43d1967d5814ee74b73df91764bdb00662d14b6c15a",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 672,
+      "output_file": "test_000043.npy",
+      "region_index": 1,
+      "sha256": "014f1b7d8810b2e2898990dd30ea54252dd091a037cb6b142f06fd1f792945ea",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 384,
+      "output_file": "test_000044.npy",
+      "region_index": 1,
+      "sha256": "31516321be43e764c63ab9388d3b488bc9a26b51414795e40d765c6668940211",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 432,
+      "output_file": "test_000045.npy",
+      "region_index": 1,
+      "sha256": "613e0ba02f3bf7fcc3c30077d7fdb426f184e1dcc88d98447823f11b5c925733",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 480,
+      "output_file": "test_000046.npy",
+      "region_index": 1,
+      "sha256": "1cd6b208242a678d5f3b86b82ccc2b511e0626e3a34c5bf17b9a0112110be9bf",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 528,
+      "output_file": "test_000047.npy",
+      "region_index": 1,
+      "sha256": "4458fb7f75e023801a0cdd7a603bb265ffb7e29fb00e546d519f6e50a864f549",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 576,
+      "output_file": "test_000048.npy",
+      "region_index": 1,
+      "sha256": "7ce945a39ff1f2450ced7494c226e6f3bcab44d01e10743733cc3b5300b317dc",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 624,
+      "output_file": "test_000049.npy",
+      "region_index": 1,
+      "sha256": "86e128000bc6d2975ac2c90f595ef4f8982aea9a5a42780d95f60d372bbd031c",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 672,
+      "output_file": "test_000050.npy",
+      "region_index": 1,
+      "sha256": "e3613e6a32f92a40e2ee242a93534463d94400e9b8d6a5c6307fecfaadc6e6fb",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 576,
+      "output_file": "test_000051.npy",
+      "region_index": 2,
+      "sha256": "d0f995f7dfd22c8940bd3419cf9fd925729cf0825407840d5412742ddbc88ce4",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 0
+    },
+    {
+      "left": 624,
+      "output_file": "test_000052.npy",
+      "region_index": 2,
+      "sha256": "49c25dd76ae9f679ef542fa53695f30007bdd7b12f92cee6cb58da544164b8fa",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 0
+    },
+    {
+      "left": 672,
+      "output_file": "test_000053.npy",
+      "region_index": 2,
+      "sha256": "304a0d873c547933eee45589d2c5265af391f6978425f2d96d8d5add6ec8a369",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 0
+    },
+    {
+      "left": 528,
+      "output_file": "test_000054.npy",
+      "region_index": 2,
+      "sha256": "a58a6f0af654cdab7751071cbc4fb4b5d9b39cca5c4e1c1db5d34da6bc748a24",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 48
+    },
+    {
+      "left": 576,
+      "output_file": "test_000055.npy",
+      "region_index": 2,
+      "sha256": "b2a8a6d3ed1c40977f2f2eb5c69dc543d8ddd595c95a74e733eedb1ec458ed40",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 48
+    },
+    {
+      "left": 624,
+      "output_file": "test_000056.npy",
+      "region_index": 2,
+      "sha256": "a50161d73eabff0a1d8c01758896993099f5b15b73b84390167c25ab9c3af6f3",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 48
+    },
+    {
+      "left": 672,
+      "output_file": "test_000057.npy",
+      "region_index": 2,
+      "sha256": "ed620969ee3e1aa769a33ca735de976a39e2517ec29672f547ca817996dbb3a4",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 48
+    },
+    {
+      "left": 480,
+      "output_file": "test_000058.npy",
+      "region_index": 2,
+      "sha256": "8f2d9ee2e682ecf024cbe050481aaa23de10e90b5aa8af572dacf7917c987588",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 96
+    },
+    {
+      "left": 528,
+      "output_file": "test_000059.npy",
+      "region_index": 2,
+      "sha256": "80b6077fcd076bbfca683226f99d7238be42fd3858df35ff1c4ed603875973a8",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 96
+    },
+    {
+      "left": 576,
+      "output_file": "test_000060.npy",
+      "region_index": 2,
+      "sha256": "87a6daa961adf57c2b57de0e0c0b6e36445f3c773f23045d3d377e711a8181b1",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 96
+    },
+    {
+      "left": 624,
+      "output_file": "test_000061.npy",
+      "region_index": 2,
+      "sha256": "999145f6f5784c0e394d4221ad7f22143da0a7b0a2a69f21b5b397348b2f6d03",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 96
+    },
+    {
+      "left": 672,
+      "output_file": "test_000062.npy",
+      "region_index": 2,
+      "sha256": "a2cbbc5b01bc4b1583627a3f2fa6c986449cc2242c8c1ad9c957e5d522b8542f",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 96
+    },
+    {
+      "left": 432,
+      "output_file": "test_000063.npy",
+      "region_index": 2,
+      "sha256": "47493c1896728c2658732ebb0f99dd34b7d430fb92c99a0e29a5f0957df1ba95",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 480,
+      "output_file": "test_000064.npy",
+      "region_index": 2,
+      "sha256": "a03c0c70a8bd84275b08655ae33988f2ad3dfbac8e7be1ddafd93216815b623e",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 528,
+      "output_file": "test_000065.npy",
+      "region_index": 2,
+      "sha256": "471dde65c250a338c096cef9f3ec6e0450b0f4d3ae16af8b9744d28e527a3e56",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 576,
+      "output_file": "test_000066.npy",
+      "region_index": 2,
+      "sha256": "d5937950e66f6edb319d8efb6c8207033302d1a810667e2a7f4f87eca2d97438",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 624,
+      "output_file": "test_000067.npy",
+      "region_index": 2,
+      "sha256": "fc7658a34985de5e6aec8da051c0b5c3384d2d9d2544e4e55d1921c0cc1163eb",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 672,
+      "output_file": "test_000068.npy",
+      "region_index": 2,
+      "sha256": "e43d2d5ffe83912689c5779b3fb28f9113b6c90017b227fd460bdc478a53a638",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 144
+    },
+    {
+      "left": 384,
+      "output_file": "test_000069.npy",
+      "region_index": 2,
+      "sha256": "faa80330f476ea73ab439ea17438ef62a41d77fc5cd09f2bbab5570c6a82d4f2",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 432,
+      "output_file": "test_000070.npy",
+      "region_index": 2,
+      "sha256": "7bd3ce56e65a8a5e6424a675120556d4ead0194c4f308e254c8b7b4a9be85faa",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 480,
+      "output_file": "test_000071.npy",
+      "region_index": 2,
+      "sha256": "18c832cb67e15e6bd5b857d74e03d12651d9d6becf2f1db70a4aefa4f772bd3f",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 528,
+      "output_file": "test_000072.npy",
+      "region_index": 2,
+      "sha256": "f7ff054da17ca2ad82f987a6b77d4f2c6dae91352c984a9d7de10a72c9b3bdcb",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 576,
+      "output_file": "test_000073.npy",
+      "region_index": 2,
+      "sha256": "64f15c10e9c289c9b16d18ccb05ed19c3c6b9a573606382fefa10ae8edf6e9b5",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 624,
+      "output_file": "test_000074.npy",
+      "region_index": 2,
+      "sha256": "99a1f460e0277529be9bd2d44d0f51343cd7549e5b8fa345c57e9a1fca87b46e",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 672,
+      "output_file": "test_000075.npy",
+      "region_index": 2,
+      "sha256": "65f5d1ce0f0e2d135d470ef8dc3b6c7db9a4d3bb9e6e5390045f0b43b1fbd953",
+      "source": "Anisotropic",
+      "source_file": "Anisotropic_FD_Model_Shots_part1.sgy",
+      "top": 192
+    },
+    {
+      "left": 0,
+      "output_file": "test_000076.npy",
+      "region_index": 6,
+      "sha256": "e1de2a6b23bd35c9414be0b05c36764646c204d2a743b596b27a52baa85c2961",
+      "source": "Kerry3D",
+      "source_file": "Kerry3D.segy",
+      "top": 0
+    },
+    {
+      "left": 0,
+      "output_file": "test_000077.npy",
+      "region_index": 6,
+      "sha256": "48e930a7f2b261790ff3844bd8cc9cc7f7f0f53a11a205d34e06a07b9759cf1d",
+      "source": "Kerry3D",
+      "source_file": "Kerry3D.segy",
+      "top": 96
+    },
+    {
+      "left": 0,
+      "output_file": "test_000078.npy",
+      "region_index": 6,
+      "sha256": "f77eac63cfb4d946f96c5fd67e40eac36a6562c4fdc17b4c97e268416055957d",
+      "source": "Kerry3D",
+      "source_file": "Kerry3D.segy",
+      "top": 240
+    },
+    {
+      "left": 0,
+      "output_file": "test_000079.npy",
+      "region_index": 6,
+      "sha256": "0997b343e18c65893bb2f2877fe9c939af23ce53c51d046ed79ce44f17ccb20d",
+      "source": "Kerry3D",
+      "source_file": "Kerry3D.segy",
+      "top": 288
+    },
+    {
+      "left": 0,
+      "output_file": "test_000080.npy",
+      "region_index": 6,
+      "sha256": "a6dd181f1c2a0bf45b298cbab2bdb9f582e8aa0333e82a12654aa1e59a1446b7",
+      "source": "Kerry3D",
+      "source_file": "Kerry3D.segy",
+      "top": 384
+    },
+    {
+      "left": 0,
+      "output_file": "test_000081.npy",
+      "region_index": 6,
+      "sha256": "1e7c05bd14df60e875dfc174a653d7ac1d720ff0803d796fd13fc6655f21c948",
+      "source": "Kerry3D",
+      "source_file": "Kerry3D.segy",
+      "top": 432
+    },
+    {
+      "left": 0,
+      "output_file": "test_000082.npy",
+      "region_index": 6,
+      "sha256": "d04abb7ced073bcc22333665ff0a5bf7c5e3f37557106c3bd48108562eed67e7",
+      "source": "Kerry3D",
+      "source_file": "Kerry3D.segy",
+      "top": 528
+    },
+    {
+      "left": 0,
+      "output_file": "test_000083.npy",
+      "region_index": 6,
+      "sha256": "88dc7589bf52bf2916fe6df657b408dc190f4e1943723c0f614b68a4161cbdf2",
+      "source": "Kerry3D",
+      "source_file": "Kerry3D.segy",
+      "top": 576
+    },
+    {
+      "left": 0,
+      "output_file": "test_000084.npy",
+      "region_index": 6,
+      "sha256": "25e79f81fbee2a750fde3d600138cdde173340715c6d84d3697745efe95f6323",
+      "source": "Kerry3D",
+      "source_file": "Kerry3D.segy",
+      "top": 624
+    },
+    {
+      "left": 0,
+      "output_file": "test_000085.npy",
+      "region_index": 6,
+      "sha256": "3f734f3142a8512d99429dab49b9b70eb4d5661f749ce192b8ad834127437571",
+      "source": "Kerry3D",
+      "source_file": "Kerry3D.segy",
+      "top": 720
+    },
+    {
+      "left": 0,
+      "output_file": "test_000086.npy",
+      "region_index": 6,
+      "sha256": "363317bc9eb0ca65d73d4a6a44ddb29578cfc2994e956bd9018ddab49cbc3cdf",
+      "source": "Kerry3D",
+      "source_file": "Kerry3D.segy",
+      "top": 768
+    },
+    {
+      "left": 0,
+      "output_file": "test_000087.npy",
+      "region_index": 6,
+      "sha256": "6383b6b1cba04de4f9081023ddd985e1006ee8ffed24271596344fc206604074",
+      "source": "Kerry3D",
+      "source_file": "Kerry3D.segy",
+      "top": 816
+    },
+    {
+      "left": 0,
+      "output_file": "test_000088.npy",
+      "region_index": 6,
+      "sha256": "0468d0f8c655862c47398f16273e0f0e1ed72cdff6d91e3f4566bd81a1bf6f68",
+      "source": "Kerry3D",
+      "source_file": "Kerry3D.segy",
+      "top": 864
+    },
+    {
+      "left": 0,
+      "output_file": "test_000089.npy",
+      "region_index": 6,
+      "sha256": "c5c4b5ead605734334196c0e3a7eabb4003e33f1e21780e4964939235f2f30fd",
+      "source": "Kerry3D",
+      "source_file": "Kerry3D.segy",
+      "top": 912
+    },
+    {
+      "left": 0,
+      "output_file": "test_000090.npy",
+      "region_index": 6,
+      "sha256": "2ad4d8e63b70975b378af8c4c49534dc30bc8c6f1b6160414054d18db7c60f28",
+      "source": "Kerry3D",
+      "source_file": "Kerry3D.segy",
+      "top": 1008
+    },
+    {
+      "left": 0,
+      "output_file": "test_000091.npy",
+      "region_index": 6,
+      "sha256": "c9b77e90f3eaaa7e35a58aa8bd86de83523d238f784d45059107d0ed293b37bb",
+      "source": "Kerry3D",
+      "source_file": "Kerry3D.segy",
+      "top": 1056
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000092.npy",
+      "region_index": 0,
+      "sha256": "788fd0029c05278d3fd7a7c6e733655f4e26e24d525e472ea09c610407ebe619",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 192
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000093.npy",
+      "region_index": 0,
+      "sha256": "8b4dbfd862db29d3286821d6b8c547f1c5064c0dec8823a0d4b20e3eaa4b6fab",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 192
+    },
+    {
+      "left": 912,
+      "output_file": "test_000094.npy",
+      "region_index": 0,
+      "sha256": "c8191ddd47eb2e844f18881a3f3b9d07180680dac4ee5c9a5311cb21146440df",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 240
+    },
+    {
+      "left": 960,
+      "output_file": "test_000095.npy",
+      "region_index": 0,
+      "sha256": "f290e7c9ba4d56a30b7859ac557539761aa12ed50c1768408144e1b472bf60b2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 240
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000096.npy",
+      "region_index": 0,
+      "sha256": "81754b16b32c219fb4a7b977deeffb32dd3898e7f5f9837eb4ea0f659bdb0f72",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 240
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000097.npy",
+      "region_index": 0,
+      "sha256": "586a765b2d30ea5fb851d44a8abc0c99319fbe1dce20b6d02daf1b0000949551",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 240
+    },
+    {
+      "left": 816,
+      "output_file": "test_000098.npy",
+      "region_index": 0,
+      "sha256": "8853087c616bed3498721262fd443d90e80ebb1930691159da05b82227d255be",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 864,
+      "output_file": "test_000099.npy",
+      "region_index": 0,
+      "sha256": "2885d1f4de02b326340ad0b61e78fb225092e8b13335bbadc7b98cc67e3844e0",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 912,
+      "output_file": "test_000100.npy",
+      "region_index": 0,
+      "sha256": "ab4d1dcf5f6379b759b0143c5f916444de7419e67bb144d08e9d2cdab0c25fb2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 960,
+      "output_file": "test_000101.npy",
+      "region_index": 0,
+      "sha256": "26fb45e792648d374f65246c2cc8dfb7438039853f4afd54a39e2fda14cd819d",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000102.npy",
+      "region_index": 0,
+      "sha256": "7f029d4c4059107c643baf93f14be0bcca3336484e40fc1e6a6696c205c8bcf2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000103.npy",
+      "region_index": 0,
+      "sha256": "ed1094bb76d25c3bfad005a713576988f8c525595bca4c9a808e85d86eda3837",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 720,
+      "output_file": "test_000104.npy",
+      "region_index": 0,
+      "sha256": "825c611ded958252e9d5c6a5cd38dc30a3483c9fe300da6a9d2dfdda9e36d6e7",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 768,
+      "output_file": "test_000105.npy",
+      "region_index": 0,
+      "sha256": "21a80ea8ff63a22591eabc7facea31580f33682ec9df21fa8a61761c717b832d",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 816,
+      "output_file": "test_000106.npy",
+      "region_index": 0,
+      "sha256": "2a972854eb19ec4c1c7ae7e31ab0ae5d2c80b1e887ddb4936bf34ec8d689d1b2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 864,
+      "output_file": "test_000107.npy",
+      "region_index": 0,
+      "sha256": "74d19de2ce3826e55421857f7c82165747c764537a1c5cdea44666e5b35f4315",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 912,
+      "output_file": "test_000108.npy",
+      "region_index": 0,
+      "sha256": "43b8334e2d914461469bad86ed2e5eac57e205a218e2b8a54bf0cda2f23f7f69",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 960,
+      "output_file": "test_000109.npy",
+      "region_index": 0,
+      "sha256": "ed613d49134a2e23676f7db71c790f397544627182a8aa4caf82234af96ab235",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000110.npy",
+      "region_index": 0,
+      "sha256": "38449afb49ba608dfff5d2a1a34c66a1a29bb32caa3519316fce2ce8ee7a9ed2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000111.npy",
+      "region_index": 0,
+      "sha256": "3da707644f563a1634fedfd2cdb87be828708f442e63d0002eae66aea3e929dd",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 720,
+      "output_file": "test_000112.npy",
+      "region_index": 0,
+      "sha256": "911fe85cb4694140f81773c2ebea847b63112ebd81999e34529d79b70ac0eb96",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 768,
+      "output_file": "test_000113.npy",
+      "region_index": 0,
+      "sha256": "9f54265d96214d9fadcc39b60f7d48b9e7477cdc05b6b7cee41cf9432a52fc9b",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 816,
+      "output_file": "test_000114.npy",
+      "region_index": 0,
+      "sha256": "353dc72991583511571a93839eb302f35a92d316e2103ea7d108738f2af277df",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 864,
+      "output_file": "test_000115.npy",
+      "region_index": 0,
+      "sha256": "e6a08f1038b54fd99bb3acad7237139c179c48581c36cbf512ecebd055972505",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 912,
+      "output_file": "test_000116.npy",
+      "region_index": 0,
+      "sha256": "ac12427cc062b12860f3c506861c040685eee929410c5510328875c4d3967083",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 960,
+      "output_file": "test_000117.npy",
+      "region_index": 0,
+      "sha256": "558292464fe9a8c9d7ef66324ea3f38f4ce6384da43cee2fe44891e3ff3ff847",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000118.npy",
+      "region_index": 0,
+      "sha256": "ddcd7f81d4277e74d888425c300522805ac8adb92599fd5f3b0ee5e7eed3d02c",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000119.npy",
+      "region_index": 0,
+      "sha256": "d6cad1bf4253b94005f3c972f02a2a6955a46e55634bac38afbc6788986d0cd6",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 672,
+      "output_file": "test_000120.npy",
+      "region_index": 0,
+      "sha256": "dc7b150b436ca6c9da11504d54682ee00942bbfe33d4e03cc08d1b0c71e1588b",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 720,
+      "output_file": "test_000121.npy",
+      "region_index": 0,
+      "sha256": "898d3b7fbe3d335a3e74314c67342edcf287e9c73b859f97cf14709fa73e40b5",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 768,
+      "output_file": "test_000122.npy",
+      "region_index": 0,
+      "sha256": "87a9eb5755d0d6a014e09f2017454a6f986df1f77078cf0a78f017a54246d948",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 816,
+      "output_file": "test_000123.npy",
+      "region_index": 0,
+      "sha256": "db2d18ca48d80cd49f9dbe38fef0c814d61e3d50c948a68d5f04f6269b09efae",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 864,
+      "output_file": "test_000124.npy",
+      "region_index": 0,
+      "sha256": "6e4434130543e407023432a576bf71923c3a73cfb6ff96b24234845b70880a96",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 912,
+      "output_file": "test_000125.npy",
+      "region_index": 0,
+      "sha256": "d418fcf97b8acbe4e095dd8956b1f21298ee845f0627c7a0fce4e1288e2368eb",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 960,
+      "output_file": "test_000126.npy",
+      "region_index": 0,
+      "sha256": "4ffc93493596367f64f88912517d6207f21cfec95d2a77ce93cb1b053d17f920",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000127.npy",
+      "region_index": 0,
+      "sha256": "765fde877fa3ae18181380d43789e9105708e3c615593e46981f1a37412ef396",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000128.npy",
+      "region_index": 0,
+      "sha256": "571bf57f8ab4778f6e0ad9214d59e5d07714f88e17a6e2be45afdaf899eba151",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 624,
+      "output_file": "test_000129.npy",
+      "region_index": 0,
+      "sha256": "8be38e907aa8c07c4c80ded28e0b7b4e2921676f3e683b1f059163f25ad0bf0a",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 672,
+      "output_file": "test_000130.npy",
+      "region_index": 0,
+      "sha256": "c577b992835da60136cfc904f89237de20f288739e820a411420ba73261275be",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 720,
+      "output_file": "test_000131.npy",
+      "region_index": 0,
+      "sha256": "879488e1c67eefcacbca094601a2272ff54d1a984c842ac11378251b1440eb27",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 768,
+      "output_file": "test_000132.npy",
+      "region_index": 0,
+      "sha256": "fa3bf6c28a4602739226bbd137d8f0165b94d49b98e2e9c9bc8b9666ab63dd02",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 816,
+      "output_file": "test_000133.npy",
+      "region_index": 0,
+      "sha256": "a08f6253be48f62890d808f3b8c609906344967e8fdfa22a7f5bfaa7a62b4653",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 864,
+      "output_file": "test_000134.npy",
+      "region_index": 0,
+      "sha256": "0cfa2f6ea998eaef2b2a974b00362a051c6d6a38f566ba610761296ef7f46b79",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 912,
+      "output_file": "test_000135.npy",
+      "region_index": 0,
+      "sha256": "c528aeeeca1cf8deb926de2cc247dff938120c1441f3cb27927fc41061b87bc6",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 960,
+      "output_file": "test_000136.npy",
+      "region_index": 0,
+      "sha256": "28597fc43d8f2eba405753919d2e294f643b275a3f65ca74b859d170d5bbeae2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000137.npy",
+      "region_index": 0,
+      "sha256": "3cfd63776d109fb952bf16733e973c6ab600a2b1ba6d47da8e473c3e42e819f4",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000138.npy",
+      "region_index": 0,
+      "sha256": "bf163d444e948fa08c872651898701b446dea91497766cc6280c02ccfadf1c1e",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 576,
+      "output_file": "test_000139.npy",
+      "region_index": 0,
+      "sha256": "e21e2e61457f044c541be9e640a09524f1e5fca60f300dc7211917e837cae7b6",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 624,
+      "output_file": "test_000140.npy",
+      "region_index": 0,
+      "sha256": "4829af31bd84223bdbe89d5b00c1c5f060ba679e596c0bf5380a93370939108e",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 672,
+      "output_file": "test_000141.npy",
+      "region_index": 0,
+      "sha256": "e3fe69c93463e16926a6f3a41e931d46a9feffb6464e3ed0cbd1e3f985459537",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 720,
+      "output_file": "test_000142.npy",
+      "region_index": 0,
+      "sha256": "2cbe51b31b963e18060e3103c810a83255365dfe51a8a2bbb28069cc6444b930",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 768,
+      "output_file": "test_000143.npy",
+      "region_index": 0,
+      "sha256": "02da7ec2384b1836179f6dabe5072f89248f777ca88e6985292da3d8208a6eb9",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 816,
+      "output_file": "test_000144.npy",
+      "region_index": 0,
+      "sha256": "939276060981f3c0668d5380df1c4d122fdaf924e55ce7f99d01823ee96847b9",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 864,
+      "output_file": "test_000145.npy",
+      "region_index": 0,
+      "sha256": "1206bc5637a050e1766ce5004d1388fe28d55a8e705521ebeb015ca888ec2bbc",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 912,
+      "output_file": "test_000146.npy",
+      "region_index": 0,
+      "sha256": "d72c689d4443599c8feb4d4a4cc50584eec7fa397a3992c34c8e573716fbf9f0",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 960,
+      "output_file": "test_000147.npy",
+      "region_index": 0,
+      "sha256": "cf071b0b964338db9cbc826172850f209051af3633b787d16d87259dba884581",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000148.npy",
+      "region_index": 0,
+      "sha256": "59e0768d1e9258105093a3b55a70a85ba5c0b2284014c5ed08d65d625f9b7c9e",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000149.npy",
+      "region_index": 0,
+      "sha256": "c572912c0ebe8a5a674bcc28684b95200155100059460d21b1f541279b4610eb",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 576,
+      "output_file": "test_000150.npy",
+      "region_index": 0,
+      "sha256": "557b221dab918f67a58f5d59c251a0a2a204e74c05770fbfca97de4b86b9d8c3",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 624,
+      "output_file": "test_000151.npy",
+      "region_index": 0,
+      "sha256": "2ceefcd4fecbf22a88f63c72f8ef2330367c6b6806f014d1385b44b1ca13cfd2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 672,
+      "output_file": "test_000152.npy",
+      "region_index": 0,
+      "sha256": "20ca0959b04f7f47f16ec8a0ec9780f829dfeaa300a84e3afaa3ea1a58281aa4",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 720,
+      "output_file": "test_000153.npy",
+      "region_index": 0,
+      "sha256": "eb2ae955fcf7ebcf48e616918720ac6d26afa408d8a88b89f4f0efdcd4dbd9d7",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 768,
+      "output_file": "test_000154.npy",
+      "region_index": 0,
+      "sha256": "787c0e617fe74dae71ce8c43a0a67240872f1a86b45f168ac39338c63645566f",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 816,
+      "output_file": "test_000155.npy",
+      "region_index": 0,
+      "sha256": "5caa4644c469716531c49dcac9c5381e22594dead2b576ebd0db7b5cc14b52ad",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 864,
+      "output_file": "test_000156.npy",
+      "region_index": 0,
+      "sha256": "927c350e77d560f7215a4d24521174d1b05c0208bbd031db1faef9015c1e9daa",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 912,
+      "output_file": "test_000157.npy",
+      "region_index": 0,
+      "sha256": "f49bcfb2abc71f3165e8dd7828c7fa05fdd21c2d82cb585a67f717c66b384409",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 960,
+      "output_file": "test_000158.npy",
+      "region_index": 0,
+      "sha256": "cdfdac2b50ccf58f00a6ab068f38379d60bb03bd28079813905fe4118aca8005",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000159.npy",
+      "region_index": 0,
+      "sha256": "d5e296ddce4a1e2882d304b165e538f48e3a2ea10859c661de9f08e41d966989",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000160.npy",
+      "region_index": 0,
+      "sha256": "3d06b9020b3335e0dc83b6a88c884c6311412e9c325fd6aea4838a2ec4be3391",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 528,
+      "output_file": "test_000161.npy",
+      "region_index": 0,
+      "sha256": "7358a87e1a456b2e72a067c4ce722ad663fe694eed690d79450e7243038108bd",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 576,
+      "output_file": "test_000162.npy",
+      "region_index": 0,
+      "sha256": "bea6b40c63e60c36dfb2d87739ae0180cf709afcc01c619ff424f0d36bc8d403",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 624,
+      "output_file": "test_000163.npy",
+      "region_index": 0,
+      "sha256": "91bf26a092f6e529984721f430700da713d83b67994fdec9bd32b0f22f78f5e9",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 672,
+      "output_file": "test_000164.npy",
+      "region_index": 0,
+      "sha256": "81454690d32211366867a0045d6d2f5dbb53183b8fd8f6cbb99c4291af5035ee",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 720,
+      "output_file": "test_000165.npy",
+      "region_index": 0,
+      "sha256": "9b108152b7087acb0d4fba9ec59141868e0198c51b925eda641c90ab471d1830",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 768,
+      "output_file": "test_000166.npy",
+      "region_index": 0,
+      "sha256": "5f28af648d1ff4d5a5eaaf3aac4034e353b979695197dfd6a711f4b92093c4ba",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 816,
+      "output_file": "test_000167.npy",
+      "region_index": 0,
+      "sha256": "6ae8332a14aee38e94a9ea5f032a7901c04e10eb268f2450f8e3916dfa645f7c",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 864,
+      "output_file": "test_000168.npy",
+      "region_index": 0,
+      "sha256": "d8422a9d50d3c9410d3c9b02ccebdb3939ca43502f89b0759dc09186de6b713e",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 912,
+      "output_file": "test_000169.npy",
+      "region_index": 0,
+      "sha256": "95d38ee9a0c784675df7f1e9cb15d687f356fe9a3ff210d7d2a0c9618ffef901",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 960,
+      "output_file": "test_000170.npy",
+      "region_index": 0,
+      "sha256": "a217b0571171c1545339d593f52a49b5188124b9205e3c99499b975eee4c4e7b",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000171.npy",
+      "region_index": 0,
+      "sha256": "bf50e5f7854d07dda7c00e84bf2419867e287fe4acc860b604b9ba3e1ad7b751",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000172.npy",
+      "region_index": 0,
+      "sha256": "4a673703835fa2f7d56e43a88c16cdcd768e9c6da854e7e2607868a4549c6c13",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 432,
+      "output_file": "test_000173.npy",
+      "region_index": 0,
+      "sha256": "e0fba21afdd8ad063bf94b94f1148bc21722eae17ec970278ae435e513985c9d",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 480,
+      "output_file": "test_000174.npy",
+      "region_index": 0,
+      "sha256": "df67fe493b8ebb0e37b5fa968e5322a3320de9b2cb05d28f1eba0a937137df3b",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 528,
+      "output_file": "test_000175.npy",
+      "region_index": 0,
+      "sha256": "492592426fd584b6b59d51c36efd9570171d9f4c35a05b573bf6b26a45ad06ac",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 576,
+      "output_file": "test_000176.npy",
+      "region_index": 0,
+      "sha256": "06a36534360852cbc9519fd398b4374e007b49b2598b5e82dcd0a1f8e59c0bbe",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 624,
+      "output_file": "test_000177.npy",
+      "region_index": 0,
+      "sha256": "269c2250c8ed9765f1717caa4064e06252713fac0e6ab8f910e61a15afed0d47",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 672,
+      "output_file": "test_000178.npy",
+      "region_index": 0,
+      "sha256": "f1767a11f7fddb8b949a1db60baf6e933c66c10cbac4bf11c322e774c098110e",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 720,
+      "output_file": "test_000179.npy",
+      "region_index": 0,
+      "sha256": "2959a4ea19a63a13200eba74231c30108725ba069859935153bde54d0e40c670",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 768,
+      "output_file": "test_000180.npy",
+      "region_index": 0,
+      "sha256": "fb26378f84e361f9f24c743e3c5a079c9b37c808581f0d59d25e1aa2bf6da419",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 816,
+      "output_file": "test_000181.npy",
+      "region_index": 0,
+      "sha256": "218bd852a452756e5ecbb5a4fa3cca0da4b6bc3e278a4f2c63d2fc122525a07f",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 864,
+      "output_file": "test_000182.npy",
+      "region_index": 0,
+      "sha256": "70d3af56d562cebe04db4debe7dea97d39b86ffd8ae7cab895f686b4ef77c621",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 912,
+      "output_file": "test_000183.npy",
+      "region_index": 0,
+      "sha256": "b54d1b1a9cd6a8cfefa463e99a6615dc59853916c2e290e8f0e10ca586266086",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 960,
+      "output_file": "test_000184.npy",
+      "region_index": 0,
+      "sha256": "8725743f68b0433c6767e198c0a39e52b2db286920bc1f6ac901d69630275267",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000185.npy",
+      "region_index": 0,
+      "sha256": "6f2a737e5eaed54479008e7cb7a80d416b0845c70704f19fd3e772574024267a",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000186.npy",
+      "region_index": 0,
+      "sha256": "95a83bb19a8e604e984817b24a65fd7aa13a220561cb84609d8446a3211cd184",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 336,
+      "output_file": "test_000187.npy",
+      "region_index": 0,
+      "sha256": "028a7c3075485f2a96bba7696b2a733d716dbcb958f0b01821d69f5d6950f3c3",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 384,
+      "output_file": "test_000188.npy",
+      "region_index": 0,
+      "sha256": "e478aac127f99bad18d96dd3899dc25a24b4f19307e54fa0d00a43dee0d6da58",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 432,
+      "output_file": "test_000189.npy",
+      "region_index": 0,
+      "sha256": "fcd44bf64631e257dc2753346d43e35e0b8d49aaeb04193f963a01dc1c0844bc",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 480,
+      "output_file": "test_000190.npy",
+      "region_index": 0,
+      "sha256": "44076e1fb86578253c915a99c8303e669fef584344a98a522656c517b3024a63",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 528,
+      "output_file": "test_000191.npy",
+      "region_index": 0,
+      "sha256": "7c5d522bfe41227ee239a8368e94a7180c2ff1307a97e30457e30d82a4d476eb",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 576,
+      "output_file": "test_000192.npy",
+      "region_index": 0,
+      "sha256": "8bcf0fad041e11ff1ca85b75002f9b4f4f01f431768237656a7339b8616b3bcb",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 624,
+      "output_file": "test_000193.npy",
+      "region_index": 0,
+      "sha256": "c6a603c3a10892abb054df2fd3891c460cd912e11a2d48e304a2ac60dad42e5a",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 672,
+      "output_file": "test_000194.npy",
+      "region_index": 0,
+      "sha256": "8650be56e7efc27496e040932e4a811595e45d86c40b584d95dfe24f341d4119",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 720,
+      "output_file": "test_000195.npy",
+      "region_index": 0,
+      "sha256": "37badec955ca7ed7b0f83ea767775c7fb53ad62699a5a773555edc25e41c7077",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 768,
+      "output_file": "test_000196.npy",
+      "region_index": 0,
+      "sha256": "bb839fb1f4a31c7e786867582c74066569d81da7b6ef4c2ca3715e94e3eafe06",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 816,
+      "output_file": "test_000197.npy",
+      "region_index": 0,
+      "sha256": "19274021536b9ac784f3fdaa5f469d88d067ae1f9b9f1bd503be8a3da64b3062",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 864,
+      "output_file": "test_000198.npy",
+      "region_index": 0,
+      "sha256": "e7425e970495d395b0ddafdbbd5905a493aab0108edde08e89bbb2cf3091fe8f",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 912,
+      "output_file": "test_000199.npy",
+      "region_index": 0,
+      "sha256": "f2e253bcfe143df91b93decba7f0c9d1f01b4470b19a23994e9411178aa7c2a3",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 960,
+      "output_file": "test_000200.npy",
+      "region_index": 0,
+      "sha256": "4fd62a9e16d76ecb8eafd84545be58de6de37b760903aca88c072f0c4cab5fc3",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000201.npy",
+      "region_index": 0,
+      "sha256": "cf4f4859e56a89b3e818cf5e275079dfc5879c38ba588e534a14541af27e44b3",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000202.npy",
+      "region_index": 0,
+      "sha256": "45f6570849d80bf2c946cc3fce5e09ecb87a2e75d65f8aca89d88db998db3f5b",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 240,
+      "output_file": "test_000203.npy",
+      "region_index": 0,
+      "sha256": "e77418e1838248eda0364ab8216532d046b73fbc8f9d39f7fae6699c7a4cf1f4",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 288,
+      "output_file": "test_000204.npy",
+      "region_index": 0,
+      "sha256": "f5d4646f4d8d1788b595d450d730348f648c383c962394642efb1384134fd958",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 336,
+      "output_file": "test_000205.npy",
+      "region_index": 0,
+      "sha256": "c28501b7d82af869af3886c676e4dbaf3d2d90244b91c14b496787e5585127e2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 384,
+      "output_file": "test_000206.npy",
+      "region_index": 0,
+      "sha256": "035efa289ed57f8b57abd9ec7e405a9078281f5d98e1ed3346d83374769902a3",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 432,
+      "output_file": "test_000207.npy",
+      "region_index": 0,
+      "sha256": "477f268a6b67124835c8cb9c324cdd9cbb3d1d472fbe155ad2b523ecb72b8189",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 480,
+      "output_file": "test_000208.npy",
+      "region_index": 0,
+      "sha256": "2dde3ffa69c7219f5fbff15736a2884f57c605f16ff3fb1e04cff774803b0519",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 528,
+      "output_file": "test_000209.npy",
+      "region_index": 0,
+      "sha256": "f5b645a1b770f7fa670bde60fbe349c98c31cfdad7af259f6ceeb84c3728d9ca",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 576,
+      "output_file": "test_000210.npy",
+      "region_index": 0,
+      "sha256": "22ee46da4f6cb87c8f0060128279178fee3c53bc24566866b045f6df75a7e245",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 624,
+      "output_file": "test_000211.npy",
+      "region_index": 0,
+      "sha256": "8acc495308becf48cd843aae7e7a94e0fb22f16071fac2cff7aa9d1e4b75199d",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 672,
+      "output_file": "test_000212.npy",
+      "region_index": 0,
+      "sha256": "3decfa74cb7d7d47e2cc76b7ad2e602ff1509fe9f0f254596e1c8a5f887e9e6c",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 720,
+      "output_file": "test_000213.npy",
+      "region_index": 0,
+      "sha256": "1c57e8764aea648eb4e1fa8df33860043684627b520ee2a4c0b0147656736211",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 768,
+      "output_file": "test_000214.npy",
+      "region_index": 0,
+      "sha256": "bcdce79a4ee03f6d76c6bc527e3da4e8d6749dc4dc60d39137b50f6ff077d146",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 816,
+      "output_file": "test_000215.npy",
+      "region_index": 0,
+      "sha256": "aad4a2fe48eed2ccec32799734af0ab2215500fe8a61ffd8d407d76047d1e5aa",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 864,
+      "output_file": "test_000216.npy",
+      "region_index": 0,
+      "sha256": "423d7abddff0dddefd6f3ea4598c2dac9b4b894f45d4318ef3e42ec6655a9bf5",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 912,
+      "output_file": "test_000217.npy",
+      "region_index": 0,
+      "sha256": "5921c8f3171e300830e48e4c3bfec8b9b355be18029c2a25dbf4de769f75f70a",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 960,
+      "output_file": "test_000218.npy",
+      "region_index": 0,
+      "sha256": "5d1d1eb2e2de82a66cb1bcd0afbab912f33d531c2e58baf4c2db21977d787975",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000219.npy",
+      "region_index": 0,
+      "sha256": "93e0a301c65af62acb7bf913c998ab7e95a5d8d323e8712340ee0830c234c711",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000220.npy",
+      "region_index": 0,
+      "sha256": "49636730661ea0b839be684dfde6e2a622cca16334231fc48ba1b28af8e6f69d",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000221.npy",
+      "region_index": 1,
+      "sha256": "fc47888ec9fdd4b45dcb180e95e97658f3fe77956e95ab46ce72e6ccc085a897",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 192
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000222.npy",
+      "region_index": 1,
+      "sha256": "d5df5cda15cf2da2ad2526bda0a84a3bb747306e845e22b8d2ee199f081d9086",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 192
+    },
+    {
+      "left": 912,
+      "output_file": "test_000223.npy",
+      "region_index": 1,
+      "sha256": "35005b90a2a8d791f1ab0dde5a3ccadef26a6edea57733820cc838929ae45eab",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 240
+    },
+    {
+      "left": 960,
+      "output_file": "test_000224.npy",
+      "region_index": 1,
+      "sha256": "11cf17cd5fc7d25981e0aa5f08dff4efcf531954062d4d54397601f7dfad3db6",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 240
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000225.npy",
+      "region_index": 1,
+      "sha256": "30f5f2ab1520e3b1d4088b625fc3354440c502a258842cc6cef03ecc94edc611",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 240
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000226.npy",
+      "region_index": 1,
+      "sha256": "7daae2c47a17d606406c3e72fdcb2a91391950fd5ca118ace750b33973e1e845",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 240
+    },
+    {
+      "left": 816,
+      "output_file": "test_000227.npy",
+      "region_index": 1,
+      "sha256": "801478565604bfae7473e031a93d722364c4a988c3ae924e64cfbd28c143db96",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 864,
+      "output_file": "test_000228.npy",
+      "region_index": 1,
+      "sha256": "6a346c0bae90a72df80749487b090bc4b099a2b6690a20562ec3f5ff70424e47",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 912,
+      "output_file": "test_000229.npy",
+      "region_index": 1,
+      "sha256": "7442b4bee84d2bfae00cecafd12a9f6189778b72055519c4486b7b39d246f12a",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 960,
+      "output_file": "test_000230.npy",
+      "region_index": 1,
+      "sha256": "83e782fdc13947f2f48e82779da8612c48c8818dfa4167db39be354761630f18",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000231.npy",
+      "region_index": 1,
+      "sha256": "39d9e89b5ae0fd354e415797f0be62e5be5dcd130244753f43f811f702009fec",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000232.npy",
+      "region_index": 1,
+      "sha256": "86fa2774f545cdb1e25cc16b9a2e8230012c6bb00684c59262723e36013b6db5",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 720,
+      "output_file": "test_000233.npy",
+      "region_index": 1,
+      "sha256": "ed824d502f9e8cbf42961d5214482697d89c7ccf35d1958b12da2d1876fe0f26",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 768,
+      "output_file": "test_000234.npy",
+      "region_index": 1,
+      "sha256": "793e9f17769996ee95780428221389ce0efbdfc4bc9c60f7d1f28b565aeb4846",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 816,
+      "output_file": "test_000235.npy",
+      "region_index": 1,
+      "sha256": "a8c1d4c904e6c37a238178fc11290bb6d7c5280b3863fd4855a18269261b55da",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 864,
+      "output_file": "test_000236.npy",
+      "region_index": 1,
+      "sha256": "cb3b7ef77cb994de91b2891ec16e75c7a30a8b84e1b794977f76197f251f7ee6",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 912,
+      "output_file": "test_000237.npy",
+      "region_index": 1,
+      "sha256": "aca2e9bdc6c601377edf24e693d710065c8f7e94a530109e014d6f8e8719b7a6",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 960,
+      "output_file": "test_000238.npy",
+      "region_index": 1,
+      "sha256": "b471d25e2d17132f820d13066e0cfe1f6232e5283d58033215a1cad8d487b973",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000239.npy",
+      "region_index": 1,
+      "sha256": "3b1b67f44f7a85819c3650da2e5a0436e7ffa155d3fcfbdba3b1e67f84a7d0bc",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000240.npy",
+      "region_index": 1,
+      "sha256": "73504ebddc44f2635f94ffbdda1dae93a3f7357f3110e2f7818146fc7ca0c8a8",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 720,
+      "output_file": "test_000241.npy",
+      "region_index": 1,
+      "sha256": "57eb8ad5f31f863dd6de27ff1265ca4554e346091de1ddc50a9046666751a024",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 768,
+      "output_file": "test_000242.npy",
+      "region_index": 1,
+      "sha256": "5ce546112bd166e3f930e80b7ae7f41f8ab5954a2b188c44c4f36fb9001cb8f7",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 816,
+      "output_file": "test_000243.npy",
+      "region_index": 1,
+      "sha256": "242493064c27c07da7f13ca840999eb10460f97730bb91722f414c9aeaca41e6",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 864,
+      "output_file": "test_000244.npy",
+      "region_index": 1,
+      "sha256": "635d16a48cb1ebe79772e67662cba949345bc21748d2a78c8d860aa655f5a1f9",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 912,
+      "output_file": "test_000245.npy",
+      "region_index": 1,
+      "sha256": "0fb00c60a721cfc0863d3812565f0bd42956779809bf65d6db4cd54ac82b1a1b",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 960,
+      "output_file": "test_000246.npy",
+      "region_index": 1,
+      "sha256": "fd2c856428cb9fd32c7b042bc342ad8f0fa708ff321dd0346a724469ca3c9f67",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000247.npy",
+      "region_index": 1,
+      "sha256": "d03aeb60873655384bf6782171fd808737c09450100ccff3acc096a927d1bc40",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000248.npy",
+      "region_index": 1,
+      "sha256": "1bb6373f88a2b8d0188d6bc2696c9ad9b7b30077038b8f448b29a64d20fd30e8",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 672,
+      "output_file": "test_000249.npy",
+      "region_index": 1,
+      "sha256": "a48dfbdf0e412f3d5eb15fcf19bb88acb4fdcd86d683d2c31a7a3d51a436a33d",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 720,
+      "output_file": "test_000250.npy",
+      "region_index": 1,
+      "sha256": "c25d042a29f3d98edf377b8816f23deb891e9e6c455a2bc1b615e0273b0df770",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 768,
+      "output_file": "test_000251.npy",
+      "region_index": 1,
+      "sha256": "1c8a5f01ae33aaa31fe88628e54b5abf5f39e81cf6810beb0c2b52ccb4e7850f",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 816,
+      "output_file": "test_000252.npy",
+      "region_index": 1,
+      "sha256": "4013b0b00386cdb36e9f3d246cb977f409a13cdfc2d83bce19ba5b6d83a99b44",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 864,
+      "output_file": "test_000253.npy",
+      "region_index": 1,
+      "sha256": "bd10c9010ca760f5a635647e644ba579919130c4f88274061ad16dd00e93fe41",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 912,
+      "output_file": "test_000254.npy",
+      "region_index": 1,
+      "sha256": "ef30cd8d03bf713983246b55ea9b0620177f64bd245e55ffce8aedf022224593",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 960,
+      "output_file": "test_000255.npy",
+      "region_index": 1,
+      "sha256": "709d7ff9aa15946044633a7e784d296875a77d8e9acdb790500b376e2b48cdc8",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000256.npy",
+      "region_index": 1,
+      "sha256": "0fae0e4b540b15f6a2520f39ba664967273e044c0b0d7d517d696925a60161c1",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000257.npy",
+      "region_index": 1,
+      "sha256": "078f44c1747073ea0ed0c61c6fad9054e3854285632e539f1fe73e0842bc9ab7",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 624,
+      "output_file": "test_000258.npy",
+      "region_index": 1,
+      "sha256": "dd4762039ab9abe9cf226634d0b7f670350148746dcb256e29bd123aaed8ea62",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 672,
+      "output_file": "test_000259.npy",
+      "region_index": 1,
+      "sha256": "c2e3c771518b5bd38354f4a95d9879b1a417e1bd7f8349df235965baaa0f4cf0",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 720,
+      "output_file": "test_000260.npy",
+      "region_index": 1,
+      "sha256": "f8f3724004af410b7717ae17e28f260e483186587c6ba516e5d437932cfaec89",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 768,
+      "output_file": "test_000261.npy",
+      "region_index": 1,
+      "sha256": "0cbda7949a6ddec55a7dc7004c5178e8cedb781e69f7085a31abecbebf40c192",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 816,
+      "output_file": "test_000262.npy",
+      "region_index": 1,
+      "sha256": "6e35d3052d395fef40a8753766baee097e23aeaec498d8707286672eb413dd08",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 864,
+      "output_file": "test_000263.npy",
+      "region_index": 1,
+      "sha256": "841b144ec876f654e8c90db6b7e5473f37fe8b3725012dd510985e2c18bb2dc5",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 912,
+      "output_file": "test_000264.npy",
+      "region_index": 1,
+      "sha256": "a384a915031c74ba3184bc390f5cee5f0af235a6ea637f65f73d1779f5545ba4",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 960,
+      "output_file": "test_000265.npy",
+      "region_index": 1,
+      "sha256": "c9c3492ff193963cb028c95485616148231dc60e70caaad5df72412e56809fe0",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000266.npy",
+      "region_index": 1,
+      "sha256": "f8b8a2af59ce5fc3be6031b4f3f5d7f04d9f7864ea90ccc9f9691d560bdf91b2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000267.npy",
+      "region_index": 1,
+      "sha256": "7e74021378134c91fca39cf6435aa9d69556d518056b91b1d17fcf69ffee1a5e",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 576,
+      "output_file": "test_000268.npy",
+      "region_index": 1,
+      "sha256": "03fae168f6a7abb03eb6ba1ffb40fb9df7d55c9cbdd884c3f167d031a061b692",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 624,
+      "output_file": "test_000269.npy",
+      "region_index": 1,
+      "sha256": "db04aaf17eae068967f506fe1119ab2b05a6a99b12a9268883eaed18d16d4b45",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 672,
+      "output_file": "test_000270.npy",
+      "region_index": 1,
+      "sha256": "31a0228fc9f6bb3abcd1143772192b8c4312bbb716909547d1f130052b65e100",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 720,
+      "output_file": "test_000271.npy",
+      "region_index": 1,
+      "sha256": "3b7c4ea5d4a6b91c3f67b7b2605e64946c1c52d2c043b55b24fd95c2fac9ef74",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 768,
+      "output_file": "test_000272.npy",
+      "region_index": 1,
+      "sha256": "265ef169161b31514cb114a92c3e958f6e04b40680ab2a03db1b77233dd3a6d2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 816,
+      "output_file": "test_000273.npy",
+      "region_index": 1,
+      "sha256": "ed965f1e9f39c0da4e57991690261044d317a3ec9ac0d6b1396eade000ddb358",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 912,
+      "output_file": "test_000274.npy",
+      "region_index": 1,
+      "sha256": "16d03920ced78fa9d2f07d1d408c277ef76d97268be48dbc7023f1137e37fbf4",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 960,
+      "output_file": "test_000275.npy",
+      "region_index": 1,
+      "sha256": "d91f435c9457fc71dc02ddd2b1365baf200fd5e23755ef6166bf0a0c0c7ae106",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000276.npy",
+      "region_index": 1,
+      "sha256": "7299a868137683c5ee534abe6843205604247d7ce8c2fe69acf1c9fb8a267a46",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000277.npy",
+      "region_index": 1,
+      "sha256": "d67f406cab55123a8a64f62e8a7c903c9b26506b2d7ccc99be6c7feb45c28251",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 576,
+      "output_file": "test_000278.npy",
+      "region_index": 1,
+      "sha256": "b8441e3ad037e21ac5943f1bde410df3d89b2a76b8569ab5238a7fc0cb574ba4",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 624,
+      "output_file": "test_000279.npy",
+      "region_index": 1,
+      "sha256": "a9e9ec4ca4c2c257fa373f432612a7385bddbc02983431f486d2da0607a38e59",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 672,
+      "output_file": "test_000280.npy",
+      "region_index": 1,
+      "sha256": "e3e086321f2979eb8a1fce73fbfffe4df0188439300aeb7f27cead4e999ead7a",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 720,
+      "output_file": "test_000281.npy",
+      "region_index": 1,
+      "sha256": "f0cc57d1dceef3ca7142b6114a1de4151b448c8e8f1b950891b88c1d5d1a5dc2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 768,
+      "output_file": "test_000282.npy",
+      "region_index": 1,
+      "sha256": "152f5cf779dd74a0ea548f011e484a35d745bb10f69b5b3974856aa6227df0af",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 816,
+      "output_file": "test_000283.npy",
+      "region_index": 1,
+      "sha256": "1b9b97610b38be9d6d287023c2947f899bb68506760e25f41826a23bcb47667d",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 864,
+      "output_file": "test_000284.npy",
+      "region_index": 1,
+      "sha256": "2a8d931965074682839a2623358c6f015be8fa4c459290fd674e9a15116340a3",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 912,
+      "output_file": "test_000285.npy",
+      "region_index": 1,
+      "sha256": "dbc32e55b1fe0e0c6ee329743f9d3b2643bb3745cd0c22968c99ea162756fff3",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 960,
+      "output_file": "test_000286.npy",
+      "region_index": 1,
+      "sha256": "5463904a2ff0776b888e9c936b444997b2d7e514be61b0abd18e143b0710aaf3",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000287.npy",
+      "region_index": 1,
+      "sha256": "d92de15971c0ae6cb69d17786fed5ddae7bf51eac7639e4580f36bac92765e11",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000288.npy",
+      "region_index": 1,
+      "sha256": "8089cf134b4a7151aa30c44ce061caf6300f8e7ccd607e3197c92569c7c3c602",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 528,
+      "output_file": "test_000289.npy",
+      "region_index": 1,
+      "sha256": "9a8eb6547c0410489658bad04158afa2ea01e0d879530b3b6f88d6a2f9243364",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 576,
+      "output_file": "test_000290.npy",
+      "region_index": 1,
+      "sha256": "fd62f3991a6378a820c975019e5b0b274de9c8cf8b415356a40c250275f46213",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 624,
+      "output_file": "test_000291.npy",
+      "region_index": 1,
+      "sha256": "b3660f2259038773d921841c3d92642cc8998d095ee5274772018d60a77d01b5",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 672,
+      "output_file": "test_000292.npy",
+      "region_index": 1,
+      "sha256": "8fe9a5af5bdc2593e4522abf08cedf5c85732d5fda34c01e3368c5cbb88927f1",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 720,
+      "output_file": "test_000293.npy",
+      "region_index": 1,
+      "sha256": "99d1a7f086239f1e1f022d965ac738bdbd80aeee9baba8fc926934e21710d85b",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 768,
+      "output_file": "test_000294.npy",
+      "region_index": 1,
+      "sha256": "1d404176367d9ebc9e38e6291385386d6acaa9e8310c3be480a5187788162a5b",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 816,
+      "output_file": "test_000295.npy",
+      "region_index": 1,
+      "sha256": "906c4999397416a3394e069f8dda86463b76a50f739e3dfeafc24ba1e3723a3e",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 864,
+      "output_file": "test_000296.npy",
+      "region_index": 1,
+      "sha256": "0eaf6555d213c919e1da6a031346dc0600a0a1893ff56aef5133bcf0ed3ea1b2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 912,
+      "output_file": "test_000297.npy",
+      "region_index": 1,
+      "sha256": "c4f794d3c2080d8f0b760c1bef4435daf7186cbb28067c1e0917bd80058ce310",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 960,
+      "output_file": "test_000298.npy",
+      "region_index": 1,
+      "sha256": "3fc9a14a8444bcf2afcd9f24b63bd24e612cc2737378233f643df73cd77362db",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000299.npy",
+      "region_index": 1,
+      "sha256": "d69b4a72f81085a40a984a222ee4ff28473cc127a0062300b538c570d932c613",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000300.npy",
+      "region_index": 1,
+      "sha256": "a5571f517f036884afc7c88c1588c6605672d1c66e424091cac7a478ce09a3e5",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 432,
+      "output_file": "test_000301.npy",
+      "region_index": 1,
+      "sha256": "524a0a59ec4fd614f8735ece1bb97bc212f8ade6858f0271f5d7c822fb0eba24",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 480,
+      "output_file": "test_000302.npy",
+      "region_index": 1,
+      "sha256": "2dfeb4a3f009e3bd85e0b8d1a9f981c7ec901e9fa2c41cbed65ede4375789a45",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 528,
+      "output_file": "test_000303.npy",
+      "region_index": 1,
+      "sha256": "cab43f70e054612e92bc293408bdfed511a31e6bb63d978f51da0d18f17c63bc",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 576,
+      "output_file": "test_000304.npy",
+      "region_index": 1,
+      "sha256": "07be3f44545d7f167f8724d0f18f234b3a0694eb7df8d3766ae4bdfb637c4ee1",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 624,
+      "output_file": "test_000305.npy",
+      "region_index": 1,
+      "sha256": "39b1186d19ece603cbb1acacf58da82f0d569c88716a63cb596762b5eb9d8054",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 672,
+      "output_file": "test_000306.npy",
+      "region_index": 1,
+      "sha256": "117469bb8f513009a0f4dafee1ad92d9238870c8acf3f2de9392881e0d2e5b58",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 720,
+      "output_file": "test_000307.npy",
+      "region_index": 1,
+      "sha256": "d1c3f120812d5b2d4a79e18599167fbc530b908f6649bafee3e00cbb5ddb6f79",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 768,
+      "output_file": "test_000308.npy",
+      "region_index": 1,
+      "sha256": "dea071539de962a4e3630ea5620250b95417c09f125bbfac39f99154ea1a536e",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 816,
+      "output_file": "test_000309.npy",
+      "region_index": 1,
+      "sha256": "5ecc64f6a6dd5bc45e568fc096be62fb978991cc869656b90c9be78815ca8381",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 864,
+      "output_file": "test_000310.npy",
+      "region_index": 1,
+      "sha256": "ea4e5cc616ac323edbad30b01e303d0ab0a3e3e3bb797c1fdab1122497af0f76",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 912,
+      "output_file": "test_000311.npy",
+      "region_index": 1,
+      "sha256": "bde5cee063cd80ea72d282afd1ab922e0d25c37a9258a630b60b4b164c8ea7cb",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 960,
+      "output_file": "test_000312.npy",
+      "region_index": 1,
+      "sha256": "34b3c272e58fe0954f8391e9ede91180a0ecce6144ac09c3f399cc1019b63ec6",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000313.npy",
+      "region_index": 1,
+      "sha256": "9a358af152f7d6b109ce3a4a9e1128df8875c5da5a863d718441457692fd0238",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000314.npy",
+      "region_index": 1,
+      "sha256": "71cae3fff68ede91ac304e2871f6c133c04ef9b8cd04b49cdd14bf4e88fa182d",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 336,
+      "output_file": "test_000315.npy",
+      "region_index": 1,
+      "sha256": "31346a9f368b86436fb9b9c4e6c679b6fa993c44b21354f51c071637ed8b7053",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 384,
+      "output_file": "test_000316.npy",
+      "region_index": 1,
+      "sha256": "ef12c078933f4783bbbb63d864ee3e0464a6e41d613fa18794adc70ee716ad65",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 432,
+      "output_file": "test_000317.npy",
+      "region_index": 1,
+      "sha256": "b3c23f7e00d3945abcd5fe2eb4bb9ecd0985f953652fd488d125bd6f90ffbc22",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 480,
+      "output_file": "test_000318.npy",
+      "region_index": 1,
+      "sha256": "8c9122137d6be9dc65e07807473bbf0c3e6218667bde7972e8ee20efabe492ea",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 528,
+      "output_file": "test_000319.npy",
+      "region_index": 1,
+      "sha256": "7acee634a3dca70dabfc6a23d63dc5ccf73c8901aa028deeaee53fb84471aef0",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 576,
+      "output_file": "test_000320.npy",
+      "region_index": 1,
+      "sha256": "827f49d4f242a43f841df0ec332f8b6f3551bb0399eec5c0e3f62015f0a1998d",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 624,
+      "output_file": "test_000321.npy",
+      "region_index": 1,
+      "sha256": "0e886a2ed16b4484e8dd26ef582be708f1bcba69ff98a6cfece1ce673d8a7899",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 672,
+      "output_file": "test_000322.npy",
+      "region_index": 1,
+      "sha256": "f4c13a23ffeccfc43e269b110fc6d1e673b1ccbc04a685b118afa31c5da88c3d",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 720,
+      "output_file": "test_000323.npy",
+      "region_index": 1,
+      "sha256": "9a22499299de8681df411d0be7f64593d69c5ee3b2424895708d06a3c6495fdb",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 768,
+      "output_file": "test_000324.npy",
+      "region_index": 1,
+      "sha256": "5a242b39ec54ea9ec8adc0dfb972bb7dad30aa94eb751caf9cdf43a8678873ed",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 816,
+      "output_file": "test_000325.npy",
+      "region_index": 1,
+      "sha256": "6e996a2d6931ceb1e49e4e4525bdc07be2d1127af8432942f5c67401548c5d47",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 864,
+      "output_file": "test_000326.npy",
+      "region_index": 1,
+      "sha256": "07d8fa5065cc735f016712871e89c5a9bc35c4b9a9ecac5cafc3e041bec0ee6e",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 912,
+      "output_file": "test_000327.npy",
+      "region_index": 1,
+      "sha256": "b1431e2e80558223931a6ac86958d01b968ef2f0c4210683b9967a169a86c298",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 960,
+      "output_file": "test_000328.npy",
+      "region_index": 1,
+      "sha256": "85e0cff236e13542c24c98d548ca2b29c680db1b5ac71786357fc629fd31edb6",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000329.npy",
+      "region_index": 1,
+      "sha256": "f94f45868c2ca275d33869b83a6417c51cd2b6d5e00398aa1e95edc81312fd32",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000330.npy",
+      "region_index": 1,
+      "sha256": "8bf24653952791f41740f2495e67462aae5181084d625c71e4970db8cd8720af",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 240,
+      "output_file": "test_000331.npy",
+      "region_index": 1,
+      "sha256": "b6388848807787c37daa36018af4efd1b7dc664e72177e5cbb339cc8c32039e8",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 288,
+      "output_file": "test_000332.npy",
+      "region_index": 1,
+      "sha256": "398be40ee2ba0a01f1d51f6f940b8db2fc302e431d02caea1746a6256a4776b0",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 336,
+      "output_file": "test_000333.npy",
+      "region_index": 1,
+      "sha256": "c933a059ec23f199ad12a080c9bd533cd41d35b0177be2360503b055388b1e1c",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 384,
+      "output_file": "test_000334.npy",
+      "region_index": 1,
+      "sha256": "4640193c930beef24c42a5c30b824b353509eb29164e88dd0639a93d6bc3b7b3",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 432,
+      "output_file": "test_000335.npy",
+      "region_index": 1,
+      "sha256": "c3dd14555a5b6739421cc48fdf37f47e214029ff3afeb995ee1172af0479c4ca",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 480,
+      "output_file": "test_000336.npy",
+      "region_index": 1,
+      "sha256": "446f4c58046bb1b381229b58bbfa4fb4f1a578b2aed6e787b4d0cefda53ef770",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 528,
+      "output_file": "test_000337.npy",
+      "region_index": 1,
+      "sha256": "f54aa1257034578898282a6020d6e4d3379f07a5d694c8bc2282d2cfc32c9ea1",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 576,
+      "output_file": "test_000338.npy",
+      "region_index": 1,
+      "sha256": "8a683d85de50c99d22400ff5a7591a2759e7a05b526da80fd941b5810340d6ac",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 624,
+      "output_file": "test_000339.npy",
+      "region_index": 1,
+      "sha256": "482da335bb7cb70124968f7585c2cf0381734206078027c122094c6bb6fc309e",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 672,
+      "output_file": "test_000340.npy",
+      "region_index": 1,
+      "sha256": "4335e9b49489b6e404c7036d3eb0153019538ced46ad8918262bcb22f2cf22e3",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 720,
+      "output_file": "test_000341.npy",
+      "region_index": 1,
+      "sha256": "3ee6e4b90b891556cbec933cf838d4c3dddef24939f6f857b7cc2be8148918d2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 768,
+      "output_file": "test_000342.npy",
+      "region_index": 1,
+      "sha256": "b90cfdb97176f283d72ff8e44b0edd389743408f31bc6b356568f44d8264bfd2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 816,
+      "output_file": "test_000343.npy",
+      "region_index": 1,
+      "sha256": "039793a6db53a24a9eb222d5cd8c27a2c97d06f893a62277f29c3ec8dbb70c19",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 864,
+      "output_file": "test_000344.npy",
+      "region_index": 1,
+      "sha256": "dcc1ba348f3e3a03309f8ea67f88c648240298f3d4c52db5ae94d1a6c77b42b8",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 912,
+      "output_file": "test_000345.npy",
+      "region_index": 1,
+      "sha256": "5fd8de608ca7d09ac6ddf000f287bb13a5ed5349e6ebc08c5d7dc7a3782f44fa",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 960,
+      "output_file": "test_000346.npy",
+      "region_index": 1,
+      "sha256": "aeb07d28446007af45502c4801d326530180dc068b7bd2c10c7d3f8939dab74b",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000347.npy",
+      "region_index": 1,
+      "sha256": "972015822bffc1ff9d68b7311c6e5617d0fb3b68b471f498cb3aa4ab73642ff0",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000348.npy",
+      "region_index": 1,
+      "sha256": "3e0eb6e07d05a4a57fd37a86a4634cdd5d8d40603029d941993713a3c83a443a",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 960,
+      "output_file": "test_000349.npy",
+      "region_index": 2,
+      "sha256": "8108f1df73f37b9c1500ffa1afac4dbbefbe6ff565d4f1135a957faf87f2a91c",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 192
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000350.npy",
+      "region_index": 2,
+      "sha256": "826e5199d1ab451edddaaf1ac08062b0442f4e712f3bdafece049ad9e362afbc",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 192
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000351.npy",
+      "region_index": 2,
+      "sha256": "3afb2a41e888a68bb9039b91a26dde73c5e6dd2896e8ba10b018923c162586ab",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 192
+    },
+    {
+      "left": 912,
+      "output_file": "test_000352.npy",
+      "region_index": 2,
+      "sha256": "43da87ee1365e1b1f191944e7eb8a288b27f623c31264f7b35d920b52b1fec76",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 240
+    },
+    {
+      "left": 960,
+      "output_file": "test_000353.npy",
+      "region_index": 2,
+      "sha256": "94bf853803b1459a6b55d166d65d223f31617ec1cfafa0ed3623f0cf269ee5d3",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 240
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000354.npy",
+      "region_index": 2,
+      "sha256": "040bc906822676bbdadbbd233aaad1169a748cbdb689608baf7a5d413c089e97",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 240
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000355.npy",
+      "region_index": 2,
+      "sha256": "209a94c1522b297638813d91b289d33875cd252ff88bd11f26865f794eaed404",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 240
+    },
+    {
+      "left": 816,
+      "output_file": "test_000356.npy",
+      "region_index": 2,
+      "sha256": "4db151797cec9442ff71c7182e902ad27a797876c9f6234faa09bf893bee2931",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 864,
+      "output_file": "test_000357.npy",
+      "region_index": 2,
+      "sha256": "9d4bc7b1805ead09d8b8a080be0309ea31c34328fc75d07406d842f1714e6273",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 912,
+      "output_file": "test_000358.npy",
+      "region_index": 2,
+      "sha256": "c8e42e6a8f23337fffc75f4d7ac0c2bb26e4eba8cb4f3b1cead4a01fbef85c8a",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 960,
+      "output_file": "test_000359.npy",
+      "region_index": 2,
+      "sha256": "0a786dc1036e669c034e3df83383563b795efee760dec10d939e1e0217ad11b7",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000360.npy",
+      "region_index": 2,
+      "sha256": "4fc9d6094647a31f86911ccb53ae64526f8dde733b5de58353ddf12f27828530",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000361.npy",
+      "region_index": 2,
+      "sha256": "30265a97c37ec5f9a9f9d5c4da4e8eec96aad1e60ac4e432d95dc9f5a891c6ea",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 288
+    },
+    {
+      "left": 720,
+      "output_file": "test_000362.npy",
+      "region_index": 2,
+      "sha256": "789ef0d5e93db5a53a8a2151f919d9147ee08a6dcb364de5895de57628309bb5",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 768,
+      "output_file": "test_000363.npy",
+      "region_index": 2,
+      "sha256": "34158db32a39f308a7c4146086a149c3bdb2e35ee30abf7cd47a2a8546718788",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 816,
+      "output_file": "test_000364.npy",
+      "region_index": 2,
+      "sha256": "9730ab54cc71dc536d8b666465f8ab5182e56533bf1c0941c55c3e6d937a97c1",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 864,
+      "output_file": "test_000365.npy",
+      "region_index": 2,
+      "sha256": "ad21a1a2479e8b135c7540c0bd4895838e77c69dacf614271e556b8497887f20",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 912,
+      "output_file": "test_000366.npy",
+      "region_index": 2,
+      "sha256": "d58438bb17a6a8e6052a5d42bc3c571fcd53b775b3c718d66a19cdbd22f7a438",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 960,
+      "output_file": "test_000367.npy",
+      "region_index": 2,
+      "sha256": "3dac37d7a2e5ebc22b548327c38dfe475d4f5ce1f2f422b938cea78d336a41a7",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000368.npy",
+      "region_index": 2,
+      "sha256": "558cdc08ad5d4f7ad92efa8f70118cdc7a63d547ae4bccced6e2b4bf7cd09e8b",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000369.npy",
+      "region_index": 2,
+      "sha256": "e3b557e81876a1b69965fdb7aa5c2ff5ce59b535ee94c115061f4d8af2a01c5e",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 336
+    },
+    {
+      "left": 720,
+      "output_file": "test_000370.npy",
+      "region_index": 2,
+      "sha256": "e0d43971f5346906908da6057346ee87860ff72f87f7f8319dc9364840109af4",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 768,
+      "output_file": "test_000371.npy",
+      "region_index": 2,
+      "sha256": "8a280715e3c2f9f883c381030596c0a5b1cf6f40f891d95813247a201fc5749a",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 816,
+      "output_file": "test_000372.npy",
+      "region_index": 2,
+      "sha256": "73814a26f86fba7b9ae390a8abe65db5e118e02a045f62fa5b6531ba80f055ed",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 864,
+      "output_file": "test_000373.npy",
+      "region_index": 2,
+      "sha256": "9c86128aa4ba6d18eea3528788994028050097792227202c13dd6e6a99f1d1e8",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 912,
+      "output_file": "test_000374.npy",
+      "region_index": 2,
+      "sha256": "2739f2e4636dd5e2273467eefd96d94040184078d3a1dcda6b8e763d465c8784",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 960,
+      "output_file": "test_000375.npy",
+      "region_index": 2,
+      "sha256": "f4f814553211613a61ce2009ad783069836a061a936b2cf239ed7a8c318fe780",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000376.npy",
+      "region_index": 2,
+      "sha256": "597127db6a700040d944cc68ce1f95a390ce9203a02d60d9090d7cf2a582b3fc",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000377.npy",
+      "region_index": 2,
+      "sha256": "daa67a912a1901a69b8ba7167db07bd8056f7129b4354aa8d9007447d06afd86",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 384
+    },
+    {
+      "left": 672,
+      "output_file": "test_000378.npy",
+      "region_index": 2,
+      "sha256": "658b97f479488df3a471d3de9927730851db267fec47587a31798e2bb0c2669b",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 720,
+      "output_file": "test_000379.npy",
+      "region_index": 2,
+      "sha256": "2a7b47d730c57ff1012b8aa7f85b2206426730c61f065dc0276f068547a52d32",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 768,
+      "output_file": "test_000380.npy",
+      "region_index": 2,
+      "sha256": "b42b5f8b2314402c9b3d620ee4a93ab025443027ca500742843999d29616f55d",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 816,
+      "output_file": "test_000381.npy",
+      "region_index": 2,
+      "sha256": "caf74f022e08c5e5feee7d7197b671be63c45e9a0233e00ace3c656bd3ec37d2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 864,
+      "output_file": "test_000382.npy",
+      "region_index": 2,
+      "sha256": "ade130ff0b921d9296248fc07ce519f10ab2ac26becfb3f8dfb16364b67d62e3",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 912,
+      "output_file": "test_000383.npy",
+      "region_index": 2,
+      "sha256": "f6fffb5fce46c8e6beecfbba6486b234e6e49ed1769afcf1de5e497d5dfca1e8",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 960,
+      "output_file": "test_000384.npy",
+      "region_index": 2,
+      "sha256": "e64d29e49bfd47d3e54ea1a4e8581010d2f76d8a59d1d0feb318ae09cfc6a44f",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000385.npy",
+      "region_index": 2,
+      "sha256": "22022615c898bd8c84196f9c66a925dfd9e75de2512dd0a0b3769a46e8d43445",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000386.npy",
+      "region_index": 2,
+      "sha256": "91720e5722024aa55c6b522ad540571cda86fd5f45d2d99ab99bf1b79a4dc583",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 432
+    },
+    {
+      "left": 624,
+      "output_file": "test_000387.npy",
+      "region_index": 2,
+      "sha256": "020eb5f2cda395548863adc1a4ccb917a356c618b14bbd3fc941dd584b766cde",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 672,
+      "output_file": "test_000388.npy",
+      "region_index": 2,
+      "sha256": "79db39841d8bdca17a24339ed1c4b3ddbe62e193c85a32decd9d00e60bf4ec63",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 720,
+      "output_file": "test_000389.npy",
+      "region_index": 2,
+      "sha256": "0e5bd8793dad44fdd564de9ca4f784931f7e969bb9b736ea4cd61715cfa47526",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 768,
+      "output_file": "test_000390.npy",
+      "region_index": 2,
+      "sha256": "2e2318be5be4ec03c0d53553f1041109c4c8fdd88032ee4f183bbc8f87ca48de",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 816,
+      "output_file": "test_000391.npy",
+      "region_index": 2,
+      "sha256": "51efadc6bb873d2deb6d76a37d0b82b5b2012c0a1cc8527047258ba97d58b808",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 864,
+      "output_file": "test_000392.npy",
+      "region_index": 2,
+      "sha256": "e767c8f971d035cb1d95ca760f53578886fd38191370c4aa3539463f528ba019",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 912,
+      "output_file": "test_000393.npy",
+      "region_index": 2,
+      "sha256": "43e5b276f0533a14576f46b25db95fc5538d40129befc078967e6a494488dd9e",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 960,
+      "output_file": "test_000394.npy",
+      "region_index": 2,
+      "sha256": "6a84c1270f6446ba59d6e6ceaecc7610f27112c7dd00ec0002dee6f206c964ef",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000395.npy",
+      "region_index": 2,
+      "sha256": "4907edc2c9e7c52e7fca1fc3f23e21a5a7af5eedf27b7d0713f7b2980dcfb721",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000396.npy",
+      "region_index": 2,
+      "sha256": "c1ba477a58359d81afb09dad939492e60b7d54c567eab0ec4b8148dcabd44bcf",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 480
+    },
+    {
+      "left": 576,
+      "output_file": "test_000397.npy",
+      "region_index": 2,
+      "sha256": "451dba15a5fb7a81f2237f27beb6c82ff0ca6c13166a55754c5ae2603c5262b8",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 624,
+      "output_file": "test_000398.npy",
+      "region_index": 2,
+      "sha256": "4638d517506d7437726d409aeb1fe4945096d7a3b8bac13bc33181fd0b2c66cb",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 672,
+      "output_file": "test_000399.npy",
+      "region_index": 2,
+      "sha256": "f23dde892e89b07e73013a987a9cea5c6a009e1b22c5fffdb317ea166521220d",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 720,
+      "output_file": "test_000400.npy",
+      "region_index": 2,
+      "sha256": "b26d9cfb508938e40af2469040c7fdf990ff59415a5cdcd7e50212787a278c40",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 768,
+      "output_file": "test_000401.npy",
+      "region_index": 2,
+      "sha256": "622cd91ec05e2c97aeb15b137cec3b365c7b152a31643b110b8f29a4c7959f4a",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 816,
+      "output_file": "test_000402.npy",
+      "region_index": 2,
+      "sha256": "2e09e36a39cdfec1b7adb25ea446fb1acae5ebc989ab848141970ed65289a156",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 864,
+      "output_file": "test_000403.npy",
+      "region_index": 2,
+      "sha256": "9e0b40599493722503df585d8a0c9791af1365eb0c6e98d9b5743dd731e953de",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 912,
+      "output_file": "test_000404.npy",
+      "region_index": 2,
+      "sha256": "ecbf41bbd7186a1d2c43086b36b4eb5a293488b1909f36ea052710a8395aa492",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 960,
+      "output_file": "test_000405.npy",
+      "region_index": 2,
+      "sha256": "d65460a611a129ac6aa9a6f9427e80d220a4c0f84e04dc217a1f707d9cd7a22e",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000406.npy",
+      "region_index": 2,
+      "sha256": "773b2f410e68a1ebe3fb49e8c98a766ef7ac0f12823a2cb3b9dfad8df5104a44",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000407.npy",
+      "region_index": 2,
+      "sha256": "7f6350ba0ac8d8d37f8d3f6d179047d996f4a5e219b97342b780748f80abb36a",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 528
+    },
+    {
+      "left": 576,
+      "output_file": "test_000408.npy",
+      "region_index": 2,
+      "sha256": "795085d454c96a6222ce91bf86b3c2e4daefbc200a28971c596712772feca915",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 624,
+      "output_file": "test_000409.npy",
+      "region_index": 2,
+      "sha256": "c3b4483f5fe9625fe6d253f33ac4b8e30d650d2f636e5cefa7d6efa117663ac2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 672,
+      "output_file": "test_000410.npy",
+      "region_index": 2,
+      "sha256": "b30db98f07b4191066bb85c82a1b605b6d892b6fe6ae2f4db47a3f61763ca619",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 720,
+      "output_file": "test_000411.npy",
+      "region_index": 2,
+      "sha256": "7e054f11c5b8699fbcce5787f63cf3ac6f2b5e41eed3c87ba3bad68a186362e4",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 768,
+      "output_file": "test_000412.npy",
+      "region_index": 2,
+      "sha256": "c0e9e9478d3ad58ede507a22759770d12e1ed848987a2e761c6ebf798dfe2f21",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 816,
+      "output_file": "test_000413.npy",
+      "region_index": 2,
+      "sha256": "fdcb41117b8ffc1ac2e9a6297d90dc1c7b76f5d679abb3b11b30d3d52f7b6d9d",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 864,
+      "output_file": "test_000414.npy",
+      "region_index": 2,
+      "sha256": "4bcab5661e0233571bb1fce2d61fde64fa520080ea2f5de159f31475841888f2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 912,
+      "output_file": "test_000415.npy",
+      "region_index": 2,
+      "sha256": "d7fc41c2c6ba8fbdbfc57ba2ffc5a22f5da865a2880e116b068ba9a4387ac266",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 960,
+      "output_file": "test_000416.npy",
+      "region_index": 2,
+      "sha256": "5fe4100488975ec97936fe9a4a6c4b89718488b62bae9b08313a57ce0434bc38",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000417.npy",
+      "region_index": 2,
+      "sha256": "085f6692f387e8a04c4d6983bd4a0b33905005bf169503758615e4e2bee00cb8",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000418.npy",
+      "region_index": 2,
+      "sha256": "b6307475057a01262a32adc5c1143311c8e631de6c8fe868d9e88a268c1b6fa9",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 576
+    },
+    {
+      "left": 528,
+      "output_file": "test_000419.npy",
+      "region_index": 2,
+      "sha256": "2422337f10d44ef99b9fb2a0cb1daefe45f98aed94df64e274ec05cf3484d136",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 576,
+      "output_file": "test_000420.npy",
+      "region_index": 2,
+      "sha256": "5e280475b019f5ded9c3e4a9f8f3a1d9efd9fcdb0c02e0448008c090edba247d",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 624,
+      "output_file": "test_000421.npy",
+      "region_index": 2,
+      "sha256": "7bcc4e8ac7aee932552ee088a6152551b8511fda49c64e04c75d11d03be320ea",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 672,
+      "output_file": "test_000422.npy",
+      "region_index": 2,
+      "sha256": "eaf9ba4a988bd9da3aa0a54cd1be2fb7db62dbf1826d7c470b875372c284615e",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 720,
+      "output_file": "test_000423.npy",
+      "region_index": 2,
+      "sha256": "3e9608bd19df439853998e955aded5f09abaceb8dfbd9e1b262ff25103b5fd90",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 768,
+      "output_file": "test_000424.npy",
+      "region_index": 2,
+      "sha256": "b7cadb38c9d9b919973e64ac7e78327ac7db484c4d363bf73aa7544f0b2a4212",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 816,
+      "output_file": "test_000425.npy",
+      "region_index": 2,
+      "sha256": "5b1eed3308434a03a956624fe7cac8a8fede6335b6a9f44f5332c93fa2f89fac",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 864,
+      "output_file": "test_000426.npy",
+      "region_index": 2,
+      "sha256": "8c7368cd06e55a18fb9bf8d4b7fb46fc90434e9dc167bab9b38e9f0b786cc567",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 912,
+      "output_file": "test_000427.npy",
+      "region_index": 2,
+      "sha256": "e438af98950e4e256a22f8e2f5a5e9b40f38c42c80a5c8ee5ad86175ac399526",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 960,
+      "output_file": "test_000428.npy",
+      "region_index": 2,
+      "sha256": "7981f2413624d7df44471d8b2d91e06c66f0aa91168baa79ea4182e2d4635249",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000429.npy",
+      "region_index": 2,
+      "sha256": "4d71587b9b75c86adfe91b39d9d8f8d71f22b57b1d7793a71efe80840a8134d1",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000430.npy",
+      "region_index": 2,
+      "sha256": "98056aba6aa6086d600553307fbc1f08fa5a32f68dc493d50390640f916ef9b3",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 624
+    },
+    {
+      "left": 432,
+      "output_file": "test_000431.npy",
+      "region_index": 2,
+      "sha256": "b4d13dce57d5ddf606b32de87f38a18e13e8f1cc35515bdec93e81311fe00acb",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 480,
+      "output_file": "test_000432.npy",
+      "region_index": 2,
+      "sha256": "d63d62dac822193506a345aedd9e1f504f9329b78d0f2c83e0814a4da36fe68c",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 528,
+      "output_file": "test_000433.npy",
+      "region_index": 2,
+      "sha256": "c9f084c8a93a9ad612eaae1974362f3ad09ac4b0276502ef49a6210c5e3fda63",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 576,
+      "output_file": "test_000434.npy",
+      "region_index": 2,
+      "sha256": "ab090d0714ee82698359683768a22c2fa44750c7c618766b3e4127a5782129ea",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 624,
+      "output_file": "test_000435.npy",
+      "region_index": 2,
+      "sha256": "f4c4a6785b6cedfdba06266105a0aa652773400801718e43ed5a1d27562bbff8",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 672,
+      "output_file": "test_000436.npy",
+      "region_index": 2,
+      "sha256": "593de38d7b038d6fba377835459d3ea647eb46e1b0ee194c9e7ebb3e8589fc3b",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 720,
+      "output_file": "test_000437.npy",
+      "region_index": 2,
+      "sha256": "aeafa7168ac55b2e1982540e953b153d2325e83fb7fb22563d786af5f4aaaf6d",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 768,
+      "output_file": "test_000438.npy",
+      "region_index": 2,
+      "sha256": "819fe32f69fb1fe07fd3187dd64dc9af2c01d340e609d395f8bd3413fdca2585",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 816,
+      "output_file": "test_000439.npy",
+      "region_index": 2,
+      "sha256": "276034c863c0dc4fab432ce0c5ad487afff7d67e83d67c34a4bde424ac4ee087",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 864,
+      "output_file": "test_000440.npy",
+      "region_index": 2,
+      "sha256": "1080de7d310052c71fca2ce5decbf3caf28a7228d70b2da50b15561b2ecb5855",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 912,
+      "output_file": "test_000441.npy",
+      "region_index": 2,
+      "sha256": "ba12ea2368a78836a0d2d91582940e69b17a07e44939f228397c0bfd09bf309e",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 960,
+      "output_file": "test_000442.npy",
+      "region_index": 2,
+      "sha256": "17645fe1ca8deeedacb45018caf6d9939a8a4df67fff0d0e920b34508d3315c0",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000443.npy",
+      "region_index": 2,
+      "sha256": "8ac5b88f0db05be4c170e30ec11c72aafdec44d160403acc43c0bf9efb4af222",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000444.npy",
+      "region_index": 2,
+      "sha256": "50c6ea2f16b421e98dabf32e30f9252392a2064274d6fbd4780f8460a58e453b",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 672
+    },
+    {
+      "left": 336,
+      "output_file": "test_000445.npy",
+      "region_index": 2,
+      "sha256": "7174312a0b137b43384a052ff2c84c15fabe63989538380aaa27d7504cb378d6",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 384,
+      "output_file": "test_000446.npy",
+      "region_index": 2,
+      "sha256": "b2556da2ea392e1d95899fb03b826a2e8fcc67d7aaf4b3a54c0856217c4f2fd7",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 432,
+      "output_file": "test_000447.npy",
+      "region_index": 2,
+      "sha256": "d60799807835cd7cd58b6f356c6df8127c3facac86a1b0cde208a7ff1d121f58",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 480,
+      "output_file": "test_000448.npy",
+      "region_index": 2,
+      "sha256": "8162df9ecf8d163bfb7c21e1aadb84cc1e8dc076bca5533fef0b125c26c75bcc",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 528,
+      "output_file": "test_000449.npy",
+      "region_index": 2,
+      "sha256": "064c76d48602a5aa4dcf4a37153cec8fc904c9e1129478d4c29719992c327b13",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 576,
+      "output_file": "test_000450.npy",
+      "region_index": 2,
+      "sha256": "ae93472559c334a1a86ccae7358b15fbb4b55a893c964d30b4989e76fd8f65da",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 624,
+      "output_file": "test_000451.npy",
+      "region_index": 2,
+      "sha256": "bee21b55e3102970847cc0d2aa0fb4b78e5809f6d3b1ad14c93ed733b1ae6a37",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 672,
+      "output_file": "test_000452.npy",
+      "region_index": 2,
+      "sha256": "c814d08714f4a819e701619f37591ab93d153302bd13e1fb8df36ae75170dc2f",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 720,
+      "output_file": "test_000453.npy",
+      "region_index": 2,
+      "sha256": "a30d798b22a5d012769d8eb75c145a3eb41ebdf4782a173d6ca77ebb8143eb45",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 768,
+      "output_file": "test_000454.npy",
+      "region_index": 2,
+      "sha256": "ce2d132b107b2871ac4bd7401df7fa960fc84074d50407f19fac8b51cb67868c",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 816,
+      "output_file": "test_000455.npy",
+      "region_index": 2,
+      "sha256": "9c58c58c34578371427393e3625fdc12022933110b7181ee31cd980e693adffe",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 864,
+      "output_file": "test_000456.npy",
+      "region_index": 2,
+      "sha256": "2475e4ff2c0814c4af6fa13d701c5e65e26bcd332408e1edb921967eebaa29f9",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 912,
+      "output_file": "test_000457.npy",
+      "region_index": 2,
+      "sha256": "65d482584f93cb9e618f2fa1d278d521041fb98393d8a0454255d36b1f146b69",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 960,
+      "output_file": "test_000458.npy",
+      "region_index": 2,
+      "sha256": "e6035085ecff2310f1e67a8e51b6a51f9d84de02795ff19d75c626cafbe2eca2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000459.npy",
+      "region_index": 2,
+      "sha256": "7bb771a421ab375a50199b19f6a594c1eb54a4034a1170e21f502cd58c678dc7",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000460.npy",
+      "region_index": 2,
+      "sha256": "08d3439957ffb988f1ec1da6bef3fbb6cdfa30689d0aaebcb504c85345ef7815",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 720
+    },
+    {
+      "left": 240,
+      "output_file": "test_000461.npy",
+      "region_index": 2,
+      "sha256": "6b163a2c7f8e2703cfdb0ed97c1a0e26c1b5f3c524925a45af94326f46b20d77",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 288,
+      "output_file": "test_000462.npy",
+      "region_index": 2,
+      "sha256": "eb18f40c6a83d545ea0d3aa9ca06643e1c342fed54328308792ab7ffff6001b9",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 336,
+      "output_file": "test_000463.npy",
+      "region_index": 2,
+      "sha256": "895f3f5121beb13f0f724e6e6e16c2d6a1347d9ea24f2713d6905813b01b85a0",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 384,
+      "output_file": "test_000464.npy",
+      "region_index": 2,
+      "sha256": "f578026c97211d32a5a271ce4dce74b184a133eeddd32b3a7aa156ee7d092ed5",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 432,
+      "output_file": "test_000465.npy",
+      "region_index": 2,
+      "sha256": "3d1f1fabe1aadec7d4539fc3ceb4e1c2a234cab6518c3773a09d23846776b42a",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 480,
+      "output_file": "test_000466.npy",
+      "region_index": 2,
+      "sha256": "0de2d120d9944667611463630ad5097f367924b7765566b59dd55075755ceff9",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 528,
+      "output_file": "test_000467.npy",
+      "region_index": 2,
+      "sha256": "e2b86e2aa6451eff0bdb31f937a2eca068361eee7317c670f487790200df3de1",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 576,
+      "output_file": "test_000468.npy",
+      "region_index": 2,
+      "sha256": "928308bda22b19464a365ba69cf20fc083285c2b5648cc603f27da11346666c2",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 624,
+      "output_file": "test_000469.npy",
+      "region_index": 2,
+      "sha256": "00adbe33961a7956b42295a4934cbb8af1e427044305425e5d39841c1b315e02",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 672,
+      "output_file": "test_000470.npy",
+      "region_index": 2,
+      "sha256": "0471695f3c98ea6e049d8376e2aaf28c095c9e3ddcf95fc959320cc733583e5f",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 720,
+      "output_file": "test_000471.npy",
+      "region_index": 2,
+      "sha256": "847bc142691dec60d4da16f23cac4430d0df9c8b9a9abdf2038de086ae256943",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 768,
+      "output_file": "test_000472.npy",
+      "region_index": 2,
+      "sha256": "3bcc775232fc6c2be94d26c9fd78e262f44b610c4213cd763959bbfe467c559e",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 816,
+      "output_file": "test_000473.npy",
+      "region_index": 2,
+      "sha256": "9191c008904ec81d854930eca4763cb2ccf7577d28af5bbaf6903e459dbbed38",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 864,
+      "output_file": "test_000474.npy",
+      "region_index": 2,
+      "sha256": "37cb49bbba251637103238a5ac81566d048719ada4152e2ed92c859080184afd",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 912,
+      "output_file": "test_000475.npy",
+      "region_index": 2,
+      "sha256": "47aab22c742e5a2c4fe3fdee8938dbe60d618c85c5bdc99963f3ec478ed654a5",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 960,
+      "output_file": "test_000476.npy",
+      "region_index": 2,
+      "sha256": "828bcf7a36a3c340cb1d47465461fd6cc77a78365ebd17f77d519b3727621b81",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 1008,
+      "output_file": "test_000477.npy",
+      "region_index": 2,
+      "sha256": "e19d104f1bac57d980184f9c43e0e3f32d71fd96423d7545587209549b705c02",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    },
+    {
+      "left": 1056,
+      "output_file": "test_000478.npy",
+      "region_index": 2,
+      "sha256": "c17b03227b375207aaec8bba6ceab1ed7689375e8b27d5a90270ea49eef7ded5",
+      "source": "Shots0001",
+      "source_file": "shots0001_0200.segy",
+      "top": 768
+    }
+  ],
+  "seed": 20260507,
+  "source_protocol": "paper_style_table3_deterministic_non_overlapping_regions_without_augmentation",
+  "stride": [
+    48,
+    48
+  ],
+  "training_hash_excluded_count": 1079
+}

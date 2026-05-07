@@ -2610,5 +2610,70 @@ Run paths：
   - generated `1024` clean calibration patches。
 - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.prepare_scrn_stratified_datasets --mode test`
   - generated `478` clean test patches。
+
+## 2026-05-07 Paper-style 5-source SCRN dataset rebuild
+
+### 修改内容
+
+- 新增 `data/paper_scrn_datasets.py`，实现区别于旧 `10750_0` 的 paper-style 5-source 数据准备流程。
+- 新增 `cli/prepare_scrn_paper_datasets.py`，支持：
+  - `--mode train|calibration|test|all`
+  - `--seed`
+  - `--dry-run`
+  - `--overwrite`
+  - `--exclude-training-hashes / --no-exclude-training-hashes`
+- 新增 `tests/test_paper_scrn_datasets.py`，覆盖：
+  - Table 2 几何计数：`60*5=300`、`671*5=3355`、`150*5=750`、`96*5=480`、`1173*5=5865`
+  - SourceX-style shot 选择和 Kerry3D full-matrix trace window
+  - original + 4 seeded augmentation
+  - paper-style train manifest 的 1024 分层 calibration 抽样
+  - test quota、exact hash 排除、quota 不足报错
+- 更新 `data/__init__.py`，导出 paper-style 数据集准备入口。
+
+### 协议说明
+
+- 输出目录：
+  - train: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_train_10750`
+  - calibration: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_cali_1024_stratified`
+  - test: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_test_478`
+- train 使用本地可用的 5 个 SCRN Table 2 来源：
+  - `1997_2.5D_shots`
+  - `7m_shots_0201`
+  - `Anisotropic_FD_Model`
+  - `Kerry3D`
+  - `Shots0001_0200`
+- shot-gather 源按 SourceX-style 连续 trace block 读取最前面的 table shot；Kerry3D 按 migration image full-matrix trace window 读取。
+- patch size 为 `128x128`，stride 为 `48x48`。
+- train 每个 raw sliding-window patch 保存 original + `4` 个 seeded random augmentation，seed 为 `20260507`。
+- 为严格匹配 Table 2 / Table 3 的 patch 数量，paper-style train/test 默认使用几何窗口口径，不套用旧 `10750_0` 的 `std > 1e-3` 低方差过滤。旧 legacy-logic 数据集仍保持原过滤口径。
+- test 默认对新 train set 的 float32 patch SHA-256 做 exact hash 排除；如果训练后第一个 deterministic region 排除后不足 quota，则按文件顺序继续读取后续 SourceX shot 或 trace window，直到满足固定 quota。manifest 记录 `per_source_region_counts`、候选数量和 hash 排除数量。
+- 该实现只能声明为 deterministic paper-style protocol，不能声明完全复现论文作者未公开的 shot 编号和空间起点。
+
+### 生成结果
+
+- Train output:
+  - `.npy` count: `10750`
+  - manifest counts: `300 / 3355 / 750 / 480 / 5865`
+- Calibration output:
+  - `.npy` count: `1024`
+  - manifest counts: `28 / 320 / 71 / 46 / 559`
+- Test output:
+  - `.npy` count: `478`
+  - manifest counts: `75 / 16 / 387`
+  - `training_hash_excluded_count`: `1079`
+  - `per_source_region_counts`: `Anisotropic=3, Kerry3D=7, Shots0001=3`
+  - `per_source_candidate_counts`: `Anisotropic=225, Kerry3D=168, Shots0001=1173`
+  - `per_source_training_hash_excluded_counts`: `Anisotropic=150, Kerry3D=144, Shots0001=785`
+
+### 验证方式
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_paper_scrn_datasets -v`
+  - 11 tests OK。
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/data/paper_scrn_datasets.py SCRN_BRECQ_app/scrn_brecq/cli/prepare_scrn_paper_datasets.py`
+  - passed。
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.prepare_scrn_paper_datasets --help`
+  - passed。
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.prepare_scrn_paper_datasets --mode all --overwrite`
+  - generated train `10750`、calibration `1024`、test `478`。
 - `pytest` note:
   - `conda run -n quant python -m pytest ...` cannot run because the `quant` environment does not have `pytest` installed; equivalent `unittest` verification passed.
