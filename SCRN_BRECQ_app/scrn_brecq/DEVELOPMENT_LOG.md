@@ -2993,3 +2993,65 @@ Run paths：
   - SSIM gap: `-0.0086`
 - 训练 loss 不能直接按数值和 unfiltered paper5 比较：unfiltered train set 曾有大量近零 patch，loss 被近空白样本显著压低；energy-filtered 的 loss 更接近有效地震 patch 的优化难度。
 - 后续应使用 478 multi-eval，对 `old10750_main`、`paper5_unfiltered`、`paper5_energy_filtered` 在 legacy / paper5 / energy-filtered test sets 上统一比较，单样本 eval 只保留历史连续性。
+
+## 2026-05-07 FP32 three-model eval on energy-filtered 478 test set
+
+目的：
+
+- 单样本 eval 中 `paper5_energy_filtered` 看起来明显优于 `paper5_unfiltered`。
+- 本次用新的 `scrn_paper5_energy_filtered_test_478` 做固定退化网格评估，确认该趋势是否能在 478-patch test set 上成立。
+
+评估设置：
+
+- Models:
+  - `old10750_main`: `SCRN_BRECQ_app/scrn_repro/runs/train/20260425_192916_four_gpu_train_quant_10750_0/checkpoints/best.pth`
+  - `paper5_unfiltered`: `SCRN_BRECQ_app/scrn_repro/runs/train/20260507_170001_paper5_10750_ddp3_seed20260425/checkpoints/best.pth`
+  - `paper5_energy_filtered`: `SCRN_BRECQ_app/scrn_repro/runs/train/20260507_195614_paper5_energy_filtered_10750_ddp3_seed20260425/checkpoints/best.pth`
+- Test set:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_test_478`
+- Conditions:
+  - SNR settings: `-2,-1,1,5,10`
+  - missing rates: `0.02,0.08,0.18,0.28,0.38`
+  - `25` conditions per patch
+- Rows:
+  - `3 * 478 * 25 = 35850`
+- Eval run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/test_multi/20260507_215143_fp32_three_model_energy_filtered_test478_seed20260507`
+
+Overall metrics on `paper5_energy_filtered_478`:
+
+| model | rows | output SNR mean | output SNR median | output SSIM mean | output SSIM median | SNR gain mean |
+|---|---:|---:|---:|---:|---:|---:|
+| `old10750_main` | 11950 | 6.4933 | 6.2893 | 0.8183 | 0.8333 | 5.4355 |
+| `paper5_unfiltered` | 11950 | 7.9441 | 7.8208 | 0.8675 | 0.8924 | 6.8863 |
+| `paper5_energy_filtered` | 11950 | 6.7422 | 6.6473 | 0.8197 | 0.8441 | 5.6844 |
+
+Pairwise deltas:
+
+| comparison | SNR delta mean | SNR delta median | SSIM delta mean | SSIM delta median |
+|---|---:|---:|---:|---:|
+| `paper5_unfiltered - old10750_main` | +1.4508 | +1.7236 | +0.0492 | +0.0450 |
+| `paper5_energy_filtered - old10750_main` | +0.2489 | +0.5539 | +0.0014 | -0.0038 |
+| `paper5_energy_filtered - paper5_unfiltered` | -1.2019 | -1.1296 | -0.0478 | -0.0360 |
+
+By-source notes:
+
+- `paper5_energy_filtered` is strong on `Anisotropic` and `Kerry3D`:
+  - `Anisotropic` output SNR mean `9.0333`, SSIM mean `0.9354`
+  - `Kerry3D` output SNR mean `8.3129`, SSIM mean `0.8843`
+- But it is weak on `Shots0001`, which dominates the test set:
+  - `Shots0001` rows: `9675 / 11950`
+  - `paper5_energy_filtered` output SNR mean `6.2332`
+  - `old10750_main` output SNR mean `6.3752`
+  - `paper5_unfiltered` output SNR mean `7.4809`
+
+Interpretation:
+
+- 单样本 eval 的改善没有直接推广到 478-patch fixed-grid eval。
+- 在对应的 energy-filtered test set 上，`paper5_energy_filtered` 只小幅超过旧主 baseline，且 SSIM median 仍略低于旧主 baseline。
+- `paper5_unfiltered` 在该测试集上整体最好，主要因为它在占比最大的 `Shots0001` source 上优势明显。
+- 当前不能把 `paper5_energy_filtered` 直接定为新的 FP32 主 baseline；它更像是修复数据污染后的一个候选，需要进一步看完整 3-model x 3-testset 交叉评估。
+- 后续建议：
+  - 扩展正式 multi-eval preset，避免继续用 one-off script。
+  - 跑 `old10750_main / paper5_unfiltered / paper5_energy_filtered` x `legacy478 / paper5_478 / paper5_energy_filtered_478`。
+  - 重点检查 `Shots0001` source 的 train/test 分布和 energy filtering 是否改变了有效样本结构。

@@ -5288,3 +5288,49 @@ Interpretation for W4A8:
   - old `10750_0` training / legacy test
   - unfiltered paper5 diagnostic
   - energy-filtered paper5 calibration/test protocol
+
+## 2026-05-07 FP32 478-eval check before BRECQ: energy-filtered test set
+
+本次仍只评估 FP32 SCRN，不进入 BRECQ / W4A8。
+
+目的：
+
+- 单样本 eval 中 `paper5_energy_filtered` 优于 `paper5_unfiltered`，但后续量化不能依赖单样本口径。
+- 用 `scrn_paper5_energy_filtered_test_478` 做固定退化网格，先确认 FP32 baseline 排序。
+
+Eval run:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/test_multi/20260507_215143_fp32_three_model_energy_filtered_test478_seed20260507`
+- Rows:
+  - `3` models x `478` clean patches x `25` degradation conditions = `35850`
+- Test set:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_test_478`
+
+Overall on `paper5_energy_filtered_478`:
+
+| model | output SNR mean | output SNR median | output SSIM mean | output SSIM median |
+|---|---:|---:|---:|---:|
+| `old10750_main` | 6.4933 | 6.2893 | 0.8183 | 0.8333 |
+| `paper5_unfiltered` | 7.9441 | 7.8208 | 0.8675 | 0.8924 |
+| `paper5_energy_filtered` | 6.7422 | 6.6473 | 0.8197 | 0.8441 |
+
+Pairwise:
+
+- `paper5_unfiltered - old10750_main`:
+  - SNR mean / median: `+1.4508 / +1.7236`
+  - SSIM mean / median: `+0.0492 / +0.0450`
+- `paper5_energy_filtered - old10750_main`:
+  - SNR mean / median: `+0.2489 / +0.5539`
+  - SSIM mean / median: `+0.0014 / -0.0038`
+- `paper5_energy_filtered - paper5_unfiltered`:
+  - SNR mean / median: `-1.2019 / -1.1296`
+  - SSIM mean / median: `-0.0478 / -0.0360`
+
+Implication for quantization:
+
+- `paper5_energy_filtered` is not yet justified as the new main FP32 checkpoint for W4A8 experiments.
+- It only slightly improves SNR over `old10750_main` on the corresponding filtered test set, while `paper5_unfiltered` is still best overall on this test set.
+- The discrepancy between single-sample eval and 478-eval reinforces the current rule:
+  - single sample only for smoke / continuity
+  - 478-patch fixed-grid SNR/SSIM is the meaningful FP32 and W4A8 comparison口径
+- Before rerunning BRECQ, run the full 3-model x 3-testset FP32 comparison and inspect `Shots0001`, since it dominates `paper5_energy_filtered_478` and drives the current ranking.
