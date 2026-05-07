@@ -2832,3 +2832,11 @@ Run paths：
   - passed。
 - `conda run -n quant python -m SCRN_BRECQ_app.scrn_repro.cli.evaluate_scrn_multi --help`
   - passed。
+
+## 手动记录一下第一次的按原论文设定的数据集效果差主要原因
+
+“我刚看了 clean patch 的能量分布：旧 10750_0 训练集里没有 std <= 1e-3 的 patch；但新的 paper5_train_10750 里有 8400/10750 个 std <= 1e-3，其中 5715 个甚至 std <= 1e-6。这不是“少量低能量背景”，而是训练集主体被近空白 patch 占了。
+
+直接原因也找到了：paper_scrn_datasets.py 里虽然定义了 DEFAULT_MIN_STD = 1e-3，但生成训练集和测试集时默认传的是 min_std=None，也就是为了凑齐论文表格 count，实际关闭了低方差过滤。再加上每个 raw patch 会生成 original + 4 个增强，空白 patch 也被放大成 5 份”
+
+因此决定加上过滤再试一次
