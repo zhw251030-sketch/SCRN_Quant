@@ -2840,3 +2840,80 @@ Run paths：
 直接原因也找到了：paper_scrn_datasets.py 里虽然定义了 DEFAULT_MIN_STD = 1e-3，但生成训练集和测试集时默认传的是 min_std=None，也就是为了凑齐论文表格 count，实际关闭了低方差过滤。再加上每个 raw patch 会生成 original + 4 个增强，空白 patch 也被放大成 5 份”
 
 因此决定加上过滤再试一次
+
+## 2026-05-07 Paper5 energy-filtered dataset rebuild
+
+目的：
+
+- 保留旧 `scrn_paper5_*` unfiltered 数据集作为 diagnostic artifact，不覆盖、不删除。
+- 新建 `paper5_energy_filtered` 数据协议，完全过滤近零 / 无效 clean patch，同时保持 paper-style 5-source 数量口径：
+  - train: `10750`
+  - calibration: `1024`
+  - test: `478`
+
+实现：
+
+- 扩展 `SCRN_BRECQ_app/scrn_brecq/data/paper_scrn_datasets.py`：
+  - 新增 `EnergyFilter` / `DEFAULT_ENERGY_FILTER`。
+  - hard reject:
+    - `std <= 1e-3`
+    - `absmax <= 1e-3`
+    - non-finite patch
+    - all-zero / near-zero patch
+  - 新增 energy-filtered train/test builders。
+  - train 按 source 连续扫描 shot/window，先过滤，再固定 seed source-wise 精确抽样 raw patch，最后保存 original + 4 个增强。
+  - calibration 支持 `original_only=True`，只从 `augmentation_index=0` 的原始 train patch 抽样，避免同一 raw patch 的增强副本重复进入校准集。
+  - test 从 energy-filtered train 实际使用区域之后开始扫描，并继续做 train hash exact exclusion。
+- 扩展 `SCRN_BRECQ_app/scrn_brecq/cli/prepare_scrn_paper_datasets.py`：
+  - 新增 `--protocol paper5-energy-filtered`。
+  - 默认输出到新目录，不覆盖旧 `scrn_paper5_*`。
+
+输出数据集：
+
+- Train:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_train_10750`
+  - per-source counts: `300 / 3355 / 750 / 480 / 5865`
+  - scanned regions:
+    - `1997_2.5D_shots=42`
+    - `7m_shots_0201=5`
+    - `Anisotropic_FD_Model=7`
+    - `Kerry3D=5`
+    - `Shots0001_0200=15`
+  - low-energy rejected:
+    - `192 / 2573 / 357 / 384 / 4635`
+- Calibration:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_cali_1024_stratified`
+  - per-source counts: `28 / 320 / 71 / 46 / 559`
+  - all samples copied from original, non-augmented train patches。
+- Test:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_test_478`
+  - per-source counts: `Anisotropic=75, Kerry3D=16, Shots0001=387`
+  - test start boundaries:
+    - `Anisotropic`: shot index `7`
+    - `Kerry3D`: trace start `1435`
+    - `Shots0001`: shot index `15`
+  - low-energy rejected:
+    - `Anisotropic=204`
+    - `Kerry3D=3`
+    - `Shots0001=1545`
+
+生成与验证：
+
+- Generation command:
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.prepare_scrn_paper_datasets --protocol paper5-energy-filtered --mode all --seed 20260507 --overwrite`
+- Count / energy validation:
+  - train: `10750` files, `std <= 1e-3` count `0`, min std `0.0010023288`
+  - calibration: `1024` files, `std <= 1e-3` count `0`, min std `0.0010070483`
+  - test: `478` files, `std <= 1e-3` count `0`, min std `0.0010794682`
+- Unit / CLI checks:
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_paper_scrn_datasets -v`
+    - 15 tests OK。
+  - `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/data/paper_scrn_datasets.py SCRN_BRECQ_app/scrn_brecq/cli/prepare_scrn_paper_datasets.py`
+    - passed。
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.prepare_scrn_paper_datasets --help`
+    - passed。
+
+后续建议：
+
+- 旧 `scrn_paper5_*` 结果只作为 unfiltered diagnostic 参考。
+- 若继续比较 FP32 或 W4A8，应优先使用 `scrn_paper5_energy_filtered_*` 建立新 benchmark。

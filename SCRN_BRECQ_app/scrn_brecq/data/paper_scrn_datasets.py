@@ -62,6 +62,14 @@ class PaperPatch:
 
 
 @dataclass(frozen=True)
+class EnergyFilter:
+    """Hard rejection thresholds for near-zero clean patches."""
+
+    min_std: float = DEFAULT_MIN_STD
+    min_absmax: float = 1e-3
+
+
+@dataclass(frozen=True)
 class SelectedPaperCalibrationPatch:
     """A selected calibration patch from a paper-style training manifest."""
 
@@ -70,6 +78,7 @@ class SelectedPaperCalibrationPatch:
     path: Path
     sha256: str
     manifest_index: int
+    augmentation_index: int | None = None
 
 
 PAPER_TRAIN_SOURCES: tuple[PaperTrainSource, ...] = (
@@ -123,6 +132,7 @@ PAPER_TEST_SOURCES: tuple[PaperTestSource, ...] = (
 
 DEFAULT_TRAIN_QUOTAS = {source.name: source.final_patches for source in PAPER_TRAIN_SOURCES}
 DEFAULT_TEST_QUOTAS = {source.name: source.quota for source in PAPER_TEST_SOURCES}
+DEFAULT_ENERGY_FILTER = EnergyFilter()
 DEFAULT_CALIBRATION_QUOTAS = {
     "1997_2.5D_shots": 28,
     "7m_shots_0201": 320,
@@ -250,6 +260,47 @@ def extract_paper_patches_from_array(
     return patches
 
 
+def patch_passes_energy_filter(patch: np.ndarray, energy_filter: EnergyFilter = DEFAULT_ENERGY_FILTER) -> bool:
+    """Return whether a clean patch has enough finite signal energy to keep."""
+    array = np.asarray(patch, dtype=np.float32)
+    if array.size == 0 or not np.all(np.isfinite(array)):
+        return False
+    if float(np.max(np.abs(array))) <= float(energy_filter.min_absmax):
+        return False
+    if float(array.std()) <= float(energy_filter.min_std):
+        return False
+    return True
+
+
+def extract_energy_filtered_patches_from_array(
+    data: np.ndarray,
+    *,
+    patch_size: tuple[int, int] = DEFAULT_PATCH_SIZE,
+    stride: tuple[int, int] = DEFAULT_STRIDE,
+    energy_filter: EnergyFilter = DEFAULT_ENERGY_FILTER,
+) -> tuple[list[PaperPatch], int, int]:
+    """Extract clean patches and return `(kept, candidate_count, low_energy_rejected_count)`."""
+    source = np.asarray(data, dtype=np.float32)
+    if source.ndim != 2:
+        raise ValueError(f"data must be 2D, got shape {source.shape}")
+    patch_h, patch_w = int(patch_size[0]), int(patch_size[1])
+    stride_h, stride_w = int(stride[0]), int(stride[1])
+    patches: list[PaperPatch] = []
+    candidate_count = 0
+    rejected_count = 0
+    for top in range(0, source.shape[0] - patch_h + 1, stride_h):
+        for left in range(0, source.shape[1] - patch_w + 1, stride_w):
+            patch = np.ascontiguousarray(source[top : top + patch_h, left : left + patch_w], dtype=np.float32)
+            if patch.shape != (patch_h, patch_w):
+                continue
+            candidate_count += 1
+            if not patch_passes_energy_filter(patch, energy_filter):
+                rejected_count += 1
+                continue
+            patches.append(PaperPatch(data=patch, top=top, left=left, sha256=sha256_array(patch)))
+    return patches, candidate_count, rejected_count
+
+
 def prepare_train_dataset_from_arrays(
     source_matrices: Mapping[str, Sequence[np.ndarray] | np.ndarray],
     output_dir: str | Path,
@@ -371,6 +422,142 @@ def prepare_train_dataset_from_arrays(
     return manifest
 
 
+def prepare_energy_filtered_train_dataset_from_arrays(
+    source_matrices: Mapping[str, Sequence[np.ndarray] | np.ndarray],
+    output_dir: str | Path,
+    *,
+    sources: Sequence[PaperTrainSource] = PAPER_TRAIN_SOURCES,
+    source_overrides: Mapping[str, Mapping[str, int]] | None = None,
+    quotas: Mapping[str, int] | None = None,
+    patch_size: tuple[int, int] = DEFAULT_PATCH_SIZE,
+    stride: tuple[int, int] = DEFAULT_STRIDE,
+    energy_filter: EnergyFilter = DEFAULT_ENERGY_FILTER,
+    augment_times: int = DEFAULT_AUGMENT_TIMES,
+    seed: int = DEFAULT_SEED,
+    dry_run: bool = False,
+    overwrite: bool = False,
+) -> dict:
+    """Write the energy-filtered paper-style 5-source training clean patch directory."""
+    overrides = source_overrides or {}
+    final_quotas = dict(DEFAULT_TRAIN_QUOTAS if quotas is None else quotas)
+    rng = np.random.default_rng(int(seed))
+    selected_items: list[tuple[PaperTrainSource, int, PaperPatch, int, int, np.ndarray]] = []
+    per_source_counts: dict[str, int] = {}
+    per_source_selected_raw_counts: dict[str, int] = {}
+    per_source_candidate_counts: dict[str, int] = {}
+    per_source_low_energy_rejected: dict[str, int] = {}
+    per_source_region_counts: dict[str, int] = {}
+
+    for source in sources:
+        if source.name not in final_quotas:
+            continue
+        if source.name not in source_matrices:
+            raise ValueError(f"Missing source matrix for {source.name}")
+        final_quota = int(final_quotas[source.name])
+        raw_target = _raw_target_from_final_quota(final_quota, augment_times, source.name)
+        matrices = _select_energy_source_matrices_from_array(
+            source_matrices[source.name],
+            source,
+            override=overrides.get(source.name, {}),
+            normalize=True,
+        )
+        candidates: list[tuple[int, PaperPatch]] = []
+        candidate_count = 0
+        rejected_count = 0
+        scanned_regions = 0
+        for region_index, matrix in enumerate(matrices):
+            scanned_regions += 1
+            region_patches, region_candidates, region_rejected = extract_energy_filtered_patches_from_array(
+                matrix,
+                patch_size=patch_size,
+                stride=stride,
+                energy_filter=energy_filter,
+            )
+            candidate_count += region_candidates
+            rejected_count += region_rejected
+            candidates.extend((region_index, patch) for patch in region_patches)
+            if len(candidates) >= raw_target:
+                break
+        if len(candidates) < raw_target:
+            raise ValueError(
+                f"{source.name} has not enough energy-filtered raw patches: need {raw_target}, got {len(candidates)}."
+            )
+        if len(candidates) > raw_target:
+            positions = rng.choice(len(candidates), size=raw_target, replace=False)
+            candidates = [candidates[int(position)] for position in positions]
+        candidates = sorted(candidates, key=lambda item: (item[0], item[1].top, item[1].left))
+
+        for region_index, raw_patch in candidates:
+            for augmentation_index, (mode, augmented) in enumerate(
+                _apply_augmentation_with_modes(raw_patch.data, augment_times=augment_times, rng=rng)
+            ):
+                selected_items.append((source, region_index, raw_patch, augmentation_index, mode, augmented))
+        per_source_counts[source.name] = final_quota
+        per_source_selected_raw_counts[source.name] = raw_target
+        per_source_candidate_counts[source.name] = candidate_count
+        per_source_low_energy_rejected[source.name] = rejected_count
+        per_source_region_counts[source.name] = scanned_regions
+
+    manifest = _base_manifest(
+        dataset_type="paper_style_energy_filtered_train",
+        seed=seed,
+        sample_count=len(selected_items),
+        quotas=final_quotas,
+    )
+    manifest.update(
+        {
+            "source_protocol": "paper_style_table2_5_available_sources_energy_filtered",
+            "patch_size": list(patch_size),
+            "stride": list(stride),
+            "energy_filter": _energy_filter_dict(energy_filter),
+            "augment_times": int(augment_times),
+            "normalization": "absmax_after_region_crop",
+            "per_source_candidate_counts": per_source_candidate_counts,
+            "per_source_low_energy_rejected_counts": per_source_low_energy_rejected,
+            "per_source_region_counts": per_source_region_counts,
+            "per_source_selected_raw_patch_counts": per_source_selected_raw_counts,
+            "paper_table_sources": [_train_source_dict(source) for source in sources],
+            "samples": [
+                {
+                    "output_file": f"train_{index:06d}.npy",
+                    "source": source.name,
+                    "source_file": source.filename,
+                    "region_index": int(region_index),
+                    "top": int(raw_patch.top),
+                    "left": int(raw_patch.left),
+                    "augmentation_index": int(augmentation_index),
+                    "augmentation_mode": int(mode),
+                    "raw_sha256": raw_patch.sha256,
+                    "sha256": sha256_array(augmented),
+                }
+                for index, (source, region_index, raw_patch, augmentation_index, mode, augmented) in enumerate(
+                    selected_items,
+                    start=1,
+                )
+            ],
+        }
+    )
+
+    if dry_run:
+        return manifest
+
+    output = _prepare_output_dir(output_dir, overwrite=overwrite)
+    for index, (_, _, _, _, _, augmented) in enumerate(selected_items, start=1):
+        np.save(output / f"train_{index:06d}.npy", np.asarray(augmented, dtype=np.float32))
+    _write_json(output / "manifest.json", manifest)
+    _write_readme(
+        output / "README.md",
+        title="SCRN Paper-Style 5-Source Energy-Filtered 10750 Training Clean Patches",
+        body=(
+            "This directory follows a deterministic paper-style protocol for the five locally "
+            "available SCRN Table 2 training sources, with near-zero clean patches hard-filtered "
+            "before seeded source-wise selection and augmentation."
+        ),
+        manifest=manifest,
+    )
+    return manifest
+
+
 def prepare_train_dataset_from_segy_dir(
     segy_dir: str | Path,
     output_dir: str | Path,
@@ -416,12 +603,59 @@ def prepare_train_dataset_from_segy_dir(
     return manifest
 
 
+def prepare_energy_filtered_train_dataset_from_segy_dir(
+    segy_dir: str | Path,
+    output_dir: str | Path,
+    *,
+    energy_filter: EnergyFilter = DEFAULT_ENERGY_FILTER,
+    seed: int = DEFAULT_SEED,
+    dry_run: bool = False,
+    overwrite: bool = False,
+) -> dict:
+    """Prepare the energy-filtered paper-style training dataset from local SEG-Y files."""
+    root = Path(segy_dir)
+    matrices: dict[str, Sequence[np.ndarray] | np.ndarray] = {}
+    for source in PAPER_TRAIN_SOURCES:
+        path = root / source.filename
+        if not path.exists():
+            raise FileNotFoundError(f"SEG-Y source for {source.name} does not exist: {path}")
+        raw_target = _raw_target_from_final_quota(source.final_patches, DEFAULT_AUGMENT_TIMES, source.name)
+        if source.kind == "shot_gather":
+            matrices[source.name] = read_consecutive_train_shots_for_raw_quota(
+                path,
+                source=source,
+                raw_quota=raw_target,
+                energy_filter=energy_filter,
+            )
+        else:
+            matrices[source.name] = read_consecutive_train_matrix_windows_for_raw_quota(
+                path,
+                source=source,
+                raw_quota=raw_target,
+                energy_filter=energy_filter,
+            )
+
+    manifest = prepare_energy_filtered_train_dataset_from_arrays(
+        matrices,
+        output_dir,
+        energy_filter=energy_filter,
+        seed=seed,
+        dry_run=dry_run,
+        overwrite=overwrite,
+    )
+    manifest["raw_segy_dir"] = str(root)
+    if not dry_run:
+        _write_json(Path(output_dir) / "manifest.json", manifest)
+    return manifest
+
+
 def select_stratified_calibration_from_manifest(
     train_manifest: Mapping,
     train_dir: str | Path,
     *,
     quotas: Mapping[str, int] | None = None,
     seed: int = DEFAULT_SEED,
+    original_only: bool = False,
 ) -> list[SelectedPaperCalibrationPatch]:
     """Select calibration patches by source from a paper-style training manifest."""
     selected_quotas = dict(DEFAULT_CALIBRATION_QUOTAS if quotas is None else quotas)
@@ -432,6 +666,9 @@ def select_stratified_calibration_from_manifest(
         source = str(sample.get("source", ""))
         if source not in grouped:
             continue
+        augmentation_index = sample.get("augmentation_index")
+        if original_only and int(augmentation_index if augmentation_index is not None else 0) != 0:
+            continue
         train_file = str(sample["output_file"])
         grouped[source].append(
             SelectedPaperCalibrationPatch(
@@ -440,6 +677,7 @@ def select_stratified_calibration_from_manifest(
                 path=root / train_file,
                 sha256=str(sample.get("sha256", "")),
                 manifest_index=manifest_index,
+                augmentation_index=None if augmentation_index is None else int(augmentation_index),
             )
         )
 
@@ -468,13 +706,20 @@ def prepare_calibration_dataset(
     train_manifest: Mapping | str | Path | None = None,
     quotas: Mapping[str, int] | None = None,
     seed: int = DEFAULT_SEED,
+    original_only: bool = False,
     dry_run: bool = False,
     overwrite: bool = False,
 ) -> dict:
     """Write a paper-style stratified calibration clean patch directory."""
     root = Path(train_dir)
     manifest_data = _load_manifest(train_manifest if train_manifest is not None else root / "manifest.json")
-    selected = select_stratified_calibration_from_manifest(manifest_data, root, quotas=quotas, seed=seed)
+    selected = select_stratified_calibration_from_manifest(
+        manifest_data,
+        root,
+        quotas=quotas,
+        seed=seed,
+        original_only=original_only,
+    )
     selected_quotas = dict(DEFAULT_CALIBRATION_QUOTAS if quotas is None else quotas)
     manifest = _base_manifest(
         dataset_type="paper_style_calibration",
@@ -486,18 +731,28 @@ def prepare_calibration_dataset(
         {
             "input_train_dir": str(root),
             "source_protocol": "paper_style_train_manifest_stratified_sampling",
+            "original_only": bool(original_only),
             "samples": [
                 {
                     "output_file": f"cali_{index:06d}.npy",
                     "source": item.source,
                     "train_file": item.train_file,
                     "train_manifest_index": int(item.manifest_index),
+                    "augmentation_index": item.augmentation_index,
                     "sha256": item.sha256 or sha256_npy_array(item.path),
                 }
                 for index, item in enumerate(selected, start=1)
             ],
         }
     )
+    if "energy_filter" in manifest_data:
+        manifest["energy_filter"] = manifest_data["energy_filter"]
+        manifest["input_train_source_protocol"] = manifest_data.get("source_protocol")
+        manifest["input_train_per_source_candidate_counts"] = manifest_data.get("per_source_candidate_counts")
+        manifest["input_train_per_source_region_counts"] = manifest_data.get("per_source_region_counts")
+        manifest["input_train_per_source_low_energy_rejected_counts"] = manifest_data.get(
+            "per_source_low_energy_rejected_counts"
+        )
 
     if dry_run:
         return manifest
@@ -630,6 +885,125 @@ def prepare_test_dataset_from_arrays(
     return manifest
 
 
+def prepare_energy_filtered_test_dataset_from_arrays(
+    source_matrices: Mapping[str, Sequence[np.ndarray] | np.ndarray],
+    output_dir: str | Path,
+    *,
+    quotas: Mapping[str, int] | None = None,
+    train_hashes: set[str] | None = None,
+    patch_size: tuple[int, int] = DEFAULT_PATCH_SIZE,
+    stride: tuple[int, int] = DEFAULT_STRIDE,
+    energy_filter: EnergyFilter = DEFAULT_ENERGY_FILTER,
+    seed: int = DEFAULT_SEED,
+    dry_run: bool = False,
+    overwrite: bool = False,
+) -> dict:
+    """Write the energy-filtered paper-style 478 clean test patch directory."""
+    selected_quotas = dict(DEFAULT_TEST_QUOTAS if quotas is None else quotas)
+    excluded_hashes = train_hashes or set()
+    rng = np.random.default_rng(int(seed))
+    selected_items: list[tuple[str, int, PaperPatch]] = []
+    per_source_counts: dict[str, int] = {}
+    per_source_candidates: dict[str, int] = {}
+    per_source_low_energy_rejected: dict[str, int] = {}
+    per_source_excluded: dict[str, int] = {}
+    per_source_regions: dict[str, int] = {}
+
+    for source_name in _ordered_test_sources(selected_quotas):
+        if source_name not in source_matrices:
+            raise ValueError(f"Missing test source matrix for {source_name}")
+        quota = int(selected_quotas[source_name])
+        kept: list[tuple[int, PaperPatch]] = []
+        candidate_count = 0
+        rejected_count = 0
+        excluded_count = 0
+        region_matrices = _as_region_matrices(source_matrices[source_name])
+        scanned_regions = 0
+        for region_index, matrix in enumerate(region_matrices):
+            scanned_regions += 1
+            region_patches, region_candidates, region_rejected = extract_energy_filtered_patches_from_array(
+                matrix,
+                patch_size=patch_size,
+                stride=stride,
+                energy_filter=energy_filter,
+            )
+            candidate_count += region_candidates
+            rejected_count += region_rejected
+            for patch in region_patches:
+                if patch.sha256 in excluded_hashes:
+                    excluded_count += 1
+                    continue
+                kept.append((region_index, patch))
+            if len(kept) >= quota:
+                break
+        if len(kept) < quota:
+            raise ValueError(
+                f"{source_name} has not enough energy-filtered candidate patches after filtering: "
+                f"need {quota}, got {len(kept)}."
+            )
+        if len(kept) > quota:
+            positions = rng.choice(len(kept), size=quota, replace=False)
+            kept = [kept[int(position)] for position in positions]
+        kept = sorted(kept, key=lambda item: (item[0], item[1].top, item[1].left))
+        selected_items.extend((source_name, region_index, patch) for region_index, patch in kept)
+        per_source_counts[source_name] = quota
+        per_source_candidates[source_name] = candidate_count
+        per_source_low_energy_rejected[source_name] = rejected_count
+        per_source_excluded[source_name] = excluded_count
+        per_source_regions[source_name] = scanned_regions
+
+    manifest = _base_manifest(
+        dataset_type="paper_style_energy_filtered_test",
+        seed=seed,
+        sample_count=len(selected_items),
+        quotas=selected_quotas,
+    )
+    manifest.update(
+        {
+            "source_protocol": "paper_style_table3_non_overlapping_regions_energy_filtered_without_augmentation",
+            "patch_size": list(patch_size),
+            "stride": list(stride),
+            "energy_filter": _energy_filter_dict(energy_filter),
+            "per_source_candidate_counts": per_source_candidates,
+            "per_source_low_energy_rejected_counts": per_source_low_energy_rejected,
+            "per_source_training_hash_excluded_counts": per_source_excluded,
+            "per_source_region_counts": per_source_regions,
+            "training_hash_excluded_count": int(sum(per_source_excluded.values())),
+            "samples": [
+                {
+                    "output_file": f"test_{index:06d}.npy",
+                    "source": source_name,
+                    "source_file": _test_source_filename(source_name),
+                    "region_index": int(region_index),
+                    "top": int(patch.top),
+                    "left": int(patch.left),
+                    "sha256": patch.sha256,
+                }
+                for index, (source_name, region_index, patch) in enumerate(selected_items, start=1)
+            ],
+        }
+    )
+
+    if dry_run:
+        return manifest
+
+    output = _prepare_output_dir(output_dir, overwrite=overwrite)
+    for index, (_, _, patch) in enumerate(selected_items, start=1):
+        np.save(output / f"test_{index:06d}.npy", np.asarray(patch.data, dtype=np.float32))
+    _write_json(output / "manifest.json", manifest)
+    _write_readme(
+        output / "README.md",
+        title="SCRN Paper-Style Energy-Filtered 478 Clean Test Patches",
+        body=(
+            "This directory uses deterministic post-training source regions for the three locally "
+            "available SCRN Table 3 test sources, with near-zero clean patches hard-filtered and no "
+            "test augmentation."
+        ),
+        manifest=manifest,
+    )
+    return manifest
+
+
 def prepare_test_dataset_from_segy_dir(
     segy_dir: str | Path,
     output_dir: str | Path,
@@ -672,6 +1046,89 @@ def prepare_test_dataset_from_segy_dir(
     manifest["paper_test_sources"] = [_test_source_dict(source) for source in PAPER_TEST_SOURCES]
     if not dry_run:
         _write_json(Path(output_dir) / "manifest.json", manifest)
+        _write_readme(
+            Path(output_dir) / "README.md",
+            title="SCRN Paper-Style 478 Clean Test Patches",
+            body=(
+                "This directory uses deterministic non-overlapping regions for the three locally "
+                "available SCRN Table 3 test sources. Test patches are not augmented."
+            ),
+            manifest=manifest,
+        )
+    return manifest
+
+
+def prepare_energy_filtered_test_dataset_from_segy_dir(
+    segy_dir: str | Path,
+    output_dir: str | Path,
+    *,
+    train_manifest: Mapping | str | Path,
+    train_hashes: set[str] | None = None,
+    energy_filter: EnergyFilter = DEFAULT_ENERGY_FILTER,
+    seed: int = DEFAULT_SEED,
+    dry_run: bool = False,
+    overwrite: bool = False,
+) -> dict:
+    """Prepare the energy-filtered paper-style test dataset from local SEG-Y files."""
+    root = Path(segy_dir)
+    manifest_data = _load_manifest(train_manifest)
+    train_region_counts = {
+        str(name): int(count) for name, count in manifest_data.get("per_source_region_counts", {}).items()
+    }
+    matrices: dict[str, Sequence[np.ndarray] | np.ndarray] = {}
+    excluded_hashes = train_hashes or set()
+    test_start_boundaries: dict[str, int] = {}
+    for source in PAPER_TEST_SOURCES:
+        path = root / source.filename
+        if not path.exists():
+            raise FileNotFoundError(f"SEG-Y source for {source.name} does not exist: {path}")
+        train_regions = int(train_region_counts.get(source.train_source_name, 0))
+        if source.kind == "shot_gather":
+            test_start_boundaries[source.name] = train_regions
+            matrices[source.name] = read_consecutive_test_shots_for_quota(
+                path,
+                source=source,
+                train_hashes=excluded_hashes,
+                start_shot_index=train_regions,
+                energy_filter=energy_filter,
+            )
+        else:
+            train_source = _train_source_by_name(source.train_source_name)
+            trace_start = train_regions * int(train_source.traces)
+            test_start_boundaries[source.name] = trace_start
+            matrices[source.name] = read_consecutive_matrix_windows_for_quota(
+                path,
+                source=source,
+                train_hashes=excluded_hashes,
+                trace_start=trace_start,
+                energy_filter=energy_filter,
+            )
+
+    manifest = prepare_energy_filtered_test_dataset_from_arrays(
+        matrices,
+        output_dir,
+        train_hashes=excluded_hashes,
+        energy_filter=energy_filter,
+        seed=seed,
+        dry_run=dry_run,
+        overwrite=overwrite,
+    )
+    manifest["raw_segy_dir"] = str(root)
+    manifest["paper_test_sources"] = [_test_source_dict(source) for source in PAPER_TEST_SOURCES]
+    manifest["test_start_boundaries"] = test_start_boundaries
+    manifest["input_train_manifest"] = str(train_manifest) if not isinstance(train_manifest, Mapping) else "<in-memory>"
+    if not dry_run:
+        _write_json(Path(output_dir) / "manifest.json", manifest)
+        _write_readme(
+            Path(output_dir) / "README.md",
+            title="SCRN Paper-Style Energy-Filtered 478 Clean Test Patches",
+            body=(
+                "This directory uses deterministic post-training source regions for the three locally "
+                "available SCRN Table 3 test sources, with near-zero clean patches hard-filtered and no "
+                "test augmentation."
+            ),
+            manifest=manifest,
+        )
     return manifest
 
 
@@ -680,15 +1137,17 @@ def read_consecutive_test_shots_for_quota(
     *,
     source: PaperTestSource,
     train_hashes: set[str] | None = None,
+    start_shot_index: int | None = None,
     patch_size: tuple[int, int] = DEFAULT_PATCH_SIZE,
     stride: tuple[int, int] = DEFAULT_STRIDE,
     min_std: float | None = None,
+    energy_filter: EnergyFilter | None = None,
 ) -> list[np.ndarray]:
     """Read consecutive post-training shots until hash-filtered candidates meet the quota."""
     excluded_hashes = train_hashes or set()
     selected: list[np.ndarray] = []
     kept_count = 0
-    shot_index = int(source.train_shots_before_test)
+    shot_index = int(source.train_shots_before_test if start_shot_index is None else start_shot_index)
     while kept_count < int(source.quota):
         shot = read_shot_matrices_from_segy(
             path,
@@ -698,7 +1157,16 @@ def read_consecutive_test_shots_for_quota(
             normalize=True,
         )[0]
         selected.append(shot)
-        for patch in extract_paper_patches_from_array(shot, patch_size=patch_size, stride=stride, min_std=min_std):
+        if energy_filter is None:
+            patches = extract_paper_patches_from_array(shot, patch_size=patch_size, stride=stride, min_std=min_std)
+        else:
+            patches, _, _ = extract_energy_filtered_patches_from_array(
+                shot,
+                patch_size=patch_size,
+                stride=stride,
+                energy_filter=energy_filter,
+            )
+        for patch in patches:
             if patch.sha256 not in excluded_hashes:
                 kept_count += 1
         shot_index += 1
@@ -710,16 +1178,89 @@ def read_consecutive_matrix_windows_for_quota(
     *,
     source: PaperTestSource,
     train_hashes: set[str] | None = None,
+    trace_start: int | None = None,
     patch_size: tuple[int, int] = DEFAULT_PATCH_SIZE,
     stride: tuple[int, int] = DEFAULT_STRIDE,
     min_std: float | None = None,
+    energy_filter: EnergyFilter | None = None,
 ) -> list[np.ndarray]:
     """Read consecutive trace windows until hash-filtered candidates meet the quota."""
     excluded_hashes = train_hashes or set()
     selected: list[np.ndarray] = []
     kept_count = 0
-    trace_start = int(source.trace_start)
+    next_trace_start = int(source.trace_start if trace_start is None else trace_start)
     while kept_count < int(source.quota):
+        matrix = read_matrix_window_from_segy(
+            path,
+            samples=source.samples,
+            traces=source.traces,
+            trace_start=next_trace_start,
+            normalize=True,
+        )
+        selected.append(matrix)
+        if energy_filter is None:
+            patches = extract_paper_patches_from_array(matrix, patch_size=patch_size, stride=stride, min_std=min_std)
+        else:
+            patches, _, _ = extract_energy_filtered_patches_from_array(
+                matrix,
+                patch_size=patch_size,
+                stride=stride,
+                energy_filter=energy_filter,
+            )
+        for patch in patches:
+            if patch.sha256 not in excluded_hashes:
+                kept_count += 1
+        next_trace_start += int(source.traces)
+    return selected
+
+
+def read_consecutive_train_shots_for_raw_quota(
+    path: str | Path,
+    *,
+    source: PaperTrainSource,
+    raw_quota: int,
+    patch_size: tuple[int, int] = DEFAULT_PATCH_SIZE,
+    stride: tuple[int, int] = DEFAULT_STRIDE,
+    energy_filter: EnergyFilter = DEFAULT_ENERGY_FILTER,
+) -> list[np.ndarray]:
+    """Read consecutive training shots until energy-filtered raw candidates meet the quota."""
+    selected: list[np.ndarray] = []
+    kept_count = 0
+    shot_index = 0
+    while kept_count < int(raw_quota):
+        shot = read_shot_matrices_from_segy(
+            path,
+            shot_indices=[shot_index],
+            samples=source.samples,
+            traces=source.traces,
+            normalize=True,
+        )[0]
+        selected.append(shot)
+        patches, _, _ = extract_energy_filtered_patches_from_array(
+            shot,
+            patch_size=patch_size,
+            stride=stride,
+            energy_filter=energy_filter,
+        )
+        kept_count += len(patches)
+        shot_index += 1
+    return selected
+
+
+def read_consecutive_train_matrix_windows_for_raw_quota(
+    path: str | Path,
+    *,
+    source: PaperTrainSource,
+    raw_quota: int,
+    patch_size: tuple[int, int] = DEFAULT_PATCH_SIZE,
+    stride: tuple[int, int] = DEFAULT_STRIDE,
+    energy_filter: EnergyFilter = DEFAULT_ENERGY_FILTER,
+) -> list[np.ndarray]:
+    """Read consecutive training trace windows until energy-filtered raw candidates meet the quota."""
+    selected: list[np.ndarray] = []
+    kept_count = 0
+    trace_start = 0
+    while kept_count < int(raw_quota):
         matrix = read_matrix_window_from_segy(
             path,
             samples=source.samples,
@@ -728,9 +1269,13 @@ def read_consecutive_matrix_windows_for_quota(
             normalize=True,
         )
         selected.append(matrix)
-        for patch in extract_paper_patches_from_array(matrix, patch_size=patch_size, stride=stride, min_std=min_std):
-            if patch.sha256 not in excluded_hashes:
-                kept_count += 1
+        patches, _, _ = extract_energy_filtered_patches_from_array(
+            matrix,
+            patch_size=patch_size,
+            stride=stride,
+            energy_filter=energy_filter,
+        )
+        kept_count += len(patches)
         trace_start += int(source.traces)
     return selected
 
@@ -901,6 +1446,71 @@ def _test_source_filename(source_name: str) -> str:
     return ""
 
 
+def _train_source_by_name(source_name: str) -> PaperTrainSource:
+    for source in PAPER_TRAIN_SOURCES:
+        if source.name == source_name:
+            return source
+    raise KeyError(f"Unknown paper train source: {source_name}")
+
+
+def _raw_target_from_final_quota(final_quota: int, augment_times: int, source_name: str) -> int:
+    factor = int(augment_times) + 1
+    if factor <= 0:
+        raise ValueError("augment_times must be >= 0")
+    if int(final_quota) % factor != 0:
+        raise ValueError(
+            f"{source_name} final quota {final_quota} is not divisible by augmentation factor {factor}."
+        )
+    return int(final_quota) // factor
+
+
+def _energy_filter_dict(energy_filter: EnergyFilter) -> dict:
+    return {
+        "min_std": float(energy_filter.min_std),
+        "min_absmax": float(energy_filter.min_absmax),
+        "reject_non_finite": True,
+        "reject_all_zero": True,
+    }
+
+
+def _select_energy_source_matrices_from_array(
+    source_data: Sequence[np.ndarray] | np.ndarray,
+    source: PaperTrainSource | PaperTestSource,
+    *,
+    override: Mapping[str, int] | None = None,
+    normalize: bool = True,
+) -> list[np.ndarray]:
+    override = override or {}
+    sample_count = int(override.get("samples", source.samples))
+    trace_count = int(override.get("traces", source.traces))
+    trace_start = int(override.get("trace_start", getattr(source, "trace_start", 0)))
+
+    if source.kind == "shot_gather":
+        matrices = _as_region_matrices(source_data)
+        return [
+            _crop_and_normalize(matrix, sample_count, trace_count, trace_start=0, normalize=normalize)
+            for matrix in matrices
+        ]
+
+    if source.kind == "full_matrix":
+        if isinstance(source_data, np.ndarray) and source_data.ndim == 2:
+            return [
+                _crop_and_normalize(
+                    source_data,
+                    sample_count,
+                    trace_count,
+                    trace_start=trace_start,
+                    normalize=normalize,
+                )
+            ]
+        return [
+            _crop_and_normalize(matrix, sample_count, trace_count, trace_start=0, normalize=normalize)
+            for matrix in _as_region_matrices(source_data)
+        ]
+
+    raise ValueError(f"Unsupported source kind for {source.name}: {source.kind}")
+
+
 def _train_source_dict(source: PaperTrainSource) -> dict:
     raw_count, final_count = compute_source_patch_counts(source)
     return {
@@ -980,4 +1590,48 @@ def _write_readme(path: Path, *, title: str, body: str, manifest: Mapping) -> No
     ]
     for source, count in manifest.get("per_source_counts", {}).items():
         lines.append(f"- `{source}`: `{count}`")
+    if "energy_filter" in manifest:
+        energy_filter = manifest["energy_filter"]
+        lines.extend(
+            [
+                "",
+                "## Energy Filter",
+                "",
+                f"- Minimum patch std: `{energy_filter['min_std']}`",
+                f"- Minimum patch absmax: `{energy_filter['min_absmax']}`",
+                "- Non-finite patches: rejected",
+                "- All-zero / near-zero patches: rejected",
+                "",
+                "## Filtering Statistics",
+                "",
+            ]
+        )
+        for source in manifest.get("per_source_counts", {}):
+            candidates = (
+                manifest.get("per_source_candidate_counts", {}).get(source)
+                if manifest.get("per_source_candidate_counts")
+                else manifest.get("input_train_per_source_candidate_counts", {}).get(source, 0)
+            )
+            rejected = (
+                manifest.get("per_source_low_energy_rejected_counts", {}).get(source)
+                if manifest.get("per_source_low_energy_rejected_counts")
+                else manifest.get("input_train_per_source_low_energy_rejected_counts", {}).get(source, 0)
+            )
+            regions = (
+                manifest.get("per_source_region_counts", {}).get(source)
+                if manifest.get("per_source_region_counts")
+                else manifest.get("input_train_per_source_region_counts", {}).get(source, 0)
+            )
+            raw_selected = manifest.get("per_source_selected_raw_patch_counts", {}).get(source)
+            excluded = manifest.get("per_source_training_hash_excluded_counts", {}).get(source)
+            stats = f"- `{source}`: scanned_regions=`{regions}`, candidates=`{candidates}`, low_energy_rejected=`{rejected}`"
+            if raw_selected is not None:
+                stats += f", selected_raw=`{raw_selected}`"
+            if excluded is not None:
+                stats += f", train_hash_excluded=`{excluded}`"
+            lines.append(stats)
+    if "test_start_boundaries" in manifest:
+        lines.extend(["", "## Train/Test Boundaries", ""])
+        for source, boundary in manifest["test_start_boundaries"].items():
+            lines.append(f"- `{source}` starts after training boundary `{boundary}`")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

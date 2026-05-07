@@ -7,11 +7,15 @@ import numpy as np
 
 from SCRN_BRECQ_app.scrn_brecq.data.paper_scrn_datasets import (
     DEFAULT_CALIBRATION_QUOTAS,
+    DEFAULT_ENERGY_FILTER,
     PAPER_TRAIN_SOURCES,
     apply_augmentation,
     compute_source_patch_counts,
     extract_paper_patches_from_array,
+    patch_passes_energy_filter,
     prepare_calibration_dataset,
+    prepare_energy_filtered_test_dataset_from_arrays,
+    prepare_energy_filtered_train_dataset_from_arrays,
     prepare_test_dataset_from_arrays,
     prepare_train_dataset_from_arrays,
     select_source_matrices_from_array,
@@ -264,6 +268,131 @@ class PaperScrnDatasetsTest(unittest.TestCase):
         self.assertEqual(manifest["sample_count"], 1)
         self.assertEqual(manifest["training_hash_excluded_count"], 1)
         self.assertEqual(manifest["samples"][0]["region_index"], 1)
+
+    def test_energy_filter_rejects_near_zero_and_invalid_patches(self) -> None:
+        valid = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ],
+            dtype=np.float32,
+        )
+        zero = np.zeros((3, 3), dtype=np.float32)
+        low_std = np.full((3, 3), 0.5, dtype=np.float32)
+        low_absmax = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 5e-4],
+            ],
+            dtype=np.float32,
+        )
+        non_finite = valid.copy()
+        non_finite[0, 0] = np.nan
+
+        self.assertTrue(patch_passes_energy_filter(valid, DEFAULT_ENERGY_FILTER))
+        self.assertFalse(patch_passes_energy_filter(zero, DEFAULT_ENERGY_FILTER))
+        self.assertFalse(patch_passes_energy_filter(low_std, DEFAULT_ENERGY_FILTER))
+        self.assertFalse(patch_passes_energy_filter(low_absmax, DEFAULT_ENERGY_FILTER))
+        self.assertFalse(patch_passes_energy_filter(non_finite, DEFAULT_ENERGY_FILTER))
+
+    def test_energy_filtered_train_scans_regions_and_records_filter_stats(self) -> None:
+        output_dir = self.tmp_root / "energy_train"
+        source = next(item for item in PAPER_TRAIN_SOURCES if item.name == "1997_2.5D_shots")
+        empty = np.zeros((3, 3), dtype=np.float32)
+        valid_a = np.eye(3, dtype=np.float32)
+        valid_b = np.fliplr(valid_a)
+
+        manifest = prepare_energy_filtered_train_dataset_from_arrays(
+            {"1997_2.5D_shots": [empty, valid_a, valid_b]},
+            output_dir,
+            sources=[source],
+            source_overrides={"1997_2.5D_shots": {"samples": 3, "traces": 3}},
+            quotas={"1997_2.5D_shots": 4},
+            patch_size=(3, 3),
+            stride=(3, 3),
+            augment_times=1,
+            seed=11,
+        )
+
+        self.assertEqual(manifest["sample_count"], 4)
+        self.assertEqual(manifest["per_source_counts"], {"1997_2.5D_shots": 4})
+        self.assertEqual(manifest["per_source_selected_raw_patch_counts"], {"1997_2.5D_shots": 2})
+        self.assertEqual(manifest["per_source_region_counts"], {"1997_2.5D_shots": 3})
+        self.assertEqual(manifest["per_source_low_energy_rejected_counts"], {"1997_2.5D_shots": 1})
+        self.assertEqual(manifest["samples"][0]["augmentation_index"], 0)
+        self.assertEqual(manifest["samples"][1]["augmentation_index"], 1)
+        self.assertEqual(len(list(output_dir.glob("*.npy"))), 4)
+
+    def test_energy_filtered_calibration_samples_original_train_patches_only(self) -> None:
+        train_dir = self.tmp_root / "energy_train_for_cali"
+        source = next(item for item in PAPER_TRAIN_SOURCES if item.name == "1997_2.5D_shots")
+        valid_a = np.eye(3, dtype=np.float32)
+        valid_b = np.fliplr(valid_a)
+        train_manifest = prepare_energy_filtered_train_dataset_from_arrays(
+            {"1997_2.5D_shots": [valid_a, valid_b]},
+            train_dir,
+            sources=[source],
+            source_overrides={"1997_2.5D_shots": {"samples": 3, "traces": 3}},
+            quotas={"1997_2.5D_shots": 4},
+            patch_size=(3, 3),
+            stride=(3, 3),
+            augment_times=1,
+            seed=11,
+        )
+
+        selected = select_stratified_calibration_from_manifest(
+            train_manifest,
+            train_dir,
+            quotas={"1997_2.5D_shots": 2},
+            seed=12,
+            original_only=True,
+        )
+        cali_manifest = prepare_calibration_dataset(
+            train_dir,
+            self.tmp_root / "energy_cali",
+            train_manifest=train_manifest,
+            quotas={"1997_2.5D_shots": 2},
+            seed=12,
+            original_only=True,
+        )
+
+        self.assertEqual(len(selected), 2)
+        self.assertTrue(all(train_manifest["samples"][item.manifest_index]["augmentation_index"] == 0 for item in selected))
+        self.assertEqual(cali_manifest["sample_count"], 2)
+        self.assertTrue(all(sample["augmentation_index"] == 0 for sample in cali_manifest["samples"]))
+
+    def test_energy_filtered_test_scans_regions_after_train_boundary(self) -> None:
+        output_dir = self.tmp_root / "energy_test"
+        duplicate = np.eye(3, dtype=np.float32)
+        distinct = np.array(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, -1.0, 0.0],
+                [0.0, 0.0, 0.5],
+            ],
+            dtype=np.float32,
+        )
+        low_energy = np.zeros((3, 3), dtype=np.float32)
+        duplicate_hash = extract_paper_patches_from_array(duplicate, patch_size=(3, 3), stride=(3, 3))[0].sha256
+
+        manifest = prepare_energy_filtered_test_dataset_from_arrays(
+            {"Anisotropic": [duplicate, low_energy, distinct]},
+            output_dir,
+            quotas={"Anisotropic": 1},
+            train_hashes={duplicate_hash},
+            patch_size=(3, 3),
+            stride=(3, 3),
+            seed=13,
+        )
+
+        self.assertEqual(manifest["sample_count"], 1)
+        self.assertEqual(manifest["per_source_region_counts"], {"Anisotropic": 3})
+        self.assertEqual(manifest["per_source_low_energy_rejected_counts"], {"Anisotropic": 1})
+        self.assertEqual(manifest["per_source_training_hash_excluded_counts"], {"Anisotropic": 1})
+        self.assertEqual(manifest["samples"][0]["region_index"], 2)
+        self.assertEqual(len(list(output_dir.glob("*.npy"))), 1)
 
 
 if __name__ == "__main__":

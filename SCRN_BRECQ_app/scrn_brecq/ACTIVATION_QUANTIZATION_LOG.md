@@ -5186,3 +5186,53 @@ Interpretation for quantization:
 直接原因也找到了：paper_scrn_datasets.py 里虽然定义了 DEFAULT_MIN_STD = 1e-3，但生成训练集和测试集时默认传的是 min_std=None，也就是为了凑齐论文表格 count，实际关闭了低方差过滤。再加上每个 raw patch 会生成 original + 4 个增强，空白 patch 也被放大成 5 份”
 
 因此决定加上过滤再试一次
+
+## 2026-05-07 W4A8 calibration/eval data protocol update: paper5 energy-filtered datasets
+
+背景：
+
+- 首版 `scrn_paper5_*` 数据集保留了大量近零 clean patch：
+  - `scrn_paper5_train_10750`: `8400/10750` patches have `std <= 1e-3`
+  - `scrn_paper5_test_478`: previously observed near-zero patches can distort SNR mean
+- 这些样本对 SCRN/BRECQ calibration 和 W4A8 evaluation 都是不稳定因素：
+  - calibration 可能被无效 activation 分布污染。
+  - eval SNR mean 会被极小 clean energy patch 放大成极端负值。
+
+本次更新：
+
+- 新增 energy-filtered clean patch 数据集：
+  - train: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_train_10750`
+  - calibration: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_cali_1024_stratified`
+  - test: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_test_478`
+- hard reject 规则：
+  - `std <= 1e-3`
+  - `absmax <= 1e-3`
+  - non-finite patch
+  - all-zero / near-zero patch
+- calibration 从 filtered train manifest 中分层抽样，且只使用 `augmentation_index=0` 的原始 patch：
+  - `28 / 320 / 71 / 46 / 559 = 1024`
+- test 从 filtered train 实际使用区域之后开始扫描：
+  - `Anisotropic`: shot index `7`
+  - `Kerry3D`: trace start `1435`
+  - `Shots0001`: shot index `15`
+
+验证结果：
+
+- train:
+  - count `10750`
+  - `std <= 1e-3`: `0`
+  - min std `0.0010023288`
+- calibration:
+  - count `1024`
+  - `std <= 1e-3`: `0`
+  - min std `0.0010070483`
+- test:
+  - count `478`
+  - `std <= 1e-3`: `0`
+  - min std `0.0010794682`
+
+对后续量化实验的影响：
+
+- 后续 W4A8 activation calibration / eval 应优先使用 energy-filtered calibration/test 协议。
+- 旧 `scrn_paper5_*` 结果应标注为 unfiltered diagnostic，不再作为正式 paper-style 量化评估主口径。
+- 后续报告仍需同时保留 mean / median SNR 和 SSIM，避免少量异常样本再次掩盖整体趋势。
