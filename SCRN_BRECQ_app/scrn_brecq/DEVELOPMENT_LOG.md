@@ -2917,3 +2917,79 @@ Run paths：
 
 - 旧 `scrn_paper5_*` 结果只作为 unfiltered diagnostic 参考。
 - 若继续比较 FP32 或 W4A8，应优先使用 `scrn_paper5_energy_filtered_*` 建立新 benchmark。
+
+## 2026-05-07 Paper5 energy-filtered FP32 SCRN training run
+
+目的：
+
+- 在不改训练代码的前提下，用 `scrn_paper5_energy_filtered_train_10750` 重新训练一个 FP32 SCRN checkpoint。
+- 配置对齐首版 `paper5_unfiltered` 三卡 run，而不是旧四卡主 baseline：
+  - `world_size=3`
+  - per-GPU batch size `32`
+  - global batch size `96`
+  - `epochs=80`
+  - `lr=0.001`
+  - `milestones=20,40,60`
+  - `gamma=0.2`
+  - `seed=20260425`
+  - model config: `dim=64, stage_depths=1,1,1,1,1, head_dim=32, window_size=8, input_resolution=128`
+
+训练：
+
+- Command key:
+  - `CUDA_VISIBLE_DEVICES=1,2,3 conda run -n quant torchrun --standalone --nproc_per_node=3 -m SCRN_BRECQ_app.scrn_repro.cli.train_scrn ...`
+- Dataset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_train_10750`
+- Run path:
+  - `SCRN_BRECQ_app/scrn_repro/runs/train/20260507_195614_paper5_energy_filtered_10750_ddp3_seed20260425`
+- Git commit recorded by run:
+  - `d2ad387cbe7f9cd200ef074bc2de08d02534bfb7`
+- Metrics:
+  - `best_loss=3.8867502100987448`
+  - `best_epoch=63`
+  - `last_loss=3.9057623196969784`
+  - `last_epoch=80`
+
+旧单样本 eval 口径：
+
+- Checkpoint:
+  - `SCRN_BRECQ_app/scrn_repro/runs/train/20260507_195614_paper5_energy_filtered_10750_ddp3_seed20260425/checkpoints/best.pth`
+- Eval inputs:
+  - clean: `SCRN-main/test_data/clear.npy`
+  - input: `SCRN-main/test_data/noise_and_miss.npy`
+- Eval run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/test/20260507_214045_paper5_energy_filtered_10750_ddp3_seed20260425_best_eval_gt_colorbar`
+- Metrics:
+  - `before_snr_db=3.969324203252889`
+  - `before_ssim=0.6052755957782698`
+  - `after_snr_db=10.842029016359723`
+  - `after_ssim=0.8614298903567633`
+
+对比口径：
+
+- `old10750_main`:
+  - train run: `SCRN_BRECQ_app/scrn_repro/runs/train/20260425_192916_four_gpu_train_quant_10750_0`
+  - `world_size=4`, global batch `128`
+  - `best_loss=1.3390747353301518`
+  - old single eval: `after_snr_db=11.78722661219287`, `after_ssim=0.8699862043155245`
+- `paper5_unfiltered`:
+  - train run: `SCRN_BRECQ_app/scrn_repro/runs/train/20260507_170001_paper5_10750_ddp3_seed20260425`
+  - `world_size=3`, global batch `96`
+  - `best_loss=0.028283805948116685`
+  - old single eval: `after_snr_db=8.286237604245681`, `after_ssim=0.7869134500690693`
+- `paper5_energy_filtered`:
+  - train run: `SCRN_BRECQ_app/scrn_repro/runs/train/20260507_195614_paper5_energy_filtered_10750_ddp3_seed20260425`
+  - `world_size=3`, global batch `96`
+  - `best_loss=3.8867502100987448`
+  - old single eval: `after_snr_db=10.842029016359723`, `after_ssim=0.8614298903567633`
+
+结论：
+
+- Energy-filtered FP32 单样本 eval 明显优于首版 unfiltered paper5：
+  - SNR: `10.8420` vs `8.2862` dB
+  - SSIM: `0.8614` vs `0.7869`
+- 仍略低于旧主 baseline：
+  - SNR gap: `-0.9452` dB
+  - SSIM gap: `-0.0086`
+- 训练 loss 不能直接按数值和 unfiltered paper5 比较：unfiltered train set 曾有大量近零 patch，loss 被近空白样本显著压低；energy-filtered 的 loss 更接近有效地震 patch 的优化难度。
+- 后续应使用 478 multi-eval，对 `old10750_main`、`paper5_unfiltered`、`paper5_energy_filtered` 在 legacy / paper5 / energy-filtered test sets 上统一比较，单样本 eval 只保留历史连续性。

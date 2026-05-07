@@ -5236,3 +5236,55 @@ Interpretation for quantization:
 - 后续 W4A8 activation calibration / eval 应优先使用 energy-filtered calibration/test 协议。
 - 旧 `scrn_paper5_*` 结果应标注为 unfiltered diagnostic，不再作为正式 paper-style 量化评估主口径。
 - 后续报告仍需同时保留 mean / median SNR 和 SSIM，避免少量异常样本再次掩盖整体趋势。
+
+## 2026-05-07 FP32 baseline update: paper5 energy-filtered training candidate
+
+本次只训练 FP32 SCRN，不进入 BRECQ / W4A8。
+
+目的：
+
+- 为 energy-filtered calibration/test 协议补一个对应的 FP32 training candidate。
+- 先判断 `scrn_paper5_energy_filtered_train_10750` 是否修复首版 `paper5_unfiltered` 的近零 patch 污染问题，再决定后续是否用它作为 W4A8 重量重建起点。
+
+Run:
+
+- Train dataset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_train_10750`
+- Train run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/train/20260507_195614_paper5_energy_filtered_10750_ddp3_seed20260425`
+- Checkpoint:
+  - `SCRN_BRECQ_app/scrn_repro/runs/train/20260507_195614_paper5_energy_filtered_10750_ddp3_seed20260425/checkpoints/best.pth`
+- Config note:
+  - `world_size=3`
+  - per-GPU batch size `32`
+  - global batch size `96`
+  - git commit `d2ad387cbe7f9cd200ef074bc2de08d02534bfb7`
+
+Training metrics:
+
+- `best_loss=3.8867502100987448`
+- `best_epoch=63`
+- `last_loss=3.9057623196969784`
+
+Old single-sample eval:
+
+- Eval run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/test/20260507_214045_paper5_energy_filtered_10750_ddp3_seed20260425_best_eval_gt_colorbar`
+- Metrics:
+  - `before_snr_db=3.969324203252889`
+  - `before_ssim=0.6052755957782698`
+  - `after_snr_db=10.842029016359723`
+  - `after_ssim=0.8614298903567633`
+
+Interpretation for W4A8:
+
+- Compared with `paper5_unfiltered`, energy filtering improves the historical single-sample FP32 eval:
+  - SNR: `8.2862 -> 10.8420` dB
+  - SSIM: `0.7869 -> 0.8614`
+- Compared with old `10750_0` main baseline, it is still slightly lower:
+  - old main single eval: `after_snr_db=11.78722661219287`, `after_ssim=0.8699862043155245`
+- This checkpoint is a plausible FP32 candidate for future BRECQ runs, but it should not replace the old main baseline until 478-patch multi-eval confirms the trend.
+- Next quantization comparison should keep dataset identities explicit:
+  - old `10750_0` training / legacy test
+  - unfiltered paper5 diagnostic
+  - energy-filtered paper5 calibration/test protocol
