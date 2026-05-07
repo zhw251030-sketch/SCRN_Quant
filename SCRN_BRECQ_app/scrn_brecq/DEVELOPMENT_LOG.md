@@ -3055,3 +3055,49 @@ Interpretation:
   - 扩展正式 multi-eval preset，避免继续用 one-off script。
   - 跑 `old10750_main / paper5_unfiltered / paper5_energy_filtered` x `legacy478 / paper5_478 / paper5_energy_filtered_478`。
   - 重点检查 `Shots0001` source 的 train/test 分布和 energy filtering 是否改变了有效样本结构。
+
+## 2026-05-07 FP32 3-model x 3-testset 478 eval plan
+
+目的：
+
+- 单独的 `paper5_energy_filtered_478` eval 已显示单样本结论不可靠。
+- 本次补齐完整 FP32 交叉评估，判断三个 FP32 checkpoint 在三个 478 test set 上的稳定性。
+- 本轮不改正式 CLI、不重训、不跑 BRECQ，只产出 ignored eval artifacts 和日志。
+
+Eval matrix:
+
+- Models:
+  - `old10750_main`: `SCRN_BRECQ_app/scrn_repro/runs/train/20260425_192916_four_gpu_train_quant_10750_0/checkpoints/best.pth`
+  - `paper5_unfiltered`: `SCRN_BRECQ_app/scrn_repro/runs/train/20260507_170001_paper5_10750_ddp3_seed20260425/checkpoints/best.pth`
+  - `paper5_energy_filtered`: `SCRN_BRECQ_app/scrn_repro/runs/train/20260507_195614_paper5_energy_filtered_10750_ddp3_seed20260425/checkpoints/best.pth`
+- Test sets:
+  - `legacy478`: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_quant_test_478_legacy_logic`
+  - `paper5_478`: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_test_478`
+  - `paper5_energy_filtered_478`: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_test_478`
+- Conditions:
+  - SNR settings: `-2,-1,1,5,10`
+  - missing rates: `0.02,0.08,0.18,0.28,0.38`
+  - seed: `20260507`
+  - batch size: `64`
+  - CUDA device index: `1`
+- Expected rows:
+  - `3 * 3 * 478 * 25 = 107550`
+
+Planned output:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/test_multi/<timestamp>_fp32_three_model_three_testset_grid478_seed20260507`
+- Files:
+  - `config.json`
+  - `per_sample_metrics.jsonl`
+  - `metrics.json`
+  - `summary.md`
+
+Decision criteria:
+
+- Report overall mean / median SNR and SSIM for each model-testset pair.
+- Report by-source metrics, with special attention to `Shots0001`.
+- Report pairwise deltas:
+  - `paper5_unfiltered - old10750_main`
+  - `paper5_energy_filtered - old10750_main`
+  - `paper5_energy_filtered - paper5_unfiltered`
+- Decide whether `paper5_energy_filtered` is still a plausible FP32 candidate before BRECQ, or whether the next step should be dataset energy diagnostics and an energy-balanced training protocol.

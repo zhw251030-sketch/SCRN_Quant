@@ -5334,3 +5334,36 @@ Implication for quantization:
   - single sample only for smoke / continuity
   - 478-patch fixed-grid SNR/SSIM is the meaningful FP32 and W4A8 comparison口径
 - Before rerunning BRECQ, run the full 3-model x 3-testset FP32 comparison and inspect `Shots0001`, since it dominates `paper5_energy_filtered_478` and drives the current ranking.
+
+## 2026-05-07 Planned FP32 3-model x 3-testset eval before BRECQ
+
+本次仍只评估 FP32 SCRN，不进入 BRECQ / W4A8。
+
+目的：
+
+- 在启动任何新的 BRECQ 之前，先确认三个 FP32 checkpoint 在三个 478 test set 上的稳定排序。
+- 避免用单样本 eval 或单一 test set 过早选择 W4A8 起点。
+
+Eval matrix:
+
+- Models:
+  - `old10750_main`
+  - `paper5_unfiltered`
+  - `paper5_energy_filtered`
+- Test sets:
+  - `legacy478`
+  - `paper5_478`
+  - `paper5_energy_filtered_478`
+- Conditions:
+  - SNR settings: `-2,-1,1,5,10`
+  - missing rates: `0.02,0.08,0.18,0.28,0.38`
+  - seed: `20260507`
+- Expected rows:
+  - `107550`
+
+判断标准：
+
+- 以 478-patch fixed-grid mean / median SNR 和 SSIM 为主。
+- 同时看 by-source 结果，尤其是 `Shots0001`。
+- 如果 `paper5_energy_filtered` 不能在多个 test set 上稳定优于旧主 baseline 或 `paper5_unfiltered`，则暂不把它作为 W4A8 主起点。
+- 如果 `paper5_unfiltered` 仍然最强，下一步应优先做 dataset energy diagnostics / energy-balanced data protocol，而不是直接进入量化。
