@@ -248,6 +248,51 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
                 self.assertEqual(config["range_module_type"], "Conv2d")
                 self.assertTrue(config["skip_act_recon"])
 
+    def test_e006c_per_channel_configs_parse_selector_groups(self) -> None:
+        cases = {
+            "fusion": [{"branch": "fusion", "module_type": "Conv2d"}],
+            "split_proj": [{"role": "split_proj", "module_type": "Conv2d"}],
+            "merge_proj": [{"role": "merge_proj", "module_type": "Conv2d"}],
+            "stage_output_conv": [{"role": "stage_output_conv", "module_type": "Conv2d"}],
+            "stage5": [{"stage": "stage5", "module_type": "Conv2d"}],
+            "split_merge_stage_output": [
+                {"role": "split_proj", "module_type": "Conv2d"},
+                {"role": "merge_proj", "module_type": "Conv2d"},
+                {"role": "stage_output_conv", "module_type": "Conv2d"},
+            ],
+        }
+        for config_name, expected_groups in cases.items():
+            with self.subTest(config_name=config_name):
+                config_path = Path(f"SCRN_BRECQ_app/scrn_brecq/configs/activation_quantization/e006c_pc_{config_name}.json")
+                args = build_parser().parse_args(["--config", str(config_path)])
+
+                config = load_and_resolve_config(args, {"quant_config": {}})
+
+                self.assertEqual(config["activation_range_method"], "mse_grid")
+                self.assertEqual(config["activation_granularity"], "per_channel")
+                self.assertIsNone(config["activation_group_size"])
+                self.assertEqual(config["range_selector_groups"], expected_groups)
+                self.assertTrue(config["skip_act_recon"])
+
+    def test_e006c_group_wise_g4_config_parses_selector_groups(self) -> None:
+        config_path = Path("SCRN_BRECQ_app/scrn_brecq/configs/activation_quantization/e006c_g4_split_merge_stage_output.json")
+        args = build_parser().parse_args(["--config", str(config_path)])
+
+        config = load_and_resolve_config(args, {"quant_config": {}})
+
+        self.assertEqual(config["activation_range_method"], "mse_grid")
+        self.assertEqual(config["activation_granularity"], "group_wise")
+        self.assertEqual(config["activation_group_size"], 4)
+        self.assertEqual(
+            config["range_selector_groups"],
+            [
+                {"role": "split_proj", "module_type": "Conv2d"},
+                {"role": "merge_proj", "module_type": "Conv2d"},
+                {"role": "stage_output_conv", "module_type": "Conv2d"},
+            ],
+        )
+        self.assertTrue(config["skip_act_recon"])
+
     def test_normalize_config_rejects_unsupported_activation_granularity(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             checkpoint = Path(tmpdir) / "weight_recon.pth"

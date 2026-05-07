@@ -4742,3 +4742,94 @@ diagnostics：
 E006b 总结：
 
 > Conv2d activation group-wise 有方向信号，但当前简单连续分组不能作为 per-channel 的高质量替代。E006 后续应进入 E006c 结构化粒度对照：保留 per-channel 作为上限，重点测试 selective per-channel / selective group-wise 是否能用少数结构恢复主要收益。
+
+### 2026-05-07 E006c：structured activation granularity configs and smoke
+
+E006c 目标：
+
+> 验证 E006a 的 per-channel 收益是否必须来自 all Conv2d 多层累积，还是少数结构使用细粒度就能恢复主要收益。
+
+背景：
+
+- all_on tensor-wise A8 init：`-7.1021 dB`。
+- E006a all Conv2d per-channel：`-5.3817 dB`，提升 `+1.7203 dB`。
+- E006b all Conv2d g4：`-6.1885 dB`，提升 `+0.9136 dB`，只恢复 E006a 收益的 `53.1%`。
+- E006c acceptance threshold：selective per-channel 相对 all_on 提升 `>= +1.204 dB`，即达到 E006a 收益的 70%。
+
+实现口径：
+
+- 不改核心量化代码。
+- 复用 E006a / E006b 已验证能力：
+  - `activation_granularity=per_channel`
+  - `activation_granularity=group_wise`
+  - `activation_group_size=4`
+  - `range_selector_groups`
+- 不跑 activation reconstruction。
+- 不重跑 W20000。
+
+新增配置：
+
+| config | granularity | selector | expected selected count |
+|---|---|---|---:|
+| `e006c_pc_fusion.json` | per_channel | `branch=fusion,module_type=Conv2d` | 10 |
+| `e006c_pc_split_proj.json` | per_channel | `role=split_proj,module_type=Conv2d` | 5 |
+| `e006c_pc_merge_proj.json` | per_channel | `role=merge_proj,module_type=Conv2d` | 5 |
+| `e006c_pc_stage_output_conv.json` | per_channel | `role=stage_output_conv,module_type=Conv2d` | 5 |
+| `e006c_pc_stage5.json` | per_channel | `stage=stage5,module_type=Conv2d` | 6 |
+| `e006c_pc_split_merge_stage_output.json` | per_channel | `split_proj + merge_proj + stage_output_conv` | 15 |
+| `e006c_g4_split_merge_stage_output.json` | group_wise g4 | `split_proj + merge_proj + stage_output_conv` | 15 |
+
+配置统一口径：
+
+- 起点 checkpoint：E002b W4 weight-recon checkpoint。
+- calibration：`num_samples=64`、`init_batch_size=64`。
+- activation range：`mse_grid`。
+- `skip_act_recon=true`。
+- formal eval：128 samples，`seed=20260427`，`batch_size=16`。
+
+测试：
+
+- TDD red：
+  - 新增 E006c config parse 测试后，`test_activation_only_quantize_scrn` 因 7 个配置缺失失败。
+- Green：
+  - `test_activation_only_quantize_scrn`：17 tests OK。
+  - `py_compile activation_only_quantize_scrn.py activation_range.py`：passed。
+  - CLI `--help` 已确认 selector / granularity 参数仍可用。
+
+#### E006c-0 smoke：split + merge + stage_output selective per-channel
+
+run：
+
+- quant：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_140733_e006c_smoke_pc_split_merge_stage_output_mse/`
+- checkpoint：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_140733_e006c_smoke_pc_split_merge_stage_output_mse/checkpoints/quantized_scrn_brecq_pre_act_recon.pth`
+- reload eval：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/eval/20260507_140757_e006c_smoke_pc_split_merge_stage_output_reload_eval2/`
+- diagnostics：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/diagnostics/20260507_140828_e006c_smoke_pc_split_merge_stage_output_diagnostics2/`
+
+smoke 结果：
+
+| item | value |
+|---|---:|
+| selected Conv2d quantizers | 15 |
+| activation quantizers | 52 |
+| activation delta count | 52 |
+| activation zero point count | 52 |
+| non-positive delta count | 0 |
+| smoke single pre-act SNR | 6.9413 dB |
+| diagnostics activation stat count | 52 |
+| diagnostics fake quant MSE max | 9.835336823016405e-05 |
+
+复核：
+
+- 15 个 selected Conv2d 正确对应 `split_proj + merge_proj + stage_output_conv`。
+- selected Conv2d activation `delta/zero_point` shape 为 `[1, C, 1, 1]`。
+- checkpoint reload eval completed on `cuda:1`，说明 selective per-channel checkpoint 可保存、恢复并 forward。
+
+当前结论：
+
+- E006c 配置、测试、smoke、checkpoint restore 和 diagnostics 已通过。
+- smoke 单图仍只用于 sanity check，不作为策略判断。
+- 下一步执行 6 个 selective per-channel 的固定 128-sample eval 和 diagnostics，再决定是否补跑单结构 g4。
