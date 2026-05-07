@@ -4972,3 +4972,47 @@ E006c-2 结论：
 E006c 总结：
 
 > E006c 反驳了“必须 all Conv2d per-channel”的假设。当前最强信号来自结构化 selective 策略，尤其是 `split + merge + stage_output`；stage5 独立细粒度明显有害。后续应从 selective per-channel / selective g4 收束，而不是继续把 all Conv2d per-channel 作为默认策略。
+
+## 2026-05-07 数据集口径修订：stratified calibration 与 legacy-logic test
+
+目的：
+
+- 当前 W4A8 评估依赖 `scrn_quant_10750_0_patches` 作为 calibration 和 multi-eval clean patch pool。
+- 为减少 calibration 随机抽样对来源分布的偏差，新增按 `10750_0` 来源区间分层抽样的 1024 calibration clean patch 准备流程。
+- 为后续更接近 SCRN 原文的多样本测试口径，新增去掉缺失 Marmousi 后的 478 clean test patch 准备流程。
+
+实现：
+
+- 新增 `data/stratified_scrn_datasets.py` 和 `cli/prepare_scrn_stratified_datasets.py`。
+- calibration 来源区间按 `train_data_N.npy` 编号恢复：
+  - `1997_2.5D_shots`: `1-300`
+  - `7m_shots_0201`: `301-3655`
+  - `Anisotropic_FD_Model`: `3656-4405`
+  - `Kerry3D`: `4406-4885`
+  - `Shots0001_0200`: `4886-10750`
+- 1024 calibration quota 采用最大余数法：
+  - `28 / 320 / 71 / 46 / 559`
+  - 注意：早期讨论中的 `29 / 320 / 71 / 46 / 559` 合计为 `1025`，因此不能作为 1024 calibration 配额。
+- test quota：
+  - `Anisotropic`: `75`
+  - `Kerry3D`: `16`
+  - `Shots0001`: `387`
+  - total `478`
+
+对激活量化实验的影响：
+
+- 后续 W4A8 calibration 可以显式指定新的 stratified calibration clean patch 目录，避免默认前 1024 或全局随机抽样改变来源比例。
+- 后续 multi-eval 可以使用 478 legacy-logic test clean patch 目录，和当前 128-sample 从训练 patch pool 随机抽评估区分开。
+- 由于 `10750_0` 没有保存 patch 坐标，当前测试集只能通过 exact hash 排除直接重复，不能声明与训练 patch 空间区域完全隔离。
+- 实际生成的 test manifest 记录 `training_hash_excluded_count=10676`，表示有 10676 个候选 patch 因与训练 patch float32 内容 hash 完全相同而被排除。
+
+验证：
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_stratified_scrn_datasets -v`
+  - 7 tests OK。
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/data/stratified_scrn_datasets.py SCRN_BRECQ_app/scrn_brecq/cli/prepare_scrn_stratified_datasets.py`
+  - passed。
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.prepare_scrn_stratified_datasets --mode calibration`
+  - generated `1024` clean calibration patches。
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.prepare_scrn_stratified_datasets --mode test`
+  - generated `478` clean test patches。

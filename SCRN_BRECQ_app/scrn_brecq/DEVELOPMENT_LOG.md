@@ -2551,3 +2551,64 @@ Run paths：
   - `split + merge + stage_output g4` 达到 `+2.7245 dB`，也明显超过 all Conv2d per-channel。
 - E006c 反驳了“必须 all Conv2d per-channel”的假设：收益主要可由结构化 selective 方案恢复，且过度扩展到 stage5 / all Conv2d 可能引入额外误差。
 - 后续更合理的收束方向是 selective per-channel / selective g4，而不是 all Conv2d per-channel。
+
+## 2026-05-07 Stratified calibration/test dataset preparation
+
+### 修改内容
+
+- 新增 `data/stratified_scrn_datasets.py`，把 `10750_0` 的五个来源区间显式固化：
+  - `1-300`
+  - `301-3655`
+  - `3656-4405`
+  - `4406-4885`
+  - `4886-10750`
+- 新增最大余数法配额计算和分层抽样工具。对 1024 个 calibration patch，严格按总数约束得到：
+  - `1997_2.5D_shots`: `28`
+  - `7m_shots_0201`: `320`
+  - `Anisotropic_FD_Model`: `71`
+  - `Kerry3D`: `46`
+  - `Shots0001_0200`: `559`
+- 新增 `cli/prepare_scrn_stratified_datasets.py`，支持：
+  - `--mode calibration|test|both`
+  - `--seed`
+  - `--dry-run`
+  - `--overwrite`
+  - 默认从 `scrn_quant_10750_0_patches` 生成 stratified calibration clean patch 目录。
+  - 默认从旧工程本地 SEG-Y 源生成 478 个 legacy-logic clean test patch。
+- 新增 `tests/test_stratified_scrn_datasets.py`，覆盖配额计算、编号到来源映射、分层抽样、manifest 输出、patch 切分和训练 hash 排除。
+- 更新 `data/__init__.py` 导出新数据准备入口。
+
+### 设计说明
+
+- `10750_0` 原始生成脚本没有保存 patch 坐标，因此 calibration 来源只能通过 `train_data_N.npy` 的编号区间恢复。
+- 原计划里 `29/320/71/46/559` 合计为 `1025`，与 1024 calibration 目标矛盾；实现中以“总数必须为 1024”和最大余数法为准，修正为 `28/320/71/46/559`。
+- 测试集生成复刻 `10750_0` 的整文件读取逻辑：SEG-Y 全文件读为 `[samples, traces]`，absmax 归一化，`128x128` patch，stride `48`，无增强，过滤低方差 patch。
+- 测试集默认按 float32 patch 内容的 SHA-256 排除与训练 patch 完全相同的候选；这只能避免直接重复，不能证明空间区域严格隔离。
+- 真实 SEG-Y 测试集生成采用 reservoir sampling，只保留最终需要的 478 个 patch，避免把全部候选 patch 常驻内存。
+
+### 生成结果
+
+- Calibration output:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_quant_10750_0_cali_1024_stratified`
+  - `.npy` count: `1024`
+  - manifest counts: `28 / 320 / 71 / 46 / 559`
+- Test output:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_quant_test_478_legacy_logic`
+  - `.npy` count: `478`
+  - manifest counts: `75 / 16 / 387`
+  - `training_hash_excluded_count`: `10676`
+
+### 验证方式
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_stratified_scrn_datasets -v`
+  - 7 tests OK。
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/data/stratified_scrn_datasets.py SCRN_BRECQ_app/scrn_brecq/cli/prepare_scrn_stratified_datasets.py`
+  - passed。
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.prepare_scrn_stratified_datasets --help`
+  - passed。
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.prepare_scrn_stratified_datasets --mode calibration`
+  - generated `1024` clean calibration patches。
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.prepare_scrn_stratified_datasets --mode test`
+  - generated `478` clean test patches。
+- `pytest` note:
+  - `conda run -n quant python -m pytest ...` cannot run because the `quant` environment does not have `pytest` installed; equivalent `unittest` verification passed.
