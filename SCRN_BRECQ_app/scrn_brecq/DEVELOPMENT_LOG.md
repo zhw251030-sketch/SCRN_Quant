@@ -2453,3 +2453,101 @@ Smoke 结果：
 - E006c 配置、parser 测试、selective per-channel smoke、checkpoint restore 和 diagnostics 兼容性已通过。
 - smoke 单图不作为正式效果证据。
 - 下一步进入 E006c-1：6 个 selective per-channel 配置的固定 128-sample eval 和 diagnostics。
+
+## 2026-05-07 E006c structured activation granularity formal results
+
+补充配置：
+
+- E006c-1 single-structure per-channel 结果触发了 g4 supplement 条件：
+  - fusion per-channel gain `+1.3722 dB`
+  - merge_proj per-channel gain `+1.1253 dB`
+  - stage_output_conv per-channel gain `+2.1301 dB`
+- 因此新增：
+  - `configs/activation_quantization/e006c_g4_fusion.json`
+  - `configs/activation_quantization/e006c_g4_merge_proj.json`
+  - `configs/activation_quantization/e006c_g4_stage_output_conv.json`
+- `test_activation_only_quantize_scrn.py` 同步扩展 E006c g4 config parse 测试。
+
+追加测试：
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_only_quantize_scrn`
+  - 17 tests OK。
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/activation_only_quantize_scrn.py SCRN_BRECQ_app/scrn_brecq/quant/activation_range.py`
+  - passed。
+
+统一口径：
+
+- 起点：E002b W4 weight-recon checkpoint。
+- calibration：`num_samples=64`、`init_batch_size=64`。
+- activation range：`mse_grid`。
+- `skip_act_recon=true`。
+- eval：128 samples，`seed=20260427`，`batch_size=16`。
+- improved count：按 `path` 对齐 E004b all_on baseline per-sample metrics。
+- baseline：
+  - all_on tensor-wise A8 init：`-7.1021 dB`。
+  - E006a all Conv2d per-channel：`-5.3817 dB`。
+  - E006b all Conv2d g4：`-6.1885 dB`。
+  - 70% threshold：`+1.204 dB`。
+
+Selective per-channel formal results：
+
+| run | selected | SNR mean | median | min | max | SSIM mean | delta vs all_on | recovery vs E006a gain | improved vs all_on |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| fusion | 10 | -5.7299 | -6.3070 | -12.8216 | 6.4301 | 0.1551 | +1.3722 | 79.8% | 124 / 128 |
+| split_proj | 5 | -6.8865 | -7.6169 | -14.0823 | 6.4158 | 0.1817 | +0.2156 | 12.5% | 122 / 128 |
+| merge_proj | 5 | -5.9768 | -6.6454 | -13.1202 | 6.7905 | 0.1649 | +1.1253 | 65.4% | 128 / 128 |
+| stage_output_conv | 5 | -4.9720 | -5.5819 | -11.9419 | 6.8071 | 0.2423 | +2.1301 | 123.8% | 128 / 128 |
+| stage5 | 6 | -10.7413 | -11.7262 | -18.3867 | 6.7568 | 0.4661 | -3.6392 | -211.5% | 1 / 128 |
+| split + merge + stage_output | 15 | -2.1925 | -2.4806 | -8.5691 | 6.8545 | 0.2729 | +4.9096 | 285.4% | 124 / 128 |
+
+Selective g4 supplement results：
+
+| run | selected | SNR mean | median | min | max | SSIM mean | delta vs all_on | recovery vs E006a gain | improved vs all_on |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| fusion g4 | 10 | -6.1183 | -6.7607 | -13.2373 | 6.7701 | 0.1693 | +0.9838 | 57.2% | 125 / 128 |
+| merge_proj g4 | 5 | -6.3012 | -7.0148 | -13.4791 | 6.7940 | 0.1712 | +0.8009 | 46.6% | 128 / 128 |
+| stage_output_conv g4 | 5 | -5.8190 | -6.4788 | -12.8934 | 6.7978 | 0.2231 | +1.2831 | 74.6% | 127 / 128 |
+| split + merge + stage_output g4 | 15 | -4.3776 | -4.8955 | -11.2607 | 6.7751 | 0.2353 | +2.7245 | 158.4% | 127 / 128 |
+
+Diagnostics summary：
+
+| run | activation quantizers | activation stat count | non-positive delta count | fake quant MSE max |
+|---|---:|---:|---:|---:|
+| pc fusion | 52 | 52 | 0 | 9.82716228463687e-05 |
+| pc split_proj | 52 | 52 | 0 | 9.82716228463687e-05 |
+| pc merge_proj | 52 | 52 | 0 | 9.82716228463687e-05 |
+| pc stage_output_conv | 52 | 52 | 0 | 9.82716228463687e-05 |
+| pc stage5 | 52 | 52 | 0 | 0.05554213374853134 |
+| pc split + merge + stage_output | 52 | 52 | 0 | 9.82716228463687e-05 |
+| g4 fusion | 52 | 52 | 0 | 9.82716228463687e-05 |
+| g4 merge_proj | 52 | 52 | 0 | 9.82716228463687e-05 |
+| g4 stage_output_conv | 52 | 52 | 0 | 9.82716228463687e-05 |
+| g4 split + merge + stage_output | 52 | 52 | 0 | 9.82716228463687e-05 |
+
+Run paths：
+
+- per-channel quant:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141108_e006c_pc_fusion_mse/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141108_e006c_pc_split_proj_mse/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141108_e006c_pc_merge_proj_mse/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141227_e006c_pc_stage_output_conv_mse/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141227_e006c_pc_stage5_mse/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141227_e006c_pc_split_merge_stage_output_mse/`
+- g4 quant:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141721_e006c_g4_fusion_mse/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141721_e006c_g4_merge_proj_mse/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141721_e006c_g4_stage_output_conv_mse/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141820_e006c_g4_split_merge_stage_output_mse/`
+
+结论：
+
+- E006c 明确通过 acceptance criteria：
+  - `fusion` selective per-channel 达到 `+1.3722 dB`，超过 `+1.204 dB`。
+  - `stage_output_conv` selective per-channel 达到 `+2.1301 dB`。
+  - `split + merge + stage_output` selective per-channel 达到 `+4.9096 dB`，显著超过 all Conv2d per-channel。
+- `stage5` selective per-channel 明显有害，SNR mean `-10.7413 dB`，后续不应把 stage5 作为独立细粒度策略。
+- g4 仍有部署价值信号：
+  - `stage_output_conv g4` 达到 `+1.2831 dB`，超过 70% threshold。
+  - `split + merge + stage_output g4` 达到 `+2.7245 dB`，也明显超过 all Conv2d per-channel。
+- E006c 反驳了“必须 all Conv2d per-channel”的假设：收益主要可由结构化 selective 方案恢复，且过度扩展到 stage5 / all Conv2d 可能引入额外误差。
+- 后续更合理的收束方向是 selective per-channel / selective g4，而不是 all Conv2d per-channel。

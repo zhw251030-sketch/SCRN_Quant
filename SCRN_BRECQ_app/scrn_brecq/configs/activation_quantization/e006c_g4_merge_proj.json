@@ -1,0 +1,27 @@
+{
+  "weight_recon_checkpoint": "SCRN_BRECQ_app/scrn_brecq/runs/quant/20260504_221242_e002b_w4a8_positive_scale_1024samples_w20000_a5000/checkpoints/quantized_scrn_brecq_weight_recon.pth",
+  "calibration_dataset_dir": "SCRN_BRECQ_app/scrn_repro/datasets/scrn_quant_10750_0_patches",
+  "run_root": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant",
+  "run_name": "e006c_g4_merge_proj_mse",
+  "device": "cuda",
+  "cuda_device_index": 2,
+  "seed": 1005,
+  "num_samples": 64,
+  "batch_size": 16,
+  "num_workers": 0,
+  "init_batch_size": 64,
+  "activation_range_method": "mse_grid",
+  "activation_granularity": "group_wise",
+  "activation_group_size": 4,
+  "range_mse_shrink_ratios": "1.0,0.999,0.995,0.99,0.98,0.97,0.96,0.95,0.925,0.9,0.875,0.85,0.8,0.75,0.7,0.65,0.6,0.55,0.5",
+  "range_loss_p": 2.4,
+  "range_selector_groups": [
+    {
+      "role": "merge_proj",
+      "module_type": "Conv2d"
+    }
+  ],
+  "range_max_values_per_layer": 500000,
+  "include_output_quantizer": false,
+  "skip_act_recon": true
+}

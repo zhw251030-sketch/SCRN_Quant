@@ -4833,3 +4833,142 @@ smoke 结果：
 - E006c 配置、测试、smoke、checkpoint restore 和 diagnostics 已通过。
 - smoke 单图仍只用于 sanity check，不作为策略判断。
 - 下一步执行 6 个 selective per-channel 的固定 128-sample eval 和 diagnostics，再决定是否补跑单结构 g4。
+
+#### E006c-1 formal：selective per-channel
+
+统一口径：
+
+- 起点 checkpoint：E002b W4 weight-recon checkpoint。
+- activation range：`mse_grid`。
+- activation granularity：`per_channel`。
+- `skip_act_recon=true`。
+- eval：128 samples，`seed=20260427`，`batch_size=16`。
+- improved count：按 `path` 对齐 E004b all_on baseline per-sample metrics。
+- baseline：
+  - all_on tensor-wise A8 init：`-7.1021 dB`。
+  - E006a all Conv2d per-channel：`-5.3817 dB`。
+  - E006b all Conv2d g4：`-6.1885 dB`。
+  - E006c 70% threshold：`+1.204 dB`。
+
+run paths：
+
+- quant：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141108_e006c_pc_fusion_mse/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141108_e006c_pc_split_proj_mse/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141108_e006c_pc_merge_proj_mse/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141227_e006c_pc_stage_output_conv_mse/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141227_e006c_pc_stage5_mse/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141227_e006c_pc_split_merge_stage_output_mse/`
+- eval：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/eval/20260507_141346_e006c_pc_fusion_eval128/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/eval/20260507_141346_e006c_pc_split_proj_eval128/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/eval/20260507_141346_e006c_pc_merge_proj_eval128/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/eval/20260507_141412_e006c_pc_stage_output_conv_eval128/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/eval/20260507_141413_e006c_pc_stage5_eval128/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/eval/20260507_141413_e006c_pc_split_merge_stage_output_eval128/`
+
+结果：
+
+| run | selected | SNR mean | median | min | max | SSIM mean | delta vs all_on | recovery vs E006a gain | improved vs all_on |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| fusion | 10 | -5.7299 | -6.3070 | -12.8216 | 6.4301 | 0.1551 | +1.3722 | 79.8% | 124 / 128 |
+| split_proj | 5 | -6.8865 | -7.6169 | -14.0823 | 6.4158 | 0.1817 | +0.2156 | 12.5% | 122 / 128 |
+| merge_proj | 5 | -5.9768 | -6.6454 | -13.1202 | 6.7905 | 0.1649 | +1.1253 | 65.4% | 128 / 128 |
+| stage_output_conv | 5 | -4.9720 | -5.5819 | -11.9419 | 6.8071 | 0.2423 | +2.1301 | 123.8% | 128 / 128 |
+| stage5 | 6 | -10.7413 | -11.7262 | -18.3867 | 6.7568 | 0.4661 | -3.6392 | -211.5% | 1 / 128 |
+| split + merge + stage_output | 15 | -2.1925 | -2.4806 | -8.5691 | 6.8545 | 0.2729 | +4.9096 | 285.4% | 124 / 128 |
+
+diagnostics：
+
+| run | activation quantizers | activation stat count | non-positive delta count | fake quant MSE max |
+|---|---:|---:|---:|---:|
+| fusion | 52 | 52 | 0 | 9.82716228463687e-05 |
+| split_proj | 52 | 52 | 0 | 9.82716228463687e-05 |
+| merge_proj | 52 | 52 | 0 | 9.82716228463687e-05 |
+| stage_output_conv | 52 | 52 | 0 | 9.82716228463687e-05 |
+| stage5 | 52 | 52 | 0 | 0.05554213374853134 |
+| split + merge + stage_output | 52 | 52 | 0 | 9.82716228463687e-05 |
+
+E006c-1 结论：
+
+- `fusion` selective per-channel 已超过部署价值阈值：
+  - gain `+1.3722 dB`
+  - E006a gain recovery `79.8%`
+- `stage_output_conv` selective per-channel 是单结构中最强：
+  - gain `+2.1301 dB`
+  - 超过 E006a all Conv2d per-channel 的收益。
+- `split + merge + stage_output` 是当前最强 selective per-channel 策略：
+  - SNR mean `-2.1925 dB`
+  - 相对 all_on 提升 `+4.9096 dB`
+  - 明显强于 E006a all Conv2d per-channel `-5.3817 dB`
+- `stage5` 独立 per-channel 明显有害：
+  - SNR mean `-10.7413 dB`
+  - fake quant MSE max `0.05554213374853134`
+  - 后续不应把 stage5 作为独立细粒度策略。
+- 所有 per-channel formal runs 的 `non_positive_delta_count=0`，这次效果差异不是非法 scale 导致。
+
+#### E006c-2 formal：selective g4 supplement
+
+触发条件：
+
+- E006c-1 中以下单结构 per-channel gain 超过 `+0.8 dB`：
+  - fusion：`+1.3722 dB`
+  - merge_proj：`+1.1253 dB`
+  - stage_output_conv：`+2.1301 dB`
+- 因此补跑对应 g4，并保留计划中的 `split + merge + stage_output` g4。
+
+新增补充配置：
+
+- `configs/activation_quantization/e006c_g4_fusion.json`
+- `configs/activation_quantization/e006c_g4_merge_proj.json`
+- `configs/activation_quantization/e006c_g4_stage_output_conv.json`
+
+追加检查：
+
+- `test_activation_only_quantize_scrn`：17 tests OK。
+- `py_compile activation_only_quantize_scrn.py activation_range.py`：passed。
+
+run paths：
+
+- quant：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141721_e006c_g4_fusion_mse/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141721_e006c_g4_merge_proj_mse/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141721_e006c_g4_stage_output_conv_mse/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/quant/20260507_141820_e006c_g4_split_merge_stage_output_mse/`
+- eval：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/eval/20260507_141913_e006c_g4_fusion_eval128/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/eval/20260507_141914_e006c_g4_merge_proj_eval128/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/eval/20260507_141914_e006c_g4_stage_output_conv_eval128/`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E006_granularity/E006c_structured_granularity/eval/20260507_141931_e006c_g4_split_merge_stage_output_eval128/`
+
+结果：
+
+| run | selected | SNR mean | median | min | max | SSIM mean | delta vs all_on | recovery vs E006a gain | improved vs all_on |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| fusion g4 | 10 | -6.1183 | -6.7607 | -13.2373 | 6.7701 | 0.1693 | +0.9838 | 57.2% | 125 / 128 |
+| merge_proj g4 | 5 | -6.3012 | -7.0148 | -13.4791 | 6.7940 | 0.1712 | +0.8009 | 46.6% | 128 / 128 |
+| stage_output_conv g4 | 5 | -5.8190 | -6.4788 | -12.8934 | 6.7978 | 0.2231 | +1.2831 | 74.6% | 127 / 128 |
+| split + merge + stage_output g4 | 15 | -4.3776 | -4.8955 | -11.2607 | 6.7751 | 0.2353 | +2.7245 | 158.4% | 127 / 128 |
+
+diagnostics：
+
+| run | activation quantizers | activation stat count | non-positive delta count | fake quant MSE max |
+|---|---:|---:|---:|---:|
+| fusion g4 | 52 | 52 | 0 | 9.82716228463687e-05 |
+| merge_proj g4 | 52 | 52 | 0 | 9.82716228463687e-05 |
+| stage_output_conv g4 | 52 | 52 | 0 | 9.82716228463687e-05 |
+| split + merge + stage_output g4 | 52 | 52 | 0 | 9.82716228463687e-05 |
+
+E006c-2 结论：
+
+- g4 仍有部署价值信号：
+  - `stage_output_conv g4` gain `+1.2831 dB`，超过 70% threshold。
+  - `split + merge + stage_output g4` gain `+2.7245 dB`，明显强于 E006a all Conv2d per-channel。
+- g4 组合虽然低于对应 per-channel 组合：
+  - per-channel combo `-2.1925 dB`
+  - g4 combo `-4.3776 dB`
+  - 但 g4 combo 仍强于 all Conv2d per-channel `-5.3817 dB`。
+
+E006c 总结：
+
+> E006c 反驳了“必须 all Conv2d per-channel”的假设。当前最强信号来自结构化 selective 策略，尤其是 `split + merge + stage_output`；stage5 独立细粒度明显有害。后续应从 selective per-channel / selective g4 收束，而不是继续把 all Conv2d per-channel 作为默认策略。
