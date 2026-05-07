@@ -5063,3 +5063,55 @@ E006c 总结：
   - 11 tests OK。
 - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.prepare_scrn_paper_datasets --mode all --overwrite`
   - generated train `10750`、calibration `1024`、test `478`。
+
+## 2026-05-07 激活量化评估数据口径补充：paper-style FP32 training candidate
+
+目的：
+
+- 基于 `scrn_paper5_train_10750` 重新训练一个 FP32 SCRN candidate，作为后续 paper-style calibration/test 口径下 BRECQ 的潜在起点。
+- 本次不重跑 W4A32 / W4A8 / activation reconstruction，因此不更新任何 activation quantization baseline 结论。
+
+训练记录：
+
+- Train run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/train/20260507_170001_paper5_10750_ddp3_seed20260425`
+- Dataset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_train_10750`
+- GPU / batch:
+  - `CUDA_VISIBLE_DEVICES=1,2,3`
+  - `world_size=3`
+  - per-GPU batch size `32`
+  - global batch size `96`
+- 与旧 app DDP baseline 的主要差异：
+  - dataset 从旧 `10750_0` 变为 paper-style 5-source dataset
+  - world size/global batch 从 `4/128` 变为 `3/96`
+- 关键训练参数保持：
+  - `epochs=80`
+  - `lr=0.001`
+  - `milestones=20,40,60`
+  - `gamma=0.2`
+  - `seed=20260425`
+  - SCRN config: `dim=64, stage_depths=1,1,1,1,1, head_dim=32, window_size=8, input_resolution=128`
+- Train metrics:
+  - `best_epoch=74`
+  - `best_loss=0.028283805948116685`
+  - `last_loss=0.03233760286976966`
+
+旧单样本 eval 口径：
+
+- Eval run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/test/20260507_180355_paper5_10750_ddp3_seed20260425_best_eval_gt_colorbar`
+- Metrics:
+  - `before_snr_db=3.969324203252889`
+  - `before_ssim=0.6052755957782698`
+  - `after_snr_db=8.286237604245681`
+  - `after_ssim=0.7869134500690693`
+
+对后续 W4A8 实验的影响：
+
+- 新 checkpoint 暂记为 paper-style FP32 training candidate，不替代旧 BRECQ 默认 FP32 checkpoint。
+- 后续如果以它为起点重跑 BRECQ，需要单独建立新的 W4A32 / W4A8 baseline 表，并明确标注：
+  - FP32 checkpoint: `paper5_10750_ddp3_seed20260425`
+  - calibration set: legacy stratified 或 paper-style stratified
+  - eval set: old 128-sample train-pool eval、legacy 478 test、或 paper-style 478 test
+- 旧单样本 eval 显示该 candidate 在 `SCRN-main/test_data/clear.npy` / `noise_and_miss.npy` 上低于旧 `10750_0` baseline，因此不能直接用作量化实验主起点，除非后续多样本 paper-style eval 支持切换。

@@ -2677,3 +2677,76 @@ Run paths：
   - generated train `10750`、calibration `1024`、test `478`。
 - `pytest` note:
   - `conda run -n quant python -m pytest ...` cannot run because the `quant` environment does not have `pytest` installed; equivalent `unittest` verification passed.
+
+## 2026-05-07 Paper-style 10750 SCRN FP32 retraining
+
+### 目的
+
+- 使用新生成的 paper-style 5-source train set 重新训练一个 FP32 SCRN candidate：
+  - dataset: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_train_10750`
+- 尽量对齐历史 app DDP baseline：
+  - old run: `SCRN_BRECQ_app/scrn_repro/runs/train/20260425_192916_four_gpu_train_quant_10750_0`
+  - old dataset: `/home/data1/hanwen/project/Project/SCRN_quant/train_data/10750_0`
+  - old best loss: `1.3390747353301518`
+  - old best epoch: `78`
+  - old single eval: `after_snr_db=11.78722661219287`, `after_ssim=0.8699862043155245`
+
+### 执行记录
+
+- 首次在 sandbox 内直接跑 `torchrun --standalone` 失败，原因是 torch distributed local TCP rendezvous 被 sandbox 拒绝：
+  - `Operation not permitted`
+  - `RendezvousConnectionError`
+- 随后在用户批准的外部执行权限下运行同一训练命令。
+- GPU scope:
+  - `CUDA_VISIBLE_DEVICES=1,2,3`
+  - `torchrun --nproc_per_node=3`
+  - config 记录 `--gpus 1,2,3`
+- 与历史 run 的主要差异：
+  - dataset 从旧 `10750_0` 换成 `scrn_paper5_train_10750`
+  - world size 从 `4` 变为 `3`
+  - per-GPU batch size 保持 `32`
+  - global batch 从 `128` 变为 `96`
+- 其余关键参数保持一致：
+  - `epochs=80`
+  - `lr=0.001`
+  - `weight_decay=0.0`
+  - `milestones=20,40,60`
+  - `gamma=0.2`
+  - `seed=20260425`
+  - `num_workers=2`
+  - `dim=64`
+  - `stage_depths=1,1,1,1,1`
+  - `head_dim=32`
+  - `window_size=8`
+  - `drop_path_rate=0.0`
+  - `input_resolution=128`
+- Train run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/train/20260507_170001_paper5_10750_ddp3_seed20260425`
+  - git commit recorded by config: `58aa379ff9a871e41ec03decb0f6cce324f93ecd`
+  - `best_loss=0.028283805948116685`
+  - `best_epoch=74`
+  - `last_loss=0.03233760286976966`
+  - checkpoint: `checkpoints/best.pth`
+
+### 单样本旧口径评估
+
+- Eval command 使用历史单样本数据：
+  - clean: `SCRN-main/test_data/clear.npy`
+  - input: `SCRN-main/test_data/noise_and_miss.npy`
+  - device: `cpu`
+- Eval run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/test/20260507_180355_paper5_10750_ddp3_seed20260425_best_eval_gt_colorbar`
+- Metrics:
+  - `before_snr_db=3.969324203252889`
+  - `before_ssim=0.6052755957782698`
+  - `after_snr_db=8.286237604245681`
+  - `after_ssim=0.7869134500690693`
+  - `inference_seconds=0.26703453063964844`
+
+### 结论
+
+- 本次只生成新的 paper-style FP32 SCRN training candidate，没有重跑 BRECQ weight reconstruction 或 activation quantization。
+- 相比旧 `10750_0` baseline，训练 loss 明显更低，但旧单样本 eval 的 `after_snr_db` 和 `after_ssim` 更低：
+  - SNR: `8.286237604245681` vs `11.78722661219287`
+  - SSIM: `0.7869134500690693` vs `0.8699862043155245`
+- 因此该 checkpoint 需要后续在 paper-style 478 test set 和任务协议上做多样本评估，不能仅凭旧单样本图判断是否替代历史 FP32 baseline。
