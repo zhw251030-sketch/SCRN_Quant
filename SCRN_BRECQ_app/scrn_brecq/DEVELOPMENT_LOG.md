@@ -3101,3 +3101,65 @@ Decision criteria:
   - `paper5_energy_filtered - old10750_main`
   - `paper5_energy_filtered - paper5_unfiltered`
 - Decide whether `paper5_energy_filtered` is still a plausible FP32 candidate before BRECQ, or whether the next step should be dataset energy diagnostics and an energy-balanced training protocol.
+
+## 2026-05-07 FP32 3-model x 3-testset 478 eval results
+
+Run:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/test_multi/20260507_224936_fp32_three_model_three_testset_grid478_seed20260507`
+- Rows:
+  - `107550`
+- Conditions:
+  - `478` clean patches x `25` degradation conditions per model-testset pair
+
+Overall metrics:
+
+| model | testset | output SNR mean | output SNR median | output SSIM mean | output SSIM median |
+|---|---|---:|---:|---:|---:|
+| `old10750_main` | `legacy478` | 5.6730 | 5.4099 | 0.7527 | 0.7519 |
+| `paper5_unfiltered` | `legacy478` | 4.7196 | 3.8869 | 0.6787 | 0.6592 |
+| `paper5_energy_filtered` | `legacy478` | 4.1157 | 3.3877 | 0.6377 | 0.6340 |
+| `old10750_main` | `paper5_478` | -6.5491 | 5.1644 | 0.8096 | 0.7965 |
+| `paper5_unfiltered` | `paper5_478` | -3.0017 | 6.5355 | 0.8821 | 0.8976 |
+| `paper5_energy_filtered` | `paper5_478` | -8.3037 | 5.4958 | 0.7783 | 0.8002 |
+| `old10750_main` | `paper5_energy_filtered_478` | 6.4933 | 6.2893 | 0.8183 | 0.8333 |
+| `paper5_unfiltered` | `paper5_energy_filtered_478` | 7.9441 | 7.8208 | 0.8675 | 0.8924 |
+| `paper5_energy_filtered` | `paper5_energy_filtered_478` | 6.7422 | 6.6473 | 0.8197 | 0.8441 |
+
+Pairwise deltas:
+
+| comparison | testset | SNR delta mean | SNR delta median | SSIM delta mean | SSIM delta median |
+|---|---|---:|---:|---:|---:|
+| `paper5_unfiltered - old10750_main` | `legacy478` | -0.9534 | -1.2126 | -0.0740 | -0.0802 |
+| `paper5_unfiltered - old10750_main` | `paper5_478` | +3.5473 | +2.9373 | +0.0725 | +0.0703 |
+| `paper5_unfiltered - old10750_main` | `paper5_energy_filtered_478` | +1.4508 | +1.7236 | +0.0492 | +0.0450 |
+| `paper5_energy_filtered - old10750_main` | `legacy478` | -1.5573 | -1.7892 | -0.1150 | -0.1347 |
+| `paper5_energy_filtered - old10750_main` | `paper5_478` | -1.7547 | +0.0548 | -0.0312 | -0.0183 |
+| `paper5_energy_filtered - old10750_main` | `paper5_energy_filtered_478` | +0.2489 | +0.5539 | +0.0014 | -0.0038 |
+| `paper5_energy_filtered - paper5_unfiltered` | `legacy478` | -0.6039 | -0.6489 | -0.0410 | -0.0507 |
+| `paper5_energy_filtered - paper5_unfiltered` | `paper5_478` | -5.3020 | -1.6413 | -0.1037 | -0.0626 |
+| `paper5_energy_filtered - paper5_unfiltered` | `paper5_energy_filtered_478` | -1.2019 | -1.1296 | -0.0478 | -0.0360 |
+
+Shots0001 notes:
+
+- `Shots0001` dominates all three 478 test sets: `9675 / 11950` rows per model-testset pair.
+- On `legacy478`, `old10750_main` remains best on Shots0001:
+  - `old10750_main`: SNR mean / median `5.3624 / 5.1471`
+  - `paper5_unfiltered`: `4.0268 / 3.5733`
+  - `paper5_energy_filtered`: `3.4266 / 3.0502`
+- On `paper5_478`, `paper5_unfiltered` is best on Shots0001 by median and SSIM:
+  - `old10750_main`: SNR median `4.5728`, SSIM median `0.7927`
+  - `paper5_unfiltered`: SNR median `5.8244`, SSIM median `0.8820`
+  - `paper5_energy_filtered`: SNR median `4.5561`, SSIM median `0.7582`
+- On `paper5_energy_filtered_478`, `paper5_unfiltered` is again best on Shots0001:
+  - `old10750_main`: SNR mean / median `6.3752 / 6.1474`
+  - `paper5_unfiltered`: `7.4809 / 7.4101`
+  - `paper5_energy_filtered`: `6.2332 / 6.1405`
+
+Conclusion:
+
+- `paper5_energy_filtered` is not a strong FP32 main baseline candidate for BRECQ yet.
+- It is never the best model in the 3-testset overall comparison.
+- `old10750_main` is still best on `legacy478`, while `paper5_unfiltered` is best on both paper-style test sets.
+- The very negative SNR means on `paper5_478` reinforce that mean SNR is unstable when near-zero clean patches exist; median SNR and SSIM are more interpretable there.
+- Next step should be dataset energy diagnostics and an energy-balanced training protocol, not immediate W4A8 on `paper5_energy_filtered`.

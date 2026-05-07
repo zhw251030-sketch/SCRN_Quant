@@ -5367,3 +5367,47 @@ Eval matrix:
 - 同时看 by-source 结果，尤其是 `Shots0001`。
 - 如果 `paper5_energy_filtered` 不能在多个 test set 上稳定优于旧主 baseline 或 `paper5_unfiltered`，则暂不把它作为 W4A8 主起点。
 - 如果 `paper5_unfiltered` 仍然最强，下一步应优先做 dataset energy diagnostics / energy-balanced data protocol，而不是直接进入量化。
+
+## 2026-05-07 FP32 3-model x 3-testset eval result before BRECQ
+
+本次仍只评估 FP32 SCRN，不进入 BRECQ / W4A8。
+
+Run:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/test_multi/20260507_224936_fp32_three_model_three_testset_grid478_seed20260507`
+- Rows:
+  - `107550`
+
+Overall ranking:
+
+- `legacy478`:
+  - best: `old10750_main`
+  - SNR mean / median: `5.6730 / 5.4099`
+  - SSIM mean / median: `0.7527 / 0.7519`
+- `paper5_478`:
+  - best: `paper5_unfiltered`
+  - SNR mean / median: `-3.0017 / 6.5355`
+  - SSIM mean / median: `0.8821 / 0.8976`
+  - note: SNR mean is distorted by near-zero clean patches; median SNR and SSIM are more informative.
+- `paper5_energy_filtered_478`:
+  - best: `paper5_unfiltered`
+  - SNR mean / median: `7.9441 / 7.8208`
+  - SSIM mean / median: `0.8675 / 0.8924`
+
+`paper5_energy_filtered` summary:
+
+- vs `old10750_main`:
+  - `legacy478`: worse by SNR median `-1.7892` and SSIM median `-0.1347`
+  - `paper5_478`: similar SNR median `+0.0548`, but worse SSIM median `-0.0183`
+  - `paper5_energy_filtered_478`: slightly better SNR median `+0.5539`, but slightly worse SSIM median `-0.0038`
+- vs `paper5_unfiltered`:
+  - worse on all three test sets by SNR median and SSIM median.
+
+Implication for W4A8:
+
+- Do not use `paper5_energy_filtered` as the main BRECQ starting checkpoint yet.
+- The current best FP32 checkpoint depends on test protocol:
+  - `old10750_main` for legacy continuity.
+  - `paper5_unfiltered` for both paper-style test sets.
+- Since `paper5_energy_filtered` fixes low-energy pollution but loses overall FP32 quality, the next step should be energy diagnostics / energy-balanced data construction before any new W4A8 run.
+- Keep reporting mean and median SNR/SSIM together, especially for any test set that still contains near-zero clean patches.
