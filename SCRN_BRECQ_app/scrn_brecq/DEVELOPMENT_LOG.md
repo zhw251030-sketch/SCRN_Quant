@@ -3234,3 +3234,74 @@ Next recommendation:
   - keep source count quotas,
   - add per-source energy-bin selection or per-source std² share constraints,
   - verify that no single source dominates the MSE-scale proxy before retraining.
+
+## 2026-05-08 Per-patch absmax normalized paper5 datasets
+
+目的：
+
+- 新增一组实验性数据协议，用来测试“每个 clean patch 自己归一化”是否能缓解不同 source / patch 之间的幅值尺度差异。
+- 不覆盖已有数据集：
+  - `scrn_paper5_*`
+  - `scrn_paper5_energy_filtered_*`
+- 本轮只生成 clean train / calibration / test 数据集，不重训 FP32，不进入 BRECQ。
+
+实现：
+
+- 新增：
+  - `SCRN_BRECQ_app/scrn_brecq/data/per_patch_normalization.py`
+  - `SCRN_BRECQ_app/scrn_brecq/cli/prepare_per_patch_normalized_datasets.py`
+  - `SCRN_BRECQ_app/scrn_brecq/tests/test_per_patch_normalization.py`
+- 归一化公式：
+  - `scale = max(abs(patch))`
+  - `patch_norm = patch / scale if scale > 1e-12 else patch`
+  - `patch_restored = patch_norm * normalization_scale`
+- 每个 sample manifest 记录：
+  - `input_dataset_dir`
+  - `input_file`
+  - `input_sha256`
+  - `output_sha256`
+  - `normalization_method = per_patch_absmax`
+  - `normalization_scale`
+  - `normalization_eps = 1e-12`
+  - `zero_or_tiny_scale`
+  - `restoration_formula`
+- calibration 不重新抽样：
+  - 读取原 cali manifest 的 `train_file`
+  - 从对应 normalized train 目录复制同一个 normalized train patch
+  - 保持 cali 数量和 source 配额不变
+
+输出目录：
+
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_perpatch_absmax_train_10750`
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_perpatch_absmax_cali_1024_stratified`
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_perpatch_absmax_test_478`
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_train_10750`
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+
+生成统计：
+
+| dataset | count | tiny scale count | scale median | scale mean |
+|---|---:|---:|---:|---:|
+| `paper5_perpatch_absmax_train_10750` | 10750 | 5400 | `2.7119e-15` | `0.017224` |
+| `paper5_perpatch_absmax_cali_1024` | 1024 | 504 | `7.0329e-09` | `0.018736` |
+| `paper5_perpatch_absmax_test_478` | 478 | 18 | `0.038314` | `0.069184` |
+| `paper5_energy_filtered_perpatch_absmax_train_10750` | 10750 | 0 | `0.040546` | `0.101754` |
+| `paper5_energy_filtered_perpatch_absmax_cali_1024` | 1024 | 0 | `0.040998` | `0.105510` |
+| `paper5_energy_filtered_perpatch_absmax_test_478` | 478 | 0 | `0.047740` | `0.085327` |
+
+验证：
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_per_patch_normalization -v`
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/data/per_patch_normalization.py SCRN_BRECQ_app/scrn_brecq/cli/prepare_per_patch_normalized_datasets.py`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.prepare_per_patch_normalized_datasets --help`
+- 生成后独立检查：
+  - 六个输出目录 `.npy` 数量分别为 `10750 / 1024 / 478 / 10750 / 1024 / 478`
+  - 所有非 tiny patch 的 `max(abs(patch_norm)) ~= 1`
+  - 随机抽样反归一化最大误差不超过 `2.9803e-08`
+
+解释：
+
+- `paper5_unfiltered` 派生集保留了 near-zero patch 被放大的风险，因此 manifest / README 中显式记录 `normalization_scale` 和 `zero_or_tiny_scale`。
+- `paper5_energy_filtered` 派生集没有 tiny-scale patch，更适合判断 per-patch absmax normalization 本身是否有帮助。
+- 该协议是实验性派生数据协议，不替代原始 `paper5` / `paper5_energy_filtered` 数据集；后续必须先做 FP32 训练和 478 fixed-grid eval，再决定是否进入 W4A8。

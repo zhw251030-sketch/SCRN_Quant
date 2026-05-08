@@ -5460,3 +5460,51 @@ Implication for quantization:
   - preserve source count quotas,
   - constrain per-source energy distribution or std² share,
   - validate diagnostics before any new FP32 training or W4A8 quantization.
+
+## 2026-05-08 Per-patch absmax normalized dataset candidates
+
+本次不运行 BRECQ / W4A8，只新增后续可能用于 FP32 和量化对照的 clean 数据协议。
+
+Motivation:
+
+- 之前的 train energy diagnostics 显示，source patch 数量比例一致并不等于训练影响一致。
+- 每个 patch 的幅值尺度会影响 FP32 `MSELoss(sum)`，也会影响后续 calibration / activation range 统计。
+- 新协议先把每个 clean patch 单独做 absmax normalization，用于隔离“振幅尺度差异”这个变量。
+
+Protocol:
+
+- `scale = max(abs(patch))`
+- `patch_norm = patch / scale if scale > 1e-12 else patch`
+- manifest 中记录 `normalization_scale`，后续可用：
+  - `restored = normalized * normalization_scale`
+- 反归一化恢复的是原 clean patch 空间，不是 raw SEG-Y 原始振幅空间。
+
+New datasets:
+
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_perpatch_absmax_train_10750`
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_perpatch_absmax_cali_1024_stratified`
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_perpatch_absmax_test_478`
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_train_10750`
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+
+Counts and tiny-scale notes:
+
+| dataset | count | tiny scale count |
+|---|---:|---:|
+| `paper5_perpatch_absmax_train_10750` | 10750 | 5400 |
+| `paper5_perpatch_absmax_cali_1024` | 1024 | 504 |
+| `paper5_perpatch_absmax_test_478` | 478 | 18 |
+| `paper5_energy_filtered_perpatch_absmax_train_10750` | 10750 | 0 |
+| `paper5_energy_filtered_perpatch_absmax_cali_1024` | 1024 | 0 |
+| `paper5_energy_filtered_perpatch_absmax_test_478` | 478 | 0 |
+
+Implication for W4A8:
+
+- Do not treat these as the new default W4A8 calibration/test protocol yet.
+- `paper5_unfiltered_perpatch_absmax` is useful but risky because many near-zero patches remain tiny-scale or can be amplified if just above threshold.
+- `paper5_energy_filtered_perpatch_absmax` is the cleaner candidate for testing whether per-patch normalization helps FP32 and activation quantization.
+- Next safe order:
+  1. Train FP32 on the normalized dataset candidates.
+  2. Run fixed-grid 478 eval with mean and median SNR/SSIM.
+  3. Only if FP32 is competitive, use the matching normalized calibration/test sets for a W4A8 BRECQ experiment.
