@@ -3305,3 +3305,74 @@ Next recommendation:
 - `paper5_unfiltered` 派生集保留了 near-zero patch 被放大的风险，因此 manifest / README 中显式记录 `normalization_scale` 和 `zero_or_tiny_scale`。
 - `paper5_energy_filtered` 派生集没有 tiny-scale patch，更适合判断 per-patch absmax normalization 本身是否有帮助。
 - 该协议是实验性派生数据协议，不替代原始 `paper5` / `paper5_energy_filtered` 数据集；后续必须先做 FP32 训练和 478 fixed-grid eval，再决定是否进入 W4A8。
+
+## 2026-05-08 Paper5 per-patch absmax FP32 training
+
+本次只训练 FP32 SCRN，不进入 BRECQ / W4A8。
+
+Dataset:
+
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_perpatch_absmax_train_10750`
+- count: `10750`
+- tiny scale patch count: `5400`
+- source counts:
+  - `1997_2.5D_shots`: `300`
+  - `7m_shots_0201`: `3355`
+  - `Anisotropic_FD_Model`: `750`
+  - `Kerry3D`: `480`
+  - `Shots0001_0200`: `5865`
+
+Run:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_150851_paper5_perpatch_absmax_10750_ddp3_seed20260425`
+- command used 3-GPU DDP with physical GPUs `1,2,3`:
+  - `CUDA_VISIBLE_DEVICES=1,2,3`
+  - `torchrun --standalone --nproc_per_node=3`
+- note:
+  - plain sandbox `nvidia-smi` could not access the driver
+  - non-sandbox GPU check saw CUDA correctly
+  - training was launched with GPU-accessible execution
+- config:
+  - `epochs=80`
+  - `batch_size=32` per GPU
+  - global batch `96`
+  - `lr=0.001`
+  - `milestones=20,40,60`
+  - `gamma=0.2`
+  - `seed=20260425`
+  - `num_workers=2`
+  - model config `dim=64, stage_depths=1,1,1,1,1, head_dim=32, window_size=8, input_resolution=128`
+- git commit recorded in run config:
+  - `247c1ee9522f515ef94335d74012fa5f3236a1a0`
+
+Training metrics:
+
+- best epoch: `75`
+- best loss: `11.12054773739406`
+- last epoch: `80`
+- last loss: `11.920819751563526`
+- checkpoints:
+  - `best.pth`
+  - `latest.pth`
+  - `epoch_010.pth` through `epoch_080.pth` every 10 epochs
+
+Single-sample historical eval:
+
+- run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/test/20260508_164151_paper5_perpatch_absmax_10750_ddp3_seed20260425_best_eval_gt_colorbar`
+- checkpoint:
+  - train run `best.pth`
+- input pair:
+  - `SCRN-main/test_data/clear.npy`
+  - `SCRN-main/test_data/noise_and_miss.npy`
+- metrics:
+  - before SNR: `3.9693 dB`
+  - after SNR: `13.3167 dB`
+  - before SSIM: `0.6053`
+  - after SSIM: `0.9130`
+
+Interpretation:
+
+- Single-sample result is strong and exceeds the previous single-sample paper5 / energy-filtered runs.
+- This does not decide the FP32 baseline yet because this test is only one historical sample.
+- Next required comparison is still the 478 fixed-grid eval after the second normalized model, `paper5_energy_filtered_perpatch_absmax`, is trained.

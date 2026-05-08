@@ -5508,3 +5508,44 @@ Implication for W4A8:
   1. Train FP32 on the normalized dataset candidates.
   2. Run fixed-grid 478 eval with mean and median SNR/SSIM.
   3. Only if FP32 is competitive, use the matching normalized calibration/test sets for a W4A8 BRECQ experiment.
+
+## 2026-05-08 Paper5 per-patch absmax FP32 training result
+
+本次仍不运行 BRECQ / W4A8，只记录第一个 normalized FP32 checkpoint。
+
+Train dataset:
+
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_perpatch_absmax_train_10750`
+- This is the unfiltered paper5 derivative with per-patch absmax normalization.
+- tiny scale patch count remains high:
+  - `5400 / 10750`
+
+Train run:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_150851_paper5_perpatch_absmax_10750_ddp3_seed20260425`
+- 3-GPU DDP on physical GPUs `1,2,3`
+- global batch `96`
+- same SCRN model and optimizer schedule as recent paper5 runs
+- run config git commit:
+  - `247c1ee9522f515ef94335d74012fa5f3236a1a0`
+
+Training metrics:
+
+- best epoch: `75`
+- best loss: `11.12054773739406`
+- last loss: `11.920819751563526`
+
+Historical single-sample eval:
+
+- run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/test/20260508_164151_paper5_perpatch_absmax_10750_ddp3_seed20260425_best_eval_gt_colorbar`
+- metrics:
+  - before SNR / SSIM: `3.9693 dB / 0.6053`
+  - after SNR / SSIM: `13.3167 dB / 0.9130`
+
+Quantization implication:
+
+- This is a promising FP32 single-sample result, but it is not enough to choose a W4A8 starting point.
+- The dataset still contains many tiny-scale patches, so activation calibration behavior may be risky.
+- Do not start BRECQ from this checkpoint yet.
+- Next step should train `paper5_energy_filtered_perpatch_absmax`, then run a joint fixed-grid 478 eval before selecting any normalized checkpoint for W4A8.
