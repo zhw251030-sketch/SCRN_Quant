@@ -3708,3 +3708,90 @@ Interpretation:
 - The preferred normalized W4A8 starting point remains:
   - `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
 - If testing larger LR further, try a smaller step than `0.005`; this run shows that jumping directly to `0.005` destabilizes optimization badly.
+
+## 2026-05-09 Paper5 energy-filtered per-patch absmax LR 0.002 four-GPU FP32 training
+
+本次只做 FP32 learning-rate ablation，不运行 BRECQ / W4A8。
+
+Goal:
+
+- Test whether a moderate no-decay LR above `0.001` can improve the normalized energy-filtered per-patch absmax FP32 candidate.
+- This run is not a clean single-variable comparison against `lr=0.001` because it also changes world size/global batch.
+
+Dataset:
+
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_train_10750`
+- count: `10750`
+- tiny scale patch count: `0`
+
+Run:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_231616_paper5_energy_filtered_perpatch_absmax_10750_ddp4_seed20260425_nodecay_lr2e-3`
+- changed variables versus the preferred normalized FP32 run:
+  - LR: `0.001 -> 0.002`
+  - world size: `3 -> 4`
+  - global batch: `96 -> 128`
+- effective LR:
+  - `0.002` for all 80 epochs
+- run config git commit:
+  - `415702b4d87d196c6b4eb6ba3f18d528a94d4d64`
+
+Training metrics:
+
+| run | best epoch | best loss | last loss |
+|---|---:|---:|---:|
+| `lr=0.001`, DDP3, no decay | 79 | 18.80715600649516 | 19.151402472030547 |
+| `lr=0.002`, DDP4, no decay | 80 | 24.6274932878358 | 24.6274932878358 |
+| `lr=0.005`, DDP4, no decay | 72 | 1674639.4090401786 | 780769248405156864 |
+
+Training behavior:
+
+- No NaN or inf was observed.
+- Unlike `lr=0.005`, this run was numerically stable.
+- However, it converged more slowly and to a worse loss than `lr=0.001`.
+- The best checkpoint was the final epoch, so the run might still be slowly descending, but it is far behind the `lr=0.001` baseline at the same 80-epoch budget.
+
+Single-sample historical eval:
+
+- run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/test/20260509_000403_paper5_energy_filtered_perpatch_absmax_10750_ddp4_seed20260425_nodecay_lr2e-3_best_eval_gt_colorbar`
+- metrics:
+  - before SNR / SSIM: `3.9693 dB / 0.6053`
+  - after SNR / SSIM: `13.5487 dB / 0.9226`
+- previous preferred `lr=0.001` checkpoint:
+  - after SNR / SSIM: `13.8807 dB / 0.9324`
+
+Matching normalized 478 eval:
+
+- run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/test_multi/20260509_000456_fp32_lr2e-3_matching_normalized_grid478_seed20260507`
+- testset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- validation:
+  - rows: `11950`
+  - condition count: `25`
+  - manifest warnings: none
+
+Overall 478 comparison:
+
+| checkpoint | SNR mean | SNR median | SSIM mean | SSIM median | SNR gain mean |
+|---|---:|---:|---:|---:|---:|
+| `lr=0.001`, DDP3, no decay | 17.8346 | 18.1752 | 0.9644 | 0.9788 | 16.7703 |
+| `lr=0.002`, DDP4, no decay | 16.0660 | 16.3905 | 0.9546 | 0.9738 | 15.0017 |
+| `lr=0.005`, DDP4, no decay | -38.8719 | -38.1403 | 0.1705 | 0.1384 | -39.9362 |
+
+By-source `lr=0.002` 478 result:
+
+| source | count | SNR mean | SSIM mean |
+|---|---:|---:|---:|
+| Anisotropic | 1875 | 19.6571 | 0.9922 |
+| Kerry3D | 400 | 8.9998 | 0.9550 |
+| Shots0001 | 9675 | 15.6622 | 0.9473 |
+
+Interpretation:
+
+- `lr=0.002` is stable but worse than `lr=0.001` for the 80-epoch four-GPU run.
+- It should not replace the `lr=0.001`, DDP3, no-decay checkpoint as the normalized FP32 candidate.
+- The preferred normalized W4A8 starting point remains:
+  - `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
+- If further LR tuning is needed, the next informative experiment should isolate global batch from LR, because both `lr=0.002` and `lr=0.005` used DDP4/global batch `128` while the preferred baseline used DDP3/global batch `96`.
