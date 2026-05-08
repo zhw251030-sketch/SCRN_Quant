@@ -5549,3 +5549,48 @@ Quantization implication:
 - The dataset still contains many tiny-scale patches, so activation calibration behavior may be risky.
 - Do not start BRECQ from this checkpoint yet.
 - Next step should train `paper5_energy_filtered_perpatch_absmax`, then run a joint fixed-grid 478 eval before selecting any normalized checkpoint for W4A8.
+
+## 2026-05-08 Paper5 energy-filtered per-patch absmax FP32 training result
+
+本次仍不运行 BRECQ / W4A8，只记录第二个 normalized FP32 checkpoint。
+
+Train dataset:
+
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_train_10750`
+- This is the energy-filtered paper5 derivative with per-patch absmax normalization.
+- tiny scale patch count:
+  - `0 / 10750`
+
+Train run:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_164907_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425`
+- 3-GPU DDP on physical GPUs `1,2,3`
+- global batch `96`
+- same SCRN model and optimizer schedule as recent paper5 runs
+- run config git commit:
+  - `c96ebc81444c9066f4035fd35e258c1fa940513d`
+
+Training metrics:
+
+- best epoch: `63`
+- best loss: `22.153653881379537`
+- last loss: `22.433070646865026`
+
+Historical single-sample eval:
+
+- run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/test/20260508_183043_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_best_eval_gt_colorbar`
+- metrics:
+  - before SNR / SSIM: `3.9693 dB / 0.6053`
+  - after SNR / SSIM: `13.5520 dB / 0.9273`
+
+Quantization implication:
+
+- This checkpoint has a cleaner normalized training set than `paper5_perpatch_absmax` because tiny-scale patches are removed.
+- Single-sample SNR/SSIM are slightly better than the unfiltered per-patch normalized checkpoint.
+- Do not start W4A8 yet; single-sample eval is insufficient.
+- Next step should run a fixed-grid 478 multi-eval including:
+  - `paper5_perpatch_absmax`
+  - `paper5_energy_filtered_perpatch_absmax`
+  - existing FP32 baselines as needed for continuity
+  - normalized and non-normalized test sets, with mean and median SNR/SSIM.
