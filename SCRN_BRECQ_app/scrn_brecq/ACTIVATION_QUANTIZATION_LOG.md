@@ -5629,3 +5629,38 @@ Activation quantization implication:
   - calibration: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
   - test: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
 - Raw-amplitude W4A8 and normalized-amplitude W4A8 should be reported as separate protocols.
+
+## 2026-05-08 No-decay normalized FP32 candidate
+
+本次仍未运行 BRECQ / W4A8，只更新 normalized FP32 candidate 的选择依据。
+
+Run:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3`
+- dataset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_train_10750`
+- only changed variable:
+  - `--milestones ""`
+  - LR stayed at `0.001` for all 80 epochs
+
+Training comparison:
+
+| checkpoint | best epoch | best loss | last loss |
+|---|---:|---:|---:|
+| decayed LR | 63 | 22.153653881379537 | 22.433070646865026 |
+| no decay LR | 79 | 18.80715600649516 | 19.151402472030547 |
+
+FP32 eval comparison:
+
+| checkpoint | single-sample SNR / SSIM | matching 478 SNR mean / SSIM mean | Shots0001 SNR mean / SSIM mean |
+|---|---:|---:|---:|
+| decayed LR | 13.5520 / 0.9273 | 16.7960 / 0.9615 | 16.3505 / 0.9551 |
+| no decay LR | 13.8807 / 0.9324 | 17.8346 / 0.9644 | 17.3551 / 0.9594 |
+
+Quantization implication:
+
+- The no-decay normalized FP32 checkpoint is now the preferred starting point for a normalized W4A8 experiment.
+- Use it only with the normalized amplitude-space protocol:
+  - calibration: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+  - test: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- Do not mix this checkpoint with raw-amplitude calibration/test data when judging W4A8 quality.

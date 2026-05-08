@@ -3529,3 +3529,92 @@ Interpretation:
 - For raw-amplitude evaluation, keep `old10750_main`, `paper5_unfiltered`, and `paper5_energy_filtered` as the comparable group.
 - For normalized evaluation and possible normalized W4A8 experiments, the next candidate should be `paper5_energy_filtered_perpatch_absmax` with matching normalized calibration/test data.
 - A raw checkpoint and a normalized checkpoint should not be ranked by a single mixed 5-testset average because they solve different amplitude-space protocols.
+
+## 2026-05-08 Paper5 energy-filtered per-patch absmax no-decay FP32 training
+
+本次只做 FP32 learning-rate ablation，不运行 BRECQ / W4A8。
+
+Goal:
+
+- Reproduce the latest normalized FP32 setup.
+- Keep all settings fixed except learning-rate decay.
+- Test whether the previous `20/40/60` decay made the later epochs under-train.
+
+Dataset:
+
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_train_10750`
+- count: `10750`
+- tiny scale patch count: `0`
+
+Run:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3`
+- changed variable:
+  - old: `--milestones 20,40,60 --gamma 0.2`
+  - new: `--milestones "" --gamma 0.2`
+- effective LR:
+  - `0.001` for all 80 epochs
+- unchanged config:
+  - 3-GPU DDP on physical GPUs `1,2,3`
+  - global batch `96`
+  - `epochs=80`
+  - `batch_size=32` per GPU
+  - `seed=20260425`
+  - model config `dim=64, stage_depths=1,1,1,1,1, head_dim=32, window_size=8, input_resolution=128`
+- run config git commit:
+  - `a95fd213be8bf6feff417e41f68c42b6b1e897ec`
+
+Training metrics:
+
+| run | best epoch | best loss | last loss |
+|---|---:|---:|---:|
+| previous decayed LR | 63 | 22.153653881379537 | 22.433070646865026 |
+| no decay LR | 79 | 18.80715600649516 | 19.151402472030547 |
+
+Single-sample historical eval:
+
+- run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/test/20260508_212331_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3_best_eval_gt_colorbar`
+- metrics:
+  - before SNR / SSIM: `3.9693 dB / 0.6053`
+  - after SNR / SSIM: `13.8807 dB / 0.9324`
+- previous decayed checkpoint:
+  - after SNR / SSIM: `13.5520 dB / 0.9273`
+
+Matching normalized 478 eval:
+
+- run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/test_multi/20260508_212429_fp32_nodecay_matching_normalized_grid478_seed20260507`
+- testset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- degradation grid:
+  - SNR settings `-2,-1,1,5,10`
+  - missing rates `0.02,0.08,0.18,0.28,0.38`
+  - seed `20260507`
+- validation:
+  - rows: `11950`
+  - condition count: `25`
+  - manifest warnings: none
+
+Overall 478 comparison:
+
+| checkpoint | SNR mean | SNR median | SSIM mean | SSIM median | SNR gain mean |
+|---|---:|---:|---:|---:|---:|
+| previous decayed LR | 16.7960 | 17.1248 | 0.9615 | 0.9792 | 15.7317 |
+| no decay LR | 17.8346 | 18.1752 | 0.9644 | 0.9788 | 16.7703 |
+
+By-source no-decay 478 result:
+
+| source | count | SNR mean | SSIM mean |
+|---|---:|---:|---:|
+| Anisotropic | 1875 | 22.0641 | 0.9928 |
+| Kerry3D | 400 | 9.6066 | 0.9506 |
+| Shots0001 | 9675 | 17.3551 | 0.9594 |
+
+Interpretation:
+
+- No-decay LR is clearly better for this normalized energy-filtered FP32 setup.
+- Training loss improves substantially without late divergence.
+- Single-sample and matching 478 eval also improve, so this is not just overfitting to the training loss.
+- The no-decay checkpoint should replace the decayed checkpoint as the preferred normalized FP32 candidate.
+- For normalized W4A8, use this no-decay FP32 checkpoint with the matching normalized calibration/test data.
