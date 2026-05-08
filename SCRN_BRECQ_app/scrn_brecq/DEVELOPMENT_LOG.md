@@ -3795,3 +3795,92 @@ Interpretation:
 - The preferred normalized W4A8 starting point remains:
   - `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
 - If further LR tuning is needed, the next informative experiment should isolate global batch from LR, because both `lr=0.002` and `lr=0.005` used DDP4/global batch `128` while the preferred baseline used DDP3/global batch `96`.
+
+## 2026-05-09 Paper5 energy-filtered per-patch absmax LR 0.0015 four-GPU FP32 training
+
+本次只做 FP32 learning-rate ablation，不运行 BRECQ / W4A8。
+
+Goal:
+
+- Test an intermediate no-decay LR between the successful `0.001` run and the weaker `0.002` run.
+- This is still not a clean single-variable comparison against `lr=0.001`, because it also uses DDP4/global batch `128` instead of DDP3/global batch `96`.
+
+Dataset:
+
+- `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_train_10750`
+- count: `10750`
+- tiny scale patch count: `0`
+
+Run:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/train/20260509_001355_paper5_energy_filtered_perpatch_absmax_10750_ddp4_seed20260425_nodecay_lr1p5e-3`
+- changed variables versus the preferred normalized FP32 run:
+  - LR: `0.001 -> 0.0015`
+  - world size: `3 -> 4`
+  - global batch: `96 -> 128`
+- effective LR:
+  - `0.0015` for all 80 epochs
+- run config git commit:
+  - `8edd1f57e36bd55a7853cc5c9cf9736f1b9b9b02`
+
+Training metrics:
+
+| run | best epoch | best loss | last loss |
+|---|---:|---:|---:|
+| `lr=0.001`, DDP3, no decay | 79 | 18.80715600649516 | 19.151402472030547 |
+| `lr=0.0015`, DDP4, no decay | 79 | 20.458939271313803 | 20.465225462402618 |
+| `lr=0.002`, DDP4, no decay | 80 | 24.6274932878358 | 24.6274932878358 |
+| `lr=0.005`, DDP4, no decay | 72 | 1674639.4090401786 | 780769248405156864 |
+
+Training behavior:
+
+- No NaN or inf was observed.
+- `lr=0.0015` is clearly more stable and better optimized than `lr=0.002` and `lr=0.005`.
+- It still does not match the `lr=0.001`, DDP3, no-decay loss after the same 80-epoch budget.
+
+Single-sample historical eval:
+
+- run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/test/20260509_010027_paper5_energy_filtered_perpatch_absmax_10750_ddp4_seed20260425_nodecay_lr1p5e-3_best_eval_gt_colorbar`
+- metrics:
+  - before SNR / SSIM: `3.9693 dB / 0.6053`
+  - after SNR / SSIM: `13.7548 dB / 0.9374`
+- previous preferred `lr=0.001` checkpoint:
+  - after SNR / SSIM: `13.8807 dB / 0.9324`
+
+Matching normalized 478 eval:
+
+- run:
+  - `SCRN_BRECQ_app/scrn_repro/runs/test_multi/20260509_010150_fp32_lr1p5e-3_matching_normalized_grid478_seed20260507`
+- testset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- validation:
+  - rows: `11950`
+  - condition count: `25`
+  - per-condition count: `478`
+  - manifest warnings: none
+
+Overall 478 comparison:
+
+| checkpoint | SNR mean | SNR median | SSIM mean | SSIM median | SNR gain mean |
+|---|---:|---:|---:|---:|---:|
+| `lr=0.001`, DDP3, no decay | 17.8346 | 18.1752 | 0.9644 | 0.9788 | 16.7703 |
+| `lr=0.0015`, DDP4, no decay | 16.9180 | 17.3165 | 0.9566 | 0.9728 | 15.8536 |
+| `lr=0.002`, DDP4, no decay | 16.0660 | 16.3905 | 0.9546 | 0.9738 | 15.0017 |
+| `lr=0.005`, DDP4, no decay | -38.8719 | -38.1403 | 0.1705 | 0.1384 | -39.9362 |
+
+By-source `lr=0.0015` 478 result:
+
+| source | count | SNR mean | SSIM mean |
+|---|---:|---:|---:|
+| Anisotropic | 1875 | 21.0776 | 0.9897 |
+| Kerry3D | 400 | 9.5860 | 0.9526 |
+| Shots0001 | 9675 | 16.4150 | 0.9504 |
+
+Interpretation:
+
+- `lr=0.0015` is a useful midpoint: it improves over `lr=0.002` but still underperforms `lr=0.001` on the matching 478 benchmark.
+- It should not replace the `lr=0.001`, DDP3, no-decay checkpoint as the normalized FP32 candidate.
+- The preferred normalized W4A8 starting point remains:
+  - `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
+- The current evidence suggests increasing LR under DDP4/global batch `128` is not beneficial for this 80-epoch budget.

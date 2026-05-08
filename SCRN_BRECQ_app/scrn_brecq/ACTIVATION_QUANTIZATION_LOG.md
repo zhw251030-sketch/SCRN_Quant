@@ -5737,3 +5737,43 @@ Quantization implication:
   - `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
 - Do not use the LR `0.002` checkpoint as the default for calibration, activation reconstruction, or packed export experiments.
 - Further LR tuning should isolate global batch effects before changing the preferred W4A8 starting point.
+
+## 2026-05-09 LR 0.0015 normalized FP32 ablation
+
+本次仍未运行 BRECQ / W4A8，只测试 normalized FP32 candidate 的 intermediate LR 训练是否可行。
+
+Run:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/train/20260509_001355_paper5_energy_filtered_perpatch_absmax_10750_ddp4_seed20260425_nodecay_lr1p5e-3`
+- dataset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_train_10750`
+- changed variables versus preferred `lr=0.001` run:
+  - LR: `0.001 -> 0.0015`
+  - world size: `3 -> 4`
+  - global batch: `96 -> 128`
+
+Training comparison:
+
+| checkpoint | best epoch | best loss | last loss |
+|---|---:|---:|---:|
+| `lr=0.001`, DDP3, no decay | 79 | 18.80715600649516 | 19.151402472030547 |
+| `lr=0.0015`, DDP4, no decay | 79 | 20.458939271313803 | 20.465225462402618 |
+| `lr=0.002`, DDP4, no decay | 80 | 24.6274932878358 | 24.6274932878358 |
+| `lr=0.005`, DDP4, no decay | 72 | 1674639.4090401786 | 780769248405156864 |
+
+FP32 eval comparison:
+
+| checkpoint | single-sample SNR / SSIM | matching 478 SNR mean / SSIM mean | Shots0001 SNR mean / SSIM mean |
+|---|---:|---:|---:|
+| `lr=0.001`, DDP3, no decay | 13.8807 / 0.9324 | 17.8346 / 0.9644 | 17.3551 / 0.9594 |
+| `lr=0.0015`, DDP4, no decay | 13.7548 / 0.9374 | 16.9180 / 0.9566 | 16.4150 / 0.9504 |
+| `lr=0.002`, DDP4, no decay | 13.5487 / 0.9226 | 16.0660 / 0.9546 | 15.6622 / 0.9473 |
+| `lr=0.005`, DDP4, no decay | -35.8768 / 0.0791 | -38.8719 / 0.1705 | -38.4443 / 0.1842 |
+
+Quantization implication:
+
+- `lr=0.0015` is stable and better than `lr=0.002`, but it remains weaker than the current preferred `lr=0.001` normalized FP32 checkpoint on matching 478 eval.
+- The preferred normalized W4A8 FP32 starting checkpoint remains:
+  - `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
+- Do not use the LR `0.0015` checkpoint as the default for calibration, activation reconstruction, or packed export experiments.
+- Current LR sweep evidence indicates that increasing LR under DDP4/global batch `128` does not improve the normalized W4A8 candidate.
