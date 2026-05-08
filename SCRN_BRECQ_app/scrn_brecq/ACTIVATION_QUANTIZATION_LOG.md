@@ -5594,3 +5594,38 @@ Quantization implication:
   - `paper5_energy_filtered_perpatch_absmax`
   - existing FP32 baselines as needed for continuity
   - normalized and non-normalized test sets, with mean and median SNR/SSIM.
+
+## 2026-05-08 FP32 5-model x 5-testset 478 eval before normalized W4A8 selection
+
+本次仍未运行 BRECQ / W4A8，只用 FP32 fixed-grid eval 选择后续量化候选。
+
+Run:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/test_multi/20260508_184559_fp32_five_model_five_testset_grid478_seed20260507`
+- rows: `298750`
+- condition count: `25`
+- each model/testset bucket: `11950` rows
+- manifest warnings: none
+
+Native-pair FP32 results:
+
+| checkpoint | matching testset | SNR mean | SNR median | SSIM mean | SSIM median |
+|---|---|---:|---:|---:|---:|
+| `old10750_main` | `legacy478` | 5.6730 | 5.4099 | 0.7527 | 0.7519 |
+| `paper5_unfiltered` | `paper5_478` | -3.0017 | 6.5355 | 0.8821 | 0.8976 |
+| `paper5_energy_filtered` | `paper5_energy_filtered_478` | 6.7422 | 6.6473 | 0.8197 | 0.8441 |
+| `paper5_perpatch_absmax` | `paper5_perpatch_absmax_478` | 11.1449 | 16.1541 | 0.9345 | 0.9833 |
+| `paper5_energy_filtered_perpatch_absmax` | `paper5_energy_filtered_perpatch_absmax_478` | 16.7960 | 17.1248 | 0.9615 | 0.9792 |
+
+Activation quantization implication:
+
+- Per-patch absmax normalization is not just a harmless preprocessing detail; it changes the amplitude space seen by both the model and activation quantizers.
+- The normalized FP32 checkpoints perform poorly on raw-amplitude testsets, so they should not be used with raw-amplitude calibration/test data.
+- The clean normalized candidate is `paper5_energy_filtered_perpatch_absmax`:
+  - matching normalized test SNR / SSIM: `16.7960 dB / 0.9615`
+  - Shots0001 matching normalized SNR / SSIM: `16.3505 dB / 0.9551`
+  - tiny-scale training patches: `0`
+- If a normalized W4A8 path is pursued, use the matching normalized calibration/test sets:
+  - calibration: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+  - test: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- Raw-amplitude W4A8 and normalized-amplitude W4A8 should be reported as separate protocols.

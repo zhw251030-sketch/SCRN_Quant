@@ -3447,3 +3447,85 @@ Interpretation:
   - best loss `22.1537` vs `11.1205`
   - this is expected to be harder to compare directly because the energy-filtered normalized dataset removes near-zero patches.
 - Both normalized FP32 checkpoints are now available; next comparison should be a 478 fixed-grid eval across normalized and existing test sets.
+
+## 2026-05-08 FP32 5-model x 5-testset fixed-grid 478 eval
+
+本次只评估 FP32 SCRN，不运行 BRECQ / W4A8。
+
+Run:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/test_multi/20260508_184559_fp32_five_model_five_testset_grid478_seed20260507`
+- models:
+  - `old10750_main`
+  - `paper5_unfiltered`
+  - `paper5_energy_filtered`
+  - `paper5_perpatch_absmax`
+  - `paper5_energy_filtered_perpatch_absmax`
+- testsets:
+  - `legacy478`
+  - `paper5_478`
+  - `paper5_energy_filtered_478`
+  - `paper5_perpatch_absmax_478`
+  - `paper5_energy_filtered_perpatch_absmax_478`
+- degradation grid:
+  - SNR settings: `-2,-1,1,5,10`
+  - missing rates: `0.02,0.08,0.18,0.28,0.38`
+  - seed: `20260507`
+  - batch size: `64`
+  - CUDA device index: `1`
+
+Validation:
+
+- expected rows: `298750`
+- actual rows: `298750`
+- condition count: `25`
+- model/testset buckets: `25`
+- each model/testset bucket rows: `11950`
+- condition buckets: `625`
+- each condition bucket rows: `478`
+- manifest warnings: none
+
+Native-pair overall results:
+
+| model | matching testset | SNR mean | SNR median | SSIM mean | SSIM median | SNR gain mean |
+|---|---|---:|---:|---:|---:|---:|
+| `old10750_main` | `legacy478` | 5.6730 | 5.4099 | 0.7527 | 0.7519 | 4.6241 |
+| `paper5_unfiltered` | `paper5_478` | -3.0017 | 6.5355 | 0.8821 | 0.8976 | -3.9993 |
+| `paper5_energy_filtered` | `paper5_energy_filtered_478` | 6.7422 | 6.6473 | 0.8197 | 0.8441 | 5.6844 |
+| `paper5_perpatch_absmax` | `paper5_perpatch_absmax_478` | 11.1449 | 16.1541 | 0.9345 | 0.9833 | 10.1063 |
+| `paper5_energy_filtered_perpatch_absmax` | `paper5_energy_filtered_perpatch_absmax_478` | 16.7960 | 17.1248 | 0.9615 | 0.9792 | 15.7317 |
+
+Cross-space result pattern:
+
+- On raw-amplitude testsets (`legacy478`, `paper5_478`, `paper5_energy_filtered_478`), the normalized checkpoints do not transfer well:
+  - `paper5_perpatch_absmax` raw-testset average SNR: `-2.7625 dB`
+  - `paper5_energy_filtered_perpatch_absmax` raw-testset average SNR: `-2.9064 dB`
+- On normalized testsets, normalized checkpoints dominate:
+  - `paper5_perpatch_absmax` normalized-testset average SNR / SSIM: `13.0527 dB / 0.9407`
+  - `paper5_energy_filtered_perpatch_absmax` normalized-testset average SNR / SSIM: `14.2395 dB / 0.9503`
+- Therefore per-patch absmax normalization changes the amplitude space. It should be treated as a separate evaluation/training protocol, not as a checkpoint that can be directly compared on raw-amplitude testsets.
+
+Important pairwise deltas:
+
+| comparison | testset | SNR delta mean | SSIM delta mean |
+|---|---|---:|---:|
+| `paper5_energy_filtered_perpatch_absmax - paper5_perpatch_absmax` | `paper5_perpatch_absmax_478` | 0.5381 | 0.0046 |
+| `paper5_energy_filtered_perpatch_absmax - paper5_perpatch_absmax` | `paper5_energy_filtered_perpatch_absmax_478` | 1.8354 | 0.0147 |
+| `paper5_energy_filtered_perpatch_absmax - paper5_energy_filtered` | `paper5_energy_filtered_perpatch_absmax_478` | 8.5603 | 0.1077 |
+| `paper5_perpatch_absmax - paper5_unfiltered` | `paper5_perpatch_absmax_478` | 7.5414 | 0.1090 |
+
+Native-pair by-source results:
+
+| source | `old10750_main` on `legacy478` | `paper5_energy_filtered` on `paper5_energy_filtered_478` | `paper5_perpatch_absmax` on `paper5_perpatch_absmax_478` | `paper5_energy_filtered_perpatch_absmax` on matching normalized test |
+|---|---:|---:|---:|---:|
+| Anisotropic SNR / SSIM | 6.8024 / 0.8215 | 9.0333 / 0.9354 | 17.4844 / 0.9654 | 20.8429 / 0.9955 |
+| Kerry3D SNR / SSIM | 7.8915 / 0.7636 | 8.3129 / 0.8843 | 7.4658 / 0.9515 | 8.6027 / 0.9550 |
+| Shots0001 SNR / SSIM | 5.3624 / 0.7389 | 6.2332 / 0.7946 | 10.0684 / 0.9279 | 16.3505 / 0.9551 |
+
+Interpretation:
+
+- `paper5_energy_filtered_perpatch_absmax` is the strongest normalized-space FP32 checkpoint.
+- It is also the cleanest normalized candidate because its source dataset has `0` tiny-scale patches.
+- For raw-amplitude evaluation, keep `old10750_main`, `paper5_unfiltered`, and `paper5_energy_filtered` as the comparable group.
+- For normalized evaluation and possible normalized W4A8 experiments, the next candidate should be `paper5_energy_filtered_perpatch_absmax` with matching normalized calibration/test data.
+- A raw checkpoint and a normalized checkpoint should not be ranked by a single mixed 5-testset average because they solve different amplitude-space protocols.
