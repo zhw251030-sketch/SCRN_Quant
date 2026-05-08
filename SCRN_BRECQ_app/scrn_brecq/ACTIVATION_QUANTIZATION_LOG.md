@@ -5664,3 +5664,38 @@ Quantization implication:
   - calibration: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
   - test: `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
 - Do not mix this checkpoint with raw-amplitude calibration/test data when judging W4A8 quality.
+
+## 2026-05-08 LR 0.005 normalized FP32 ablation
+
+本次仍未运行 BRECQ / W4A8，只测试 normalized FP32 candidate 的 aggressive LR 训练是否可行。
+
+Run:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_213810_paper5_energy_filtered_perpatch_absmax_10750_ddp4_seed20260425_nodecay_lr5e-3`
+- dataset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_train_10750`
+- changed variables versus preferred `lr=0.001` run:
+  - LR: `0.001 -> 0.005`
+  - world size: `3 -> 4`
+  - global batch: `96 -> 128`
+
+Training comparison:
+
+| checkpoint | best epoch | best loss | last loss |
+|---|---:|---:|---:|
+| `lr=0.001`, DDP3, no decay | 79 | 18.80715600649516 | 19.151402472030547 |
+| `lr=0.005`, DDP4, no decay | 72 | 1674639.4090401786 | 780769248405156864 |
+
+FP32 eval comparison:
+
+| checkpoint | single-sample SNR / SSIM | matching 478 SNR mean / SSIM mean | Shots0001 SNR mean / SSIM mean |
+|---|---:|---:|---:|
+| `lr=0.001`, DDP3, no decay | 13.8807 / 0.9324 | 17.8346 / 0.9644 | 17.3551 / 0.9594 |
+| `lr=0.005`, DDP4, no decay | -35.8768 / 0.0791 | -38.8719 / 0.1705 | -38.4443 / 0.1842 |
+
+Quantization implication:
+
+- `lr=0.005` is not a viable normalized FP32 starting point for W4A8.
+- The preferred normalized W4A8 FP32 starting checkpoint remains:
+  - `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
+- Do not use the LR `0.005` checkpoint for calibration, activation reconstruction, or packed export experiments.
