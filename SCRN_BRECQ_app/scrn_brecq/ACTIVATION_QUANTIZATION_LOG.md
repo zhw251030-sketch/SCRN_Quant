@@ -7378,3 +7378,45 @@ Size 结论：
 - 下一步诊断必须同时报告 pre/post reconstruction，而不是只报告 final。特别是 W4A8 的 final gain 很小，单看 final 容易误判 activation reconstruction 的作用。
 - 如果 NE001 发现 W4A8 和 W4A4 的误差热点高度重合，NE004/NE006 的 Conv2d sensitivity 和结构化 granularity 搜索可能同时解释 A8 gap 和 A4 崩坏。
 - 如果 W4A4 的热点与 W4A8 不重合，则 A4 应另开 A4-specific range/granularity/mixed precision 路线，不能用 W4A8 的诊断结论直接外推。
+
+## 2026-05-10 NE001-NE006 W4A4 主线实验计划
+
+在正式开始 NE001 前，重新记录后续实验主线。NE000 和 NE000_1/2 已经确认：W4A8 在 normalized 协议下表现很好，W4A4 合法、可恢复、可 packed 等价，但仍有约 `4.53 dB` mean SNR 的 A4 activation gap。因此后续主对象从“修 W4A8”调整为“以 W4A8 为成功参照，重点攻 W4A4”。
+
+本节是对上一节“当前研究判断和后续优先级”的更新：旧文字保留为历史判断，本节之后执行 NE001-NE006 时以 W4A4 主线为准。
+
+### 固定实验对象
+
+| object | role | 使用方式 |
+|---|---|---|
+| FP32 | 上限基准 | 不做 activation quantization 实验，只作为 full-grid 指标、逐样本输出和可视化上限参考。 |
+| E007 W4A32 final | 权重量化起点 | 后续 A4/A8 activation quantization 都从该 checkpoint 出发；同时作为 weight-only gap 参考。 |
+| NE000 W4A8 final | 成功参照与护栏 | 不作为主要优化对象；用于判断 W4A4 热点是否和 A8 一致，并验证新策略不能明显破坏 A8。 |
+| NE000_2 W4A4 final | 主研究对象 | 后续诊断、敏感性、range、granularity 和 mixed precision 优先围绕它展开。 |
+
+### 全局执行口径
+
+- 数据协议固定为 `paper5_energy_filtered_perpatch_absmax`。
+- 正式判断固定使用 normalized `478 x 25` grid：SNR settings `-2,-1,1,5,10`，missing rates `0.02,0.08,0.18,0.28,0.38`，seed `20260507`。
+- 每个涉及 reconstruction 的实验必须报告 pre/post 改变量，不能只报告 final。
+- 单样本和代表图只作为解释材料，不能替代 full-grid mean/median、by-source、by-condition 指标。
+- 运行资源优先使用 GPU；单卡默认优先级仍为 `1 -> 2 -> 3 -> 0`，可并行 sweep 时优先做 job-level 多 GPU 并行。
+- 所有新产物只写入 `SCRN_BRECQ_app/` 下；涉及 `scrn_brecq/` 代码或文档时同步更新两份日志并提交。
+
+### 后续实验安排
+
+| 编号 | 实验对象 | 实验内容 | 实验方法 | 实验目标 | 主要输出 / 决策 |
+|---|---|---|---|---|---|
+| NE001 | 主：NE000_2 W4A4 pre/final；参照：NE000 W4A8 pre/final、E007 W4A32、FP32 | W4A4-centered activation diagnostics。 | 对 W4A4 pre-act 与 final checkpoint 跑 activation quantizer 诊断，统计 activation qparams、delta/zero_point 合法性、fake-quant error、effective levels、module type、stage、role、source 和 condition 分布；同时抽 W4A8 做同口径对照。 | 找到 W4A4 主要误差热点，判断是否和 W4A8 热点重合，明确后续该优先修 Conv2d、Linear/transformer、stage output 还是特定 source/condition。 | quantizer 清单、热点表、by-source/stage/role error ranking、W4A4 vs W4A8 热点重合度；决定 NE004 的 sensitivity 分组。 |
+| NE002 | 主：NE000_2 W4A4；参照：NE000 W4A8、E007 W4A32 packed | 合法状态和 checkpoint / deployment sanity。 | 复核 `verify_quantized_scrn`、packed manifest、summary、reload 后 final quant state、activation bitwidth、52 个 activation quantizer、`non_positive_delta_count=0`、checkpoint-vs-packed 等价；必要时补充 state toggle sanity。 | 排除“结果看起来好/坏是因为未真正启用 activation quantization、reload 状态错误、packed restore 不一致或 bitwidth 配置错位”。 | W4A4/A8 legality 表；若发现状态问题，先修状态再继续；若无问题，确认 NE003-NE006 都可使用当前 checkpoint。 |
+| NE003 | 四个核心对象 | 固定评估和代表图口径。 | 复核 full-grid 聚合、by-source、by-SNR、by-missing-rate、by-condition；选择固定代表样本，使用 seismic colormap 和反归一化/幅值一致显示，展示 FP32 / W4A32 / W4A8 / W4A4 以及误差图。 | 让后续所有改进都有统一可视化和数值解释口径，避免单样本偶然性或显示尺度误导。 | 代表样本清单、图像输出目录、四对象同图对比、W4A4 最差/中位/最好样本案例；后续报告固定复用。 |
+| NE004 | 主：W4A4；参照：W4A8 | Activation quantizer 敏感性。 | 基于 NE001 热点做分组关闭/保留实验，优先按 Conv2d vs Linear/transformer、split_proj、merge_proj、stage_output_conv、stage1-5、source-sensitive groups 分组；先跑小规模 scout，再对关键组跑 full-grid。 | 判断 W4A4 的 `4.53 dB` gap 由哪些 activation quantizer 组主导，并验证旧协议“Conv2d 多层累积误差”在 A4 下是否仍成立。 | 分组恢复表、group ranking、source-specific recovery；决定 NE005 是否值得做 range，NE006 应优先处理哪些结构。 |
+| NE005 | 主：W4A4 的 NE004 目标分组 | Range、clipping、outlier 和 calibration 代表性检查。 | 在不改变 granularity 的前提下，测试 tensor-wise max、percentile、MSE-grid、source/condition-aware calibration、目标分组 range variants；只对 NE004 指出的关键组做完整验证。 | 判断 A4 主要问题是否能通过 range / clipping / calibration 修复，还是必须进入结构化粒度或 mixed precision。 | range variant 对比表；若 tensor-wise range 有效，进入更精细 range；若无效，收束到 NE006 粒度/混精度。 |
+| NE006 | 主：W4A4；护栏：W4A8 | 结构化 activation granularity / mixed precision 搜索。 | 从旧 E006 强候选开始：all Conv2d per-channel、split_proj + merge_proj + stage_output_conv per-channel、对应 group-wise `g4`、stage_output_conv `g4`；在 A4 下必要时加入 selective A8 fallback 或 selective FP32。 | 尝试把 W4A4 从压力对照推进到可用候选；同时确认策略不会明显破坏 W4A8。 | W4A4 候选策略表、pre/post 指标、packed 可行性判断；若出现接近 W4A8 的 A4 候选，再做 packed export/equivalence。 |
+
+### 阶段性判断规则
+
+- 如果 NE001 显示 W4A4 和 W4A8 热点高度重合，后续优先复用旧 E006 的结构化 Conv2d 粒度路线，只是把目标 bitwidth 改成 A4。
+- 如果 W4A4 热点明显不同于 W4A8，后续不要把 W4A8 的好结果外推到 A4；NE004-NE006 必须以 A4-specific 分组和 source-specific 结论为准。
+- 如果 W4A4 的 SSIM 持续随 reconstruction 或 range 改善而下降，需要单独记录 SNR/SSIM tradeoff，并考虑 reconstruction loss 或代表样本可视化，而不是只追求 SNR。
+- W4A8 目前不需要主动优化，但每个最终候选策略都应至少用 W4A8 做护栏验证，防止为了 A4 引入会破坏 A8 的工程默认配置。
