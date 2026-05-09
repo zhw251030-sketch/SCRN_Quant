@@ -3884,3 +3884,78 @@ Interpretation:
 - The preferred normalized W4A8 starting point remains:
   - `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
 - The current evidence suggests increasing LR under DDP4/global batch `128` is not beneficial for this 80-epoch budget.
+
+## 2026-05-09 Default SCRN dataset and FP32 checkpoint
+
+This section records the project default after the dataset rebuild, normalization, FP32 retraining, 5x5 multi-eval, and LR sweep.
+
+Default dataset protocol:
+
+- Name:
+  - `paper5_energy_filtered_perpatch_absmax`
+- Train:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_train_10750`
+- Calibration:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- Test:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+
+Default data interpretation:
+
+- This is the default dataset family for future SCRN FP32 and W4A8 work.
+- The protocol combines:
+  - paper-style five-source data construction,
+  - hard filtering of invalid / near-zero low-energy patches,
+  - per-patch absmax normalization,
+  - matching normalized train / calibration / test amplitude space.
+- Do not mix this checkpoint with raw-amplitude calibration/test data when judging model or quantization quality.
+- Older datasets remain useful only as historical baselines or diagnostic comparisons:
+  - `scrn_quant_10750_0_*`
+  - `scrn_paper5_*`
+  - `scrn_paper5_energy_filtered_*`
+  - `scrn_paper5_perpatch_absmax_*`
+
+Default FP32 checkpoint:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
+
+Default FP32 training configuration:
+
+- dataset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_train_10750`
+- epochs: `80`
+- seed: `20260425`
+- per-GPU batch size: `32`
+- world size: `3`
+- global batch: `96`
+- LR: `0.001`
+- LR schedule: no decay, `--milestones ""`
+- weight decay: `0.0`
+- model:
+  - `dim=64`
+  - `stage_depths=1,1,1,1,1`
+  - `head_dim=32`
+  - `window_size=8`
+  - `input_resolution=128`
+
+Default FP32 evidence:
+
+| metric | value |
+|---|---:|
+| best epoch | 79 |
+| best loss | 18.80715600649516 |
+| last loss | 19.151402472030547 |
+| single-sample after SNR / SSIM | 13.8807 / 0.9324 |
+| matching normalized 478 SNR mean / SSIM mean | 17.8346 / 0.9644 |
+| matching normalized 478 SNR median / SSIM median | 18.1752 / 0.9788 |
+| matching normalized 478 SNR gain mean | 16.7703 |
+| Shots0001 SNR mean / SSIM mean | 17.3551 / 0.9594 |
+
+Decision:
+
+- Use the above dataset family and checkpoint as the default starting point for future normalized SCRN experiments.
+- Use the same calibration/test family for any W4A8 BRECQ experiment that starts from this checkpoint.
+- The LR sweep did not find a better replacement:
+  - `lr=0.0015`, DDP4/global batch `128`: worse than default on matching 478.
+  - `lr=0.002`, DDP4/global batch `128`: worse than default on matching 478.
+  - `lr=0.005`, DDP4/global batch `128`: unstable / unusable.

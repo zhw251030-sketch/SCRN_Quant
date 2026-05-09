@@ -5777,3 +5777,60 @@ Quantization implication:
   - `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
 - Do not use the LR `0.0015` checkpoint as the default for calibration, activation reconstruction, or packed export experiments.
 - Current LR sweep evidence indicates that increasing LR under DDP4/global batch `128` does not improve the normalized W4A8 candidate.
+
+## 2026-05-09 Default W4A8 dataset and FP32 starting checkpoint
+
+This section records the default dataset/checkpoint choice for future activation quantization work.
+
+Default dataset family:
+
+- Protocol name:
+  - `paper5_energy_filtered_perpatch_absmax`
+- Calibration:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- Test:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- Matching train dataset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_train_10750`
+
+Default FP32 checkpoint for W4A8:
+
+- `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
+
+Default FP32 training setup:
+
+- `epochs=80`
+- `seed=20260425`
+- `batch_size=32` per GPU
+- `world_size=3`
+- global batch `96`
+- `lr=0.001`
+- no LR decay: `--milestones ""`
+- `weight_decay=0.0`
+- SCRN model config:
+  - `dim=64`
+  - `stage_depths=1,1,1,1,1`
+  - `head_dim=32`
+  - `window_size=8`
+  - `input_resolution=128`
+
+Default FP32 baseline metrics:
+
+| metric | value |
+|---|---:|
+| best epoch | 79 |
+| best loss | 18.80715600649516 |
+| single-sample after SNR / SSIM | 13.8807 / 0.9324 |
+| matching normalized 478 SNR mean / SSIM mean | 17.8346 / 0.9644 |
+| matching normalized 478 SNR median / SSIM median | 18.1752 / 0.9788 |
+| Shots0001 SNR mean / SSIM mean | 17.3551 / 0.9594 |
+
+Quantization rule going forward:
+
+- Future W4A8 calibration, activation reconstruction, sensitivity diagnosis, and packed export should default to this checkpoint and the matching normalized calibration/test data above.
+- Raw-amplitude datasets and non-normalized checkpoints should not be mixed with this protocol when judging W4A8 quality.
+- Older FP32 results remain useful as diagnostics, but not as the default W4A8 starting point.
+- Current LR sweep conclusion:
+  - `lr=0.001`, DDP3/global batch `96`, no decay is the best current FP32 starting point.
+  - `lr=0.0015` and `lr=0.002` under DDP4/global batch `128` are stable but worse.
+  - `lr=0.005` under DDP4/global batch `128` is unusable.
