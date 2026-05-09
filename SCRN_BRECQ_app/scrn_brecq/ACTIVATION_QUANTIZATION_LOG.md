@@ -6291,3 +6291,48 @@ Verification:
 - Generated `10` PNG files under the run `figures/` directory.
 - Each figure is `3600 x 720`.
 - This does not change the W4A32 baseline choice: E007 single-GPU remains the default W4A8 activation-init base.
+
+## 2026-05-09 E012 normalized W4A32 seismic visuals with denormalized display
+
+Updated the E011 seismic visualization helper and generated a corrected E012 visual set that restores normalized representative patches before display.
+
+Script:
+
+- `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E011_normalized_w4a32_seismic_visuals/generate_seismic_visuals.py`
+
+Restoration:
+
+- Formula: `display = normalized * normalization_scale`
+- Scale source:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478/manifest.json`
+  - `samples[].normalization_scale`
+- Metrics:
+  - SNR/SSIM labels remain the normalized-protocol metrics.
+  - The restoration changes only visualization amplitude, not model input, checkpoint, or evaluation baseline.
+
+Run:
+
+- `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E012_normalized_w4a32_seismic_denormalized_visuals/20260509_211000_seismic_denormalized_representative_plus_default_single`
+
+Generated figures:
+
+| # | source | condition | display amplitude | scale | patch | input SNR | FP32 SNR | pre SNR | post SNR | post-FP32 | figure |
+|---:|---|---|---|---:|---|---:|---:|---:|---:|---:|---|
+| 1 | Anisotropic | low_snr_high_missing | restored from normalized per-patch absmax | 0.260053 | `test_000044.npy` | -2.95 | 18.29 | 17.38 | 18.19 | -0.100 | `01_Anisotropic_low_snr_high_missing_test_000044_seismic_denormalized.png` |
+| 2 | Anisotropic | mid_snr_mid_missing | restored from normalized per-patch absmax | 0.0957499 | `test_000013.npy` | 0.06 | 23.32 | 21.77 | 23.21 | -0.114 | `02_Anisotropic_mid_snr_mid_missing_test_000013_seismic_denormalized.png` |
+| 3 | Anisotropic | high_snr_low_missing | restored from normalized per-patch absmax | 0.133937 | `test_000025.npy` | 9.49 | 28.75 | 24.63 | 28.65 | -0.103 | `03_Anisotropic_high_snr_low_missing_test_000025_seismic_denormalized.png` |
+| 4 | Kerry3D | low_snr_high_missing | restored from normalized per-patch absmax | 0.623027 | `test_000081.npy` | -2.96 | 6.05 | 5.92 | 6.04 | -0.008 | `04_Kerry3D_low_snr_high_missing_test_000081_seismic_denormalized.png` |
+| 5 | Kerry3D | mid_snr_mid_missing | restored from normalized per-patch absmax | 0.817539 | `test_000084.npy` | 0.08 | 11.49 | 10.83 | 11.47 | -0.020 | `05_Kerry3D_mid_snr_mid_missing_test_000084_seismic_denormalized.png` |
+| 6 | Kerry3D | high_snr_low_missing | restored from normalized per-patch absmax | 0.571108 | `test_000077.npy` | 10.00 | 10.63 | 11.27 | 10.64 | 0.008 | `06_Kerry3D_high_snr_low_missing_test_000077_seismic_denormalized.png` |
+| 7 | Shots0001 | low_snr_high_missing | restored from normalized per-patch absmax | 0.056497 | `test_000374.npy` | -3.01 | 12.81 | 12.11 | 12.78 | -0.037 | `07_Shots0001_low_snr_high_missing_test_000374_seismic_denormalized.png` |
+| 8 | Shots0001 | mid_snr_mid_missing | restored from normalized per-patch absmax | 0.0439193 | `test_000395.npy` | 0.22 | 17.08 | 16.50 | 17.04 | -0.033 | `08_Shots0001_mid_snr_mid_missing_test_000395_seismic_denormalized.png` |
+| 9 | Shots0001 | high_snr_low_missing | restored from normalized per-patch absmax | 0.0698473 | `test_000349.npy` | 9.84 | 20.85 | 18.69 | 20.80 | -0.046 | `09_Shots0001_high_snr_low_missing_test_000349_seismic_denormalized.png` |
+| 10 | `SCRN-main/test_data` | default_single_sample | raw default SCRN sample | n/a | `clear.npy` | 3.97 | 13.88 | 13.47 | 13.89 | 0.011 | `10_default_single_sample_seismic_raw_amplitude.png` |
+
+Verification:
+
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E011_normalized_w4a32_seismic_visuals/generate_seismic_visuals.py` passed.
+- Running the helper completed with `figure_count=10`.
+- `find .../figures -name '*.png' | wc -l` returned `10`.
+- `file .../figures/*.png` reported all figures as PNG images with size `3600 x 720`.
+- E007 single-GPU W4A32 remains the default W4A8 activation-init base; this change is visualization-only.

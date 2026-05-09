@@ -4461,3 +4461,60 @@ Verification:
 - `find .../figures -name '*.png' | wc -l` returned `10`.
 - `file .../figures/*.png` reported all figures as PNG images with size `3600 x 720`.
 - All new generated artifacts are under `SCRN_BRECQ_app`; no project-external helper script or output is retained.
+
+## 2026-05-09 Normalized W4A32 seismic visual comparisons with denormalized display
+
+Updated the seismic visualization helper so normalized representative panels are restored before display using the dataset manifest scale:
+
+- Script:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E011_normalized_w4a32_seismic_visuals/generate_seismic_visuals.py`
+- Restoration rule:
+  - `display = normalized * normalization_scale`
+- Scale source:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478/manifest.json`
+  - field: `samples[].normalization_scale`
+- Metric note:
+  - SNR/SSIM labels stay in the normalized protocol metric space.
+  - Only the displayed image panels are restored to raw amplitude scale.
+- Direct-run fix:
+  - The helper now inserts the repo root into `sys.path`, so it can run directly by file path from the repo root.
+
+Run:
+
+- Visualization run:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E012_normalized_w4a32_seismic_denormalized_visuals/20260509_211000_seismic_denormalized_representative_plus_default_single`
+- Output files:
+  - `config.json`
+  - `selected_samples.json`
+  - `summary.md`
+  - `figures/*.png`
+
+Display settings:
+
+- Colormap: `seismic`
+- Color scale: symmetric per figure over all panels, centered at `0`
+- Panels: Ground Truth, Input, FP32, W4A32 pre-recon, W4A32 post-recon
+- Normalized representative display: restored from per-patch absmax normalization
+- Default single sample display: unchanged raw default SCRN amplitude
+
+Generated figures and scales:
+
+| # | source | condition | patch | normalization scale | figure |
+|---:|---|---|---|---:|---|
+| 1 | Anisotropic | low_snr_high_missing | `test_000044.npy` | 0.260053 | `01_Anisotropic_low_snr_high_missing_test_000044_seismic_denormalized.png` |
+| 2 | Anisotropic | mid_snr_mid_missing | `test_000013.npy` | 0.0957499 | `02_Anisotropic_mid_snr_mid_missing_test_000013_seismic_denormalized.png` |
+| 3 | Anisotropic | high_snr_low_missing | `test_000025.npy` | 0.133937 | `03_Anisotropic_high_snr_low_missing_test_000025_seismic_denormalized.png` |
+| 4 | Kerry3D | low_snr_high_missing | `test_000081.npy` | 0.623027 | `04_Kerry3D_low_snr_high_missing_test_000081_seismic_denormalized.png` |
+| 5 | Kerry3D | mid_snr_mid_missing | `test_000084.npy` | 0.817539 | `05_Kerry3D_mid_snr_mid_missing_test_000084_seismic_denormalized.png` |
+| 6 | Kerry3D | high_snr_low_missing | `test_000077.npy` | 0.571108 | `06_Kerry3D_high_snr_low_missing_test_000077_seismic_denormalized.png` |
+| 7 | Shots0001 | low_snr_high_missing | `test_000374.npy` | 0.056497 | `07_Shots0001_low_snr_high_missing_test_000374_seismic_denormalized.png` |
+| 8 | Shots0001 | mid_snr_mid_missing | `test_000395.npy` | 0.0439193 | `08_Shots0001_mid_snr_mid_missing_test_000395_seismic_denormalized.png` |
+| 9 | Shots0001 | high_snr_low_missing | `test_000349.npy` | 0.0698473 | `09_Shots0001_high_snr_low_missing_test_000349_seismic_denormalized.png` |
+| 10 | `SCRN-main/test_data` | default_single_sample | `clear.npy` | n/a | `10_default_single_sample_seismic_raw_amplitude.png` |
+
+Verification:
+
+- `conda run -n quant python -m py_compile .../generate_seismic_visuals.py` passed.
+- `conda run -n quant python .../generate_seismic_visuals.py` completed with `figure_count=10`.
+- `find .../figures -name '*.png' | wc -l` returned `10`.
+- `file .../figures/*.png` reported all figures as PNG images with size `3600 x 720`.
