@@ -3959,3 +3959,53 @@ Decision:
   - `lr=0.0015`, DDP4/global batch `128`: worse than default on matching 478.
   - `lr=0.002`, DDP4/global batch `128`: worse than default on matching 478.
   - `lr=0.005`, DDP4/global batch `128`: unstable / unusable.
+
+## 2026-05-09 Quantized SCRN fixed-grid evaluator
+
+Added a quantized checkpoint evaluator for the normalized 478x25 test protocol.
+
+New files:
+
+- `SCRN_BRECQ_app/scrn_brecq/cli/evaluate_quantized_scrn_grid.py`
+- `SCRN_BRECQ_app/scrn_brecq/tests/test_evaluate_quantized_scrn_grid.py`
+
+Default evaluation grid:
+
+- SNR settings: `-2,-1,1,5,10`
+- missing rates: `0.02,0.08,0.18,0.28,0.38`
+- seed: `20260507`
+- default dataset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+
+Outputs written per run:
+
+- `config.json`
+- `metrics.json`
+- `summary.md`
+- `per_sample_metrics.jsonl`
+
+Metrics:
+
+- per-sample rows include FP32, pre-reconstruction quantized, and post-reconstruction quantized SNR/SSIM fields when a pre-reconstruction checkpoint is provided.
+- delta fields include `quant_pre_minus_fp32_*`, `quant_post_minus_fp32_*`, and `quant_post_minus_pre_*`.
+- grouped summaries are emitted for:
+  - overall
+  - source
+  - SNR setting
+  - missing rate
+  - SNR/missing-rate condition
+
+Validation:
+
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_quantized_scrn_grid -v`
+  - result: 6 tests passed
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/evaluate_quantized_scrn_grid.py`
+  - result: passed
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_grid --help`
+  - result: help text rendered successfully
+- smoke run on GPU `1`:
+  - run: `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E007_normalized_w4a32_baseline/smoke/20260509_144714_smoke_quantized_grid2`
+  - rows: `2`
+  - patches: `2`
+  - conditions: `1`
+  - files confirmed: `config.json`, `metrics.json`, `summary.md`, `per_sample_metrics.jsonl`

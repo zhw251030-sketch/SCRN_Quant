@@ -5834,3 +5834,43 @@ Quantization rule going forward:
   - `lr=0.001`, DDP3/global batch `96`, no decay is the best current FP32 starting point.
   - `lr=0.0015` and `lr=0.002` under DDP4/global batch `128` are stable but worse.
   - `lr=0.005` under DDP4/global batch `128` is unusable.
+
+## 2026-05-09 E007 fixed-grid quantized evaluator
+
+Implemented the evaluator needed to rebuild W4A32 and later W4A8 baselines on the normalized dataset protocol.
+
+CLI:
+
+- `SCRN_BRECQ_app/scrn_brecq/cli/evaluate_quantized_scrn_grid.py`
+
+Default protocol:
+
+- Test dataset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- SNR settings: `-2,-1,1,5,10`
+- missing rates: `0.02,0.08,0.18,0.28,0.38`
+- seed: `20260507`
+- full grid size: `478 * 25 = 11950` rows
+
+Why this was needed:
+
+- The earlier `evaluate_quantized_scrn_multi.py` used a sampled evaluation protocol and did not match the normalized FP32 478x25 grid baseline.
+- Future W4A32/W4A8 comparisons now have a fixed quantized evaluator that reports FP32, pre-reconstruction, post-reconstruction, and delta metrics under the same degradation grid.
+
+Validation:
+
+- Unit tests:
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_quantized_scrn_grid -v`
+  - result: 6 tests passed
+- Syntax:
+  - `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/evaluate_quantized_scrn_grid.py`
+  - result: passed
+- CLI help:
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn_grid --help`
+  - result: passed
+- Smoke:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E007_normalized_w4a32_baseline/smoke/20260509_144714_smoke_quantized_grid2`
+  - GPU: physical GPU `1`
+  - checkpoint: historical W4A8 E002 positive-scale checkpoint, used only for CLI smoke
+  - rows: `2`
+  - outputs: `config.json`, `metrics.json`, `summary.md`, `per_sample_metrics.jsonl`
