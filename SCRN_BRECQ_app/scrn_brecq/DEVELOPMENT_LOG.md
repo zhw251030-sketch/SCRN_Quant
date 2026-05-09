@@ -4850,5 +4850,155 @@ By-source：
   - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_packed_scrn_grid SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_packed_scrn SCRN_BRECQ_app.scrn_brecq.tests.test_packed_deployment -v`
   - 13 tests OK
 - CLI 检查通过：
-  - `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/evaluate_packed_scrn_grid.py`
-  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_packed_scrn_grid --help`
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/evaluate_packed_scrn_grid.py`
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_packed_scrn_grid --help`
+
+## 2026-05-09 NE000_1 packed deployment equivalence 结果
+
+完成 NE000_1a / NE000_1b packed deployment equivalence。该实验只验证 packed artifact 导出、恢复和 full-grid 指标对齐，不进入 activation diagnostics。
+
+预检：
+
+- Branch：`main`
+- Worktree：开始时 clean，本地领先 `origin/main` 20 个提交。
+- Repo root：`/home/data1/hanwen/project/Project/SCRN_Quant`
+- GPU：0/1/2/3 均空闲，仅 Xorg 占用约 `4 MiB`。
+- 本次 full-grid eval 使用物理 GPU `1`，通过 `CUDA_VISIBLE_DEVICES=1` 暴露为进程内 `cuda:0`。
+
+### NE000_1a W4A32 packed export / restore / grid eval
+
+输入 checkpoint：
+
+- `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq.pth`
+
+Packed export：
+
+- Export dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_1_packed_deployment_equivalence/w4a32_packed/e007_normalized_w4a32_single_gpu1_final`
+- Artifact sizes：
+
+| item | bytes | MiB |
+|---|---:|---:|
+| source `.pth` | `5,320,020` | `5.0736` |
+| `weights.bin` | `213,632` | `0.2037` |
+| `aux_fp32.bin` | `40,860` | `0.0390` |
+| `manifest.json` | `94,254` | `0.0899` |
+| `summary.json` | `2,695` | `0.0026` |
+| raw deployment payload | `254,492` | `0.2427` |
+| total export files | `348,746` | `0.3326` |
+
+Export summary：
+
+- `estimated_model_compression_ratio=6.765430740455495`
+- `quantized_layer_count=52`
+- `activation_quantizer_count=0`
+- `final_quant_state={"weight_quant": true, "act_quant": false}`
+
+Packed grid eval：
+
+- Eval run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_1_packed_deployment_equivalence/eval/20260509_225448_ne000_1a_w4a32_packed_grid478_seed20260507`
+- Row count：
+  - `11950`
+- Restore summary：
+  - `restored_quantized_layers=52`
+  - `restored_non_quantized_tensors=70`
+  - `restored_activation_quantizers=0`
+  - `final_quant_state={"weight_quant": true, "act_quant": false}`
+
+Overall：
+
+| metric | checkpoint | packed-restored | packed-checkpoint |
+|---|---:|---:|---:|
+| SNR mean | `17.785581719` | `17.785577215` | `-0.000004504` |
+| SNR median | `18.112756971` | `18.112657055` | `-0.000000972` |
+| SSIM mean | `0.964137084` | `0.964137092` | `0.000000008` |
+| SSIM median | `0.978461333` | `0.978461489` | `-0.000000009` |
+
+Prediction diff：
+
+- `packed_vs_checkpoint_mse_mean=3.9482866637798976e-10`
+- `packed_vs_checkpoint_mean_abs_diff_mean=1.2906794042757771e-05`
+- `packed_vs_checkpoint_max_abs_diff_mean=0.0002254785246958091`
+- `packed_vs_checkpoint_max_abs_diff_max=0.0005853455513715744`
+
+By-source：
+
+| source | rows | checkpoint SNR mean | packed SNR mean | packed-checkpoint SNR mean | checkpoint SSIM mean | packed SSIM mean |
+|---|---:|---:|---:|---:|---:|---:|
+| Anisotropic | `1875` | `21.971754726` | `21.971745046` | `-0.000009680` | `0.992832075` | `0.992832056` |
+| Kerry3D | `400` | `9.608162795` | `9.608165681` | `0.000002886` | `0.949887469` | `0.949887462` |
+| Shots0001 | `9675` | `17.312392384` | `17.312388578` | `-0.000003806` | `0.959165170` | `0.959165184` |
+
+### NE000_1b W4A8 packed export / restore / grid eval
+
+输入 checkpoint：
+
+- `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq.pth`
+
+Packed export：
+
+- Export dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_1_packed_deployment_equivalence/w4a8_packed/ne000_normalized_w4a8_tensor_a5000_final`
+- Artifact sizes：
+
+| item | bytes | MiB |
+|---|---:|---:|
+| source `.pth` | `5,359,500` | `5.1112` |
+| `weights.bin` | `213,632` | `0.2037` |
+| `aux_fp32.bin` | `41,276` | `0.0394` |
+| `manifest.json` | `121,554` | `0.1159` |
+| `summary.json` | `2,709` | `0.0026` |
+| raw deployment payload | `254,908` | `0.2431` |
+| total export files | `376,462` | `0.3590` |
+
+Export summary：
+
+- `estimated_model_compression_ratio=6.765430740455495`
+- `quantized_layer_count=52`
+- `activation_quantizer_count=52`
+- `final_quant_state={"weight_quant": true, "act_quant": true}`
+
+Packed grid eval：
+
+- Eval run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_1_packed_deployment_equivalence/eval/20260509_225927_ne000_1b_w4a8_packed_grid478_seed20260507`
+- Row count：
+  - `11950`
+- Restore summary：
+  - `restored_quantized_layers=52`
+  - `restored_non_quantized_tensors=70`
+  - `restored_activation_quantizers=52`
+  - `final_quant_state={"weight_quant": true, "act_quant": true}`
+
+Overall：
+
+| metric | checkpoint | packed-restored | packed-checkpoint |
+|---|---:|---:|---:|
+| SNR mean | `17.449507172` | `17.449533809` | `0.000026637` |
+| SNR median | `17.877688616` | `17.880496749` | `0.000000000` |
+| SSIM mean | `0.962868418` | `0.962868814` | `0.000000396` |
+| SSIM median | `0.977292375` | `0.977292636` | `0.000000000` |
+
+Prediction diff：
+
+- `packed_vs_checkpoint_mse_mean=3.7573586346050463e-07`
+- `packed_vs_checkpoint_mean_abs_diff_mean=0.00012680872421293757`
+- `packed_vs_checkpoint_max_abs_diff_mean=0.0025956151830850787`
+- `packed_vs_checkpoint_max_abs_diff_max=0.018667370080947876`
+
+By-source：
+
+| source | rows | checkpoint SNR mean | packed SNR mean | packed-checkpoint SNR mean | checkpoint SSIM mean | packed SSIM mean |
+|---|---:|---:|---:|---:|---:|---:|
+| Anisotropic | `1875` | `21.287276634` | `21.287250178` | `-0.000026456` | `0.991630723` | `0.991630800` |
+| Kerry3D | `400` | `9.570384048` | `9.570566086` | `0.000182038` | `0.948695016` | `0.948697731` |
+| Shots0001 | `9675` | `17.031505261` | `17.031535762` | `0.000030501` | `0.957880308` | `0.957880670` |
+
+判断：
+
+- W4A32 packed-restored 与 E007 W4A32 checkpoint final 高度对齐，mean SNR delta 约 `-4.5e-06 dB`。
+- W4A8 packed-restored 与 NE000 W4A8 checkpoint final 高度对齐，mean SNR delta 约 `+2.66e-05 dB`。
+- 两者均远小于 `0.01 dB` 验收阈值。
+- NE000 的 W4A8 好结果不仅存在于恢复型 `.pth` fake-quant checkpoint 中；packed 整数权重导出、activation qparams 恢复和部署视角 PyTorch restore 链路均通过 full-grid 等价验证。
+- 可以进入 NE001 diagnostics。
