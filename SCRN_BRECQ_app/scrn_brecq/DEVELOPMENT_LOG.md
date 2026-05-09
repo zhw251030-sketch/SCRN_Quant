@@ -4009,3 +4009,104 @@ Validation:
   - patches: `2`
   - conditions: `1`
   - files confirmed: `config.json`, `metrics.json`, `summary.md`, `per_sample_metrics.jsonl`
+
+## 2026-05-09 Normalized W4A32 single-GPU baseline
+
+Rebuilt the W4A32 weight-only BRECQ baseline on the default normalized protocol.
+
+Run:
+
+- Quantization run:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1`
+- Post-reconstruction checkpoint:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq.pth`
+- Pre-reconstruction checkpoint:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq_pre_recon.pth`
+- Source FP32 checkpoint:
+  - `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
+- Calibration dataset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- Test dataset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- GPU: physical GPU `1`
+- BRECQ settings:
+  - `num_samples=1024`
+  - `batch_size=16`
+  - `iters_w=20000`
+  - `n_bits_w=4`
+  - `n_bits_a=8`
+  - `act_quant=false` via `--no-act-quant`
+- Single-sample CLI sanity output:
+  - `fp32_snr=13.8808`
+  - `pre_w_snr=13.4675`
+  - `post_w_snr=13.8918`
+  - `post_recon_ssim=0.9290`
+  - `reconstruction_seconds=2597.64`
+  - `elapsed_seconds=2643.75`
+
+Checkpoint verification:
+
+- Verification JSON:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/verification.json`
+- `passed=true`
+- final quant state:
+  - `weight_quant=true`
+  - `act_quant=false`
+- quant config:
+  - `n_bits_w=4`
+  - `n_bits_a=8`
+  - `channel_wise=true`
+  - `scale_method=mse`
+- layer summary:
+  - quant modules: `52`
+  - weight bit counts: `4bit=50`, `8bit=2`
+  - `level_offender_count=0`
+- activation summary:
+  - activation quant modules: `52`
+  - activation delta count: `0`
+
+Normalized 478x25 grid eval:
+
+- Eval run:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E007_normalized_w4a32_baseline/eval/20260509_153415_normalized_w4a32_single_gpu1_grid478_seed20260507`
+- Rows:
+  - `11950 = 478 patches * 25 conditions`
+- Grid:
+  - SNR settings: `-2,-1,1,5,10`
+  - missing rates: `0.02,0.08,0.18,0.28,0.38`
+  - seed: `20260507`
+- Eval runtime:
+  - elapsed seconds: `179.26`
+  - FP32 inference seconds: `26.70`
+  - pre-recon quant inference seconds: `69.00`
+  - post-recon quant inference seconds: `27.52`
+
+Overall grid metrics:
+
+| path | SNR mean | SNR median | SSIM mean | SSIM median |
+|---|---:|---:|---:|---:|
+| FP32 | 17.8329 | 18.1742 | 0.964330 | 0.978794 |
+| W4A32 pre-recon | 16.6142 | 17.1775 | 0.935462 | 0.949638 |
+| W4A32 post-recon | 17.7856 | 18.1128 | 0.964137 | 0.978461 |
+
+Overall deltas:
+
+| delta | SNR mean | SNR median | SSIM mean | SSIM median |
+|---|---:|---:|---:|---:|
+| pre - FP32 | -1.2186 | -0.8585 | -0.028868 | -0.023025 |
+| post - FP32 | -0.0473 | -0.0370 | -0.000193 | 0.000015 |
+| post - pre | 1.1713 | 0.8055 | 0.028675 | 0.022634 |
+
+By-source post-recon metrics:
+
+| source | rows | FP32 SNR mean | W4A32 SNR mean | delta mean | FP32 SSIM mean | W4A32 SSIM mean | delta SSIM mean |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Anisotropic | 1875 | 22.0595 | 21.9718 | -0.0877 | 0.992762 | 0.992832 | 0.000070 |
+| Kerry3D | 400 | 9.6085 | 9.6082 | -0.0003 | 0.950559 | 0.949887 | -0.000672 |
+| Shots0001 | 9675 | 17.3538 | 17.3124 | -0.0414 | 0.959390 | 0.959165 | -0.000225 |
+
+Decision:
+
+- The normalized W4A32 post-reconstruction checkpoint is authentic and effectively matches FP32 on the normalized 478x25 protocol.
+- The remaining overall post-FP32 gap is small enough to proceed to W4A8 activation-init and activation quantization diagnostics from this checkpoint.
+- The pre-reconstruction gap confirms BRECQ weight reconstruction is still materially useful under the normalized protocol.
