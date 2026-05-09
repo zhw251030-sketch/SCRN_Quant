@@ -111,7 +111,8 @@ def main() -> None:
     run_dir = create_run_dir(config["run_root"], run_name=str(config["run_name"]))
     print(f"[SCRN-BRECQ] activation_only_run_dir={run_dir}", flush=True)
 
-    quant_model = build_quant_model_from_checkpoint(checkpoint)
+    activation_checkpoint = build_activation_only_checkpoint_config(checkpoint, config)
+    quant_model = build_quant_model_from_checkpoint(activation_checkpoint)
     state_dict = checkpoint["quant_model_state_dict"]
     restore_quantizer_state_shapes(quant_model, state_dict)
     quant_model.load_state_dict(state_dict, strict=True)
@@ -328,6 +329,17 @@ def load_initial_config(args: argparse.Namespace) -> dict[str, Any]:
     if args.weight_recon_checkpoint is not None:
         config["weight_recon_checkpoint"] = str(args.weight_recon_checkpoint)
     return normalize_config(config)
+
+
+def build_activation_only_checkpoint_config(checkpoint: Mapping[str, Any], config: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a checkpoint view whose activation quantizers are learnable for W4A8."""
+    activation_checkpoint = dict(checkpoint)
+    quant_config = dict(checkpoint.get("quant_config", {}))
+    quant_config["act_quant"] = bool(config["act_quant"])
+    quant_config["n_bits_a"] = int(config["n_bits_a"])
+    quant_config["scale_method"] = str(config["scale_method"])
+    activation_checkpoint["quant_config"] = quant_config
+    return activation_checkpoint
 
 
 def default_config() -> dict[str, Any]:

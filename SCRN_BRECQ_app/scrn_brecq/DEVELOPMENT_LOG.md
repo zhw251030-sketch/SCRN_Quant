@@ -4564,3 +4564,144 @@ NE00X 执行和记录规则：
 - 不 push，除非明确要求。
 - 不修改 `SCRN-main/` 或 `BRECQ-main/`。
 - 不在 `SCRN_BRECQ_app/` 之外写入产物。
+
+## 2026-05-09 NE000 归一化 W4A8 激活量化重建 baseline
+
+完成新的 `NE000` baseline：在 `paper5_energy_filtered_perpatch_absmax` 协议下，从当前默认 E007 单卡 W4A32 checkpoint 出发，运行 tensor-wise W4A8 activation initialization 和 `iters_a=5000` activation reconstruction，并在 normalized `478 x 25` grid 上评估 pre-act-recon 与 final W4A8。
+
+预检：
+
+- Branch：`main`
+- Worktree：开始时 clean，本地领先 `origin/main` 18 个提交。
+- Repo root：`/home/data1/hanwen/project/Project/SCRN_Quant`
+- GPU：GPU 1/2/3 空闲，GPU 0 有外部 `swinir` 进程占用约 `5.6 GiB`。
+- 本次使用物理 GPU `1`。
+
+输入：
+
+- W4A32 起点：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq.pth`
+- 校准集：
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- 测试集：
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+
+实现修复：
+
+- 首次正式运行在 activation reconstruction 阶段失败，错误为：
+  - `RuntimeError: Activation quantizer delta is not learnable. Construct QuantModel with act_quant_params['leaf_param']=True.`
+- 原因：
+  - `activation_only_quantize_scrn.py` 从 E007 W4A32 checkpoint 构建模型时直接使用 checkpoint 中的 `quant_config.act_quant=false`。
+  - A8 init 可以写入 delta tensor，但 activation reconstruction 需要 learnable activation delta。
+- 修复：
+  - 新增 `build_activation_only_checkpoint_config()`，只构造一个 activation-only checkpoint view，将 `act_quant`、`n_bits_a`、`scale_method` 与当前 activation-only 配置对齐。
+  - 源 W4A32 checkpoint 不被修改。
+  - 增加单测确认该 helper 会启用 activation quantization，并且不会改写源 checkpoint 的 `quant_config.act_quant`。
+- 验证：
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_only_quantize_scrn -v` 通过，18 tests OK。
+  - `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/activation_only_quantize_scrn.py` 通过。
+
+NE000 quant run：
+
+- Run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1`
+- Pre-act-recon checkpoint：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq_pre_act_recon.pth`
+- Final checkpoint：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq.pth`
+- 核心配置：
+  - `n_bits_w=4`
+  - `n_bits_a=8`
+  - `activation_granularity=tensor`
+  - `activation_range_method=none`
+  - `num_samples=1024`
+  - `batch_size=16`
+  - `init_batch_size=64`
+  - `iters_a=5000`
+  - `activation_lr=0.0004`
+  - `lp_norm=2.4`
+- 时间：
+  - activation initialization：`24.8221 s`
+  - activation reconstruction：`1335.2904 s`，约 `22.2548 min`
+  - elapsed：`1363.2839 s`，约 `22.7214 min`
+
+单样本 sanity：
+
+| metric | value |
+|---|---:|
+| post-weight W4A32 SNR / SSIM | `13.8918 / 0.929029` |
+| W4A8 pre-act SNR / SSIM | `13.8772 / 0.927889` |
+| W4A8 final SNR / SSIM | `13.8640 / 0.928557` |
+| act init SNR delta | `-0.0146 dB` |
+| act recon SNR gain | `-0.0131 dB` |
+
+Activation quantizer summary：
+
+- `quant_modules=52`
+- `activation_quantizers=52`
+- `activation_delta_count=52`
+- `activation_zero_point_count=52`
+- `initialized_activation_quantizers=52`
+- `learnable_activation_delta_count=52`
+- `disabled_activation_quantizers=1`
+- `delta_min=0.0040127067`
+- `delta_max=0.0526451916`
+- `zero_point_min=-0.0`
+- `zero_point_max=158.0`
+- `non_positive_delta_count=0`
+- `non_positive_delta_elements=0`
+
+Checkpoint verification：
+
+| checkpoint | passed | final quant state | weight bits | level offenders | activation delta count | learnable activation deltas |
+|---|---|---|---|---:|---:|---:|
+| pre-act-recon | `true` | `weight_quant=true, act_quant=true` | `4bit=50, 8bit=2` | `0` | `52` | `52` |
+| final | `true` | `weight_quant=true, act_quant=true` | `4bit=50, 8bit=2` | `0` | `52` | `52` |
+
+Grid eval：
+
+- Eval run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_normalized_w4a8_activation_reconstruction/eval/20260509_221644_normalized_w4a8_tensor_a5000_grid478_seed20260507`
+- 产物：
+  - `config.json`
+  - `metrics.json`
+  - `summary.md`
+  - `per_sample_metrics.jsonl`
+- 行数：
+  - `11950 = 478 x 25`
+
+Overall normalized `478 x 25` grid：
+
+| model | SNR mean | SNR median | SSIM mean | SSIM median |
+|---|---:|---:|---:|---:|
+| FP32 | `17.8329` | `18.1742` | `0.964330` | `0.978794` |
+| E007 W4A32 final | `17.7856` | `18.1128` | `0.964137` | `0.978461` |
+| NE000 W4A8 pre-act | `17.3727` | `17.7855` | `0.962674` | `0.977030` |
+| NE000 W4A8 final | `17.4495` | `17.8777` | `0.962868` | `0.977292` |
+
+主要 gap：
+
+- NE000 W4A8 final 相对 FP32：
+  - mean SNR：`-0.3834 dB`
+  - mean SSIM：`-0.001462`
+- NE000 W4A8 final 相对 E007 W4A32 final：
+  - mean SNR：`-0.3361 dB`
+  - mean SSIM：`-0.001269`
+- Activation reconstruction 相对 pre-act：
+  - mean SNR：`+0.0768 dB`
+  - mean SSIM：`+0.000195`
+
+By-source：
+
+| source | rows | FP32 SNR mean | W4A8 pre SNR mean | W4A8 final SNR mean | final-FP32 SNR mean | W4A8 final SSIM mean |
+|---|---:|---:|---:|---:|---:|---:|
+| Anisotropic | `1875` | `22.0595` | `21.2895` | `21.2873` | `-0.7722` | `0.991631` |
+| Kerry3D | `400` | `9.6085` | `9.5817` | `9.5704` | `-0.0381` | `0.948695` |
+| Shots0001 | `9675` | `17.3538` | `16.9358` | `17.0315` | `-0.3223` | `0.957880` |
+
+判断：
+
+- 新协议下 tensor-wise W4A8 不再出现旧 raw 协议中明显崩坏的 full-grid 级别结果，但相对 E007 W4A32 仍有稳定掉点。
+- 最大 by-source 掉点集中在 Anisotropic，其次是 Shots0001；Kerry3D 基本接近 FP32。
+- Activation reconstruction 在 full grid 上有小幅正收益，但不足以消除 W4A8 与 W4A32 的 gap。
+- 下一步进入 NE001 diagnostics，重点确认 activation delta 合法性、Conv2d/Linear fake-quant error 分布和 source/stage/role 差异。

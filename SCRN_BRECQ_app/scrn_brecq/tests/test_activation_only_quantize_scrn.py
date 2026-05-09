@@ -7,6 +7,7 @@ import numpy as np
 
 from SCRN_BRECQ_app.scrn_brecq.cli.activation_only_quantize_scrn import (
     build_activation_only_metrics,
+    build_activation_only_checkpoint_config,
     build_parser,
     load_and_resolve_config,
     normalize_config,
@@ -45,6 +46,24 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
 
         self.assertIn("E002c_init_sensitivity/quant", config["run_root"])
         self.assertEqual(config["run_name"], "activation_only_init")
+
+    def test_activation_only_checkpoint_config_enables_learnable_activation_deltas(self) -> None:
+        checkpoint = {
+            "quant_config": {
+                "n_bits_w": 4,
+                "n_bits_a": 8,
+                "act_quant": False,
+                "channel_wise": True,
+                "scale_method": "mse",
+            }
+        }
+        config = normalize_config({"weight_recon_checkpoint": __file__, "act_quant": True})
+
+        activation_checkpoint = build_activation_only_checkpoint_config(checkpoint, config)
+
+        self.assertFalse(checkpoint["quant_config"]["act_quant"])
+        self.assertTrue(activation_checkpoint["quant_config"]["act_quant"])
+        self.assertEqual(activation_checkpoint["quant_config"]["n_bits_a"], 8)
 
     def test_config_file_supplies_activation_range_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
