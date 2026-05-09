@@ -6336,3 +6336,224 @@ Verification:
 - `find .../figures -name '*.png' | wc -l` returned `10`.
 - `file .../figures/*.png` reported all figures as PNG images with size `3600 x 720`.
 - E007 single-GPU W4A32 remains the default W4A8 activation-init base; this change is visualization-only.
+
+## 2026-05-09 NE000-NE006 normalized activation quantization roadmap
+
+Open a new activation-quantization experiment sequence named `NE00X`, where `NE` marks the new normalized data protocol. Old E001-E006 results remain mechanism evidence, but NE000-NE006 are the authoritative experiments for the current `paper5_energy_filtered_perpatch_absmax` protocol.
+
+Shared protocol:
+
+- Dataset protocol:
+  - `paper5_energy_filtered_perpatch_absmax`
+- FP32 checkpoint:
+  - `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
+- Calibration:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- Test:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- W4A8 start:
+  - E007 single-GPU W4A32 checkpoint:
+    - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq.pth`
+- Primary eval:
+  - normalized `478 x 25` grid
+  - SNR settings: `-2,-1,1,5,10`
+  - missing rates: `0.02,0.08,0.18,0.28,0.38`
+  - seed: `20260507`
+
+Planned experiments:
+
+### NE000 W4A8 activation quantization reconstruction baseline
+
+Purpose:
+
+- Rebuild W4A8 under the new normalized protocol before formal diagnostics.
+- Start from the E007 W4A32 checkpoint, not from any old raw-amplitude checkpoint.
+
+Default action:
+
+- Run tensor-wise A8 activation initialization.
+- Run activation reconstruction with `iters_a=5000`, `activation_lr=0.0004`, `lp_norm=2.4`.
+- Save both:
+  - `quantized_scrn_brecq_pre_act_recon.pth`
+  - `quantized_scrn_brecq.pth`
+- Evaluate both on the normalized `478 x 25` grid.
+
+Required outputs:
+
+- Checkpoint verification:
+  - `weight_quant=true`
+  - `act_quant=true`
+  - weight bits remain `4bit=50`, `8bit=2`
+  - activation quantizer count expected around `52`
+- Full-grid metrics:
+  - FP32
+  - E007 W4A32 reference
+  - W4A8 pre-act-recon
+  - W4A8 post-act-recon
+  - by-source metrics
+
+Decision:
+
+- Establish the new W4A8 baseline and quantify the W4A8 gap relative to FP32 and E007 W4A32.
+
+### NE001 activation diagnostics
+
+Purpose:
+
+- Reproduce the old E001 diagnostic role under the new data and model protocol.
+
+Default action:
+
+- Run diagnostics on NE000 pre-act-recon and final checkpoints.
+- Use the normalized calibration set.
+- Compare activation quantizer legality and fake-quant behavior before and after activation reconstruction.
+
+Required outputs:
+
+- Quantizer count.
+- `non_positive_delta_count`.
+- Activation delta min/max/shape stats.
+- Fake-quant MSE / range summaries.
+- Conv2d vs Linear grouped summaries.
+- Stage/role summaries where available.
+
+Decision:
+
+- Confirm whether scale legality is clean and identify where the W4A8 error concentrates.
+
+### NE002 legal-state and checkpoint sanity sweep
+
+Purpose:
+
+- Separate invalid checkpoint/quantizer state from real activation quantization accuracy loss.
+
+Default action:
+
+- Verify NE000 pre and final checkpoints after reload.
+- Confirm final quant states, output quantizer handling, activation delta positivity, and checkpoint shape restoration.
+- Check that metrics from direct run and reload/evaluator agree within expected tolerance.
+
+Required outputs:
+
+- Verification JSONs for pre and final W4A8 checkpoints.
+- Reload consistency note.
+- Output quantizer state note.
+- Any legal-state offender list.
+
+Decision:
+
+- If legality/reload fails, fix before running sensitivity experiments.
+- If clean, treat W4A8 loss as a real quantization problem.
+
+### NE003 fixed-eval stability and sample-sensitivity check
+
+Purpose:
+
+- Re-establish that full normalized grid metrics are the decision authority.
+
+Default action:
+
+- Compare default single sample, representative selected samples, small subsets, and full `478 x 25` grid using the same NE000 checkpoints.
+- Regenerate representative visuals only if needed for interpretation.
+
+Required outputs:
+
+- Table comparing single-sample, subset, and full-grid SNR/SSIM.
+- Note any samples/sources where single-sample behavior disagrees with full-grid behavior.
+
+Decision:
+
+- Use full-grid mean/median and by-source metrics for all later NE conclusions.
+
+### NE004 activation quantizer sensitivity
+
+Purpose:
+
+- Re-test whether the W4A8 gap is still dominated by Conv2d activation quantization under normalized data.
+
+Default action:
+
+- Evaluate disabling activation quantizer groups without changing weights:
+  - all Conv2d
+  - all Linear/transformer
+  - stage groups
+  - role groups such as split/merge/stage-output where supported
+- Use NE000 W4A8 as the baseline checkpoint.
+
+Required outputs:
+
+- Sensitivity table:
+  - full-grid SNR/SSIM
+  - W4A8 recovery over all-on
+  - remaining gap to E007 W4A32
+  - by-source recovery
+
+Decision:
+
+- Confirm whether old E004 still holds: Conv2d activation quantization is the main gap source.
+
+### NE005 range, clipping, and outlier controls
+
+Purpose:
+
+- Test whether normalized data changes the old conclusion that tensor-wise range/clipping is not enough.
+
+Default action:
+
+- Only after NE004 identifies target groups, run range variants:
+  - tensor-wise max
+  - percentile clipping
+  - tensor-wise MSE grid
+  - structured selector-based range variants if justified
+- Keep evaluation on the normalized `478 x 25` grid.
+
+Required outputs:
+
+- Range-method comparison table.
+- Fake-quant range diagnostics.
+- By-source metrics.
+- Clear statement whether range tuning materially improves W4A8.
+
+Decision:
+
+- If range fixes the gap, prioritize range/calibration policy.
+- If not, move to structured granularity.
+
+### NE006 structured activation granularity search
+
+Purpose:
+
+- Re-test the old E006 strongest candidates under the new normalized protocol.
+
+Default action:
+
+- Evaluate:
+  - all Conv2d per-channel
+  - split_proj + merge_proj + stage_output_conv per-channel
+  - split_proj + merge_proj + stage_output_conv group-wise `g4`
+  - stage_output_conv group-wise `g4`
+  - stage5-focused sanity checks
+- Use E007 W4A32 as the starting checkpoint and compare against NE000 tensor-wise W4A8.
+
+Required outputs:
+
+- Strategy table with:
+  - pre-act and post-act metrics where applicable
+  - full-grid mean/median SNR/SSIM
+  - by-source metrics
+  - checkpoint paths
+  - deployment notes for per-channel vs group-wise candidates
+
+Decision:
+
+- Pick the best new-protocol W4A8 candidate for deeper activation reconstruction, mixed precision, or selective FP32 experiments.
+
+Execution rules:
+
+- Prefer GPU for model inference/reconstruction. Single-GPU priority is `1 -> 2 -> 3 -> 0`.
+- Record GPU choice and any deviation.
+- Keep all generated artifacts under `SCRN_BRECQ_app/`.
+- Do not modify `SCRN-main/` or `BRECQ-main/`.
+- Update both logs for every NE experiment.
+- Commit after each completed experiment or code/log change.
+- Do not push unless explicitly requested.

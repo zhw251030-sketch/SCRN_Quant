@@ -4518,3 +4518,49 @@ Verification:
 - `conda run -n quant python .../generate_seismic_visuals.py` completed with `figure_count=10`.
 - `find .../figures -name '*.png' | wc -l` returned `10`.
 - `file .../figures/*.png` reported all figures as PNG images with size `3600 x 720`.
+
+## 2026-05-09 NE000-NE006 normalized activation quantization roadmap
+
+Start a new activation-quantization experiment sequence under the `NE00X` prefix, where `NE` means the new normalized data protocol:
+
+- Protocol:
+  - `paper5_energy_filtered_perpatch_absmax`
+- FP32 checkpoint:
+  - `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
+- Calibration:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- Test:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- Default W4A8 starting checkpoint:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq.pth`
+- Default eval:
+  - normalized `478 x 25` grid
+  - SNR settings: `-2,-1,1,5,10`
+  - missing rates: `0.02,0.08,0.18,0.28,0.38`
+  - seed: `20260507`
+- GPU policy:
+  - use GPU when model inference/reconstruction is involved
+  - single-GPU priority: `1 -> 2 -> 3 -> 0`
+  - record any deviation in the logs
+
+Planned sequence:
+
+| experiment | purpose | default action | expected output | decision point |
+|---|---|---|---|---|
+| NE000 | Rebuild W4A8 activation quantization under the new protocol before diagnostics. | Start from E007 W4A32, run tensor-wise A8 init and activation reconstruction with `iters_a=5000`, then evaluate pre/post activation reconstruction on the normalized `478 x 25` grid. | W4A8 pre-act-recon and final checkpoints, verification summary, grid metrics, by-source metrics. | Establish the new W4A8 baseline and decide how severe the A8 gap is relative to E007 W4A32 and FP32. |
+| NE001 | Reproduce activation diagnostics on the new W4A8 checkpoints. | Run diagnostics on NE000 pre-act-recon and final checkpoints with the normalized calibration set. | Quantizer count, `non_positive_delta_count`, activation delta stats, fake-quant error stats, Conv2d/Linear grouped summaries. | Confirm whether negative/non-positive scale remains absent and identify where activation fake-quant error concentrates. |
+| NE002 | Legal-state and checkpoint sanity sweep. | Verify activation quantizer legality after init and after activation reconstruction; check checkpoint reload consistency and final quant states. | Verification JSONs and a short integrity table for pre/final W4A8 states. | Ensure any W4A8 failure is not caused by invalid deltas, bad reload state, or output quantizer leakage. |
+| NE003 | Fixed eval stability and sample-sensitivity check. | Compare single default sample, selected representative samples, small subsets, and full normalized `478 x 25` grid without changing checkpoints. | Evidence that full-grid metrics are the decision authority; representative visual figures may be regenerated if useful. | Prevent single-sample or tiny-subset results from driving conclusions. |
+| NE004 | Activation quantizer sensitivity on the new baseline. | Evaluate disabling groups of activation quantizers, especially Conv2d vs Linear/transformer and stage/role groups. | Sensitivity table with SNR/SSIM recovery by group and by source. | Check whether the old conclusion still holds: Conv2d activation quantization dominates the W4A8 gap. |
+| NE005 | Range, clipping, and outlier controls under the new protocol. | Test tensor-wise range methods only after NE004 confirms the relevant target groups; include max/percentile/MSE-grid style checks as needed. | Range-method comparison table and diagnostics for whether clipping/range fixes the dominant errors. | Decide whether tensor-wise range tuning is still mostly exhausted under normalized data. |
+| NE006 | Structured activation granularity search. | Re-test old strong candidates on the new baseline: all Conv2d per-channel, selective split/merge/stage-output Conv2d per-channel, selective group-wise `g4`, and stage5 sanity checks. | Candidate strategy table with full-grid metrics, by-source metrics, checkpoint paths, and deployment notes. | Choose the next W4A8 candidate for deeper activation reconstruction, mixed precision, or selective FP32 follow-up. |
+
+Execution and logging rules for NE00X:
+
+- Each NE experiment must record commands, run directories, checkpoint paths, data protocol, GPU selection, verification results, and normalized `478 x 25` grid metrics.
+- Any code or document changes under `SCRN_BRECQ_app/scrn_brecq/` must update this log.
+- Any activation-quantization work must also update `SCRN_BRECQ_app/scrn_brecq/ACTIVATION_QUANTIZATION_LOG.md`.
+- Commit after each completed experiment or code/log change.
+- Do not push unless explicitly requested.
+- Do not modify `SCRN-main/` or `BRECQ-main/`.
+- Do not write artifacts outside `SCRN_BRECQ_app/`.
