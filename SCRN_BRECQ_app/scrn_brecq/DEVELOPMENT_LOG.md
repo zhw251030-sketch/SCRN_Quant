@@ -4705,3 +4705,78 @@ By-source：
 - 最大 by-source 掉点集中在 Anisotropic，其次是 Shots0001；Kerry3D 基本接近 FP32。
 - Activation reconstruction 在 full grid 上有小幅正收益，但不足以消除 W4A8 与 W4A32 的 gap。
 - 下一步进入 NE001 diagnostics，重点确认 activation delta 合法性、Conv2d/Linear fake-quant error 分布和 source/stage/role 差异。
+
+## 2026-05-09 NE000_1 packed deployment equivalence 计划
+
+在正式进入 NE001 diagnostics 前，增加 `NE000_1`，用于验证 NE000 及其 W4A32 对照是否能从恢复型 PyTorch checkpoint 转换为具体部署数值后保持等价。
+
+范围边界：
+
+- `NE000_1` 仍属于 NE000 baseline 真实性验证，不进入 activation diagnostics。
+- 本实验只验证部署 artifact 的导出、恢复和 full-grid 指标对齐。
+- activation int8 level 分布、fake-quant error、Conv2d/Linear/stage/role 诊断全部留给 NE001。
+- 当前 `.pth` 是恢复型 checkpoint，包含 FP32 权重、AdaRound alpha、delta/zero_point 和 activation quantizer 状态；`NE000_1` 要验证 packed 整数权重和恢复后的 activation qparams 是否能复现 checkpoint 指标。
+
+实验拆分：
+
+| 子实验 | 输入 checkpoint | 量化状态 | 目的 |
+|---|---|---|---|
+| NE000_1a | `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq.pth` | W4A32，`weight_quant=true, act_quant=false` | 验证当前默认 E007 单卡 W4A32 weight-recon checkpoint 的 packed 权重导出和恢复是否仍对齐。 |
+| NE000_1b | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq.pth` | W4A8，`weight_quant=true, act_quant=true` | 验证 NE000 W4A8 final checkpoint 在 packed 权重整数化并恢复 activation qparams 后是否仍能复现 NE000 final 指标。 |
+
+关键解释：
+
+- NE000 W4A8 不会生成一个新的独立 W4A32 weight-recon checkpoint。
+- NE000 W4A8 的 W4 权重部分继承自 E007 单卡 W4A32；W4A8 中关闭 activation quantization 得到的 W4A32 行为只是同一权重的 sanity/reference，不是新的权重重建实验。
+- 因此 NE000_1 必须分别验证：
+  - E007 W4A32 checkpoint 的部署等价性；
+  - NE000 W4A8 checkpoint 的部署等价性。
+
+计划动作：
+
+1. 对 E007 W4A32 final checkpoint 运行 `export_quantized_scrn.py`，输出 packed artifact：
+   - `weights.bin`
+   - `aux_fp32.bin`
+   - `manifest.json`
+   - `summary.json`
+2. 对 NE000 W4A8 final checkpoint 运行 `export_quantized_scrn.py`，输出对应 packed artifact。
+3. 使用 packed restore 路径恢复两个 artifact：
+   - packed 权重从 `weights.bin` 读取整数值并反量化写回模型权重；
+   - weight fake-quant 路径关闭，因为权重已经代表部署量化值；
+   - W4A8 的 activation `delta/zero_point` 从 `aux_fp32.bin` 恢复，推理时保持 activation fake quant。
+4. 在 normalized `478 x 25` grid 上分别评估：
+   - E007 W4A32 checkpoint final vs W4A32 packed-restored；
+   - NE000 W4A8 checkpoint final vs W4A8 packed-restored。
+5. 记录 artifact size：
+   - 原 `.pth` 文件大小；
+   - `weights.bin`；
+   - `aux_fp32.bin`；
+   - raw deployment payload；
+   - total export size；
+   - estimated compression ratio。
+
+必要输出：
+
+- `NE000_1a` W4A32 packed export dir。
+- `NE000_1a` W4A32 packed grid eval dir。
+- `NE000_1b` W4A8 packed export dir。
+- `NE000_1b` W4A8 packed grid eval dir。
+- 每个 artifact 的 restore summary：
+  - restored quantized layers；
+  - restored non-quantized tensors；
+  - restored activation quantizers；
+  - final quant state。
+- 每个 eval 的 row count 必须为 `11950`。
+- 对齐指标：
+  - checkpoint SNR/SSIM mean/median；
+  - packed-restored SNR/SSIM mean/median；
+  - packed minus checkpoint 的 mean/median SNR/SSIM delta；
+  - prediction diff 的 MSE / mean abs / max abs。
+
+验收标准：
+
+- W4A32 packed-restored 与 E007 W4A32 checkpoint final 在 full-grid 上应高度对齐。
+- W4A8 packed-restored 与 NE000 W4A8 checkpoint final 在 full-grid 上应高度对齐。
+- 如果 W4A32 对齐但 W4A8 不对齐，优先怀疑 activation qparams restore 或 packed W4A8 eval 状态处理。
+- 如果两者都不对齐，优先检查 packed weight integer export/restore 链路。
+- 如果两者都对齐，则可认为 NE000 的好结果不只存在于恢复型 `.pth` fake-quant checkpoint 中，可以进入 NE001 diagnostics。
