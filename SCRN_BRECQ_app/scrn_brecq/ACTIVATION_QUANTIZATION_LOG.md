@@ -6251,3 +6251,43 @@ Verification:
 - Generated `9` PNG files under the run `figures/` directory.
 - Each figure is `3600 x 720`, containing the five comparison panels.
 - E007 remains the default W4A32 baseline for subsequent W4A8 activation quantization experiments.
+
+## 2026-05-09 E011 normalized W4A32 seismic visuals
+
+Generated seismic-colormap comparison figures for E007. This set keeps the same representative normalized examples as E010 and adds the usual default single sample used by `quantize_scrn.py`.
+
+Run:
+
+- Visualization run:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E011_normalized_w4a32_seismic_visuals/20260509_205659_seismic_representative_plus_default_single`
+- Checkpoint:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq.pth`
+- Pre-recon checkpoint:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq_pre_recon.pth`
+
+Display settings:
+
+- Colormap: `seismic`
+- Color scale: symmetric per figure over all panels, centered at `0`
+- Panels: Ground Truth, Input, FP32, W4A32 pre-recon, W4A32 post-recon
+
+Generated figures:
+
+| # | source | condition | amplitude | patch | input SNR | FP32 SNR | pre SNR | post SNR | post-FP32 | figure |
+|---:|---|---|---|---|---:|---:|---:|---:|---:|---|
+| 1 | Anisotropic | low_snr_high_missing | normalized per-patch absmax | `test_000044.npy` | -2.95 | 18.29 | 17.38 | 18.19 | -0.100 | `01_Anisotropic_low_snr_high_missing_test_000044_seismic.png` |
+| 2 | Anisotropic | mid_snr_mid_missing | normalized per-patch absmax | `test_000013.npy` | 0.06 | 23.32 | 21.77 | 23.21 | -0.114 | `02_Anisotropic_mid_snr_mid_missing_test_000013_seismic.png` |
+| 3 | Anisotropic | high_snr_low_missing | normalized per-patch absmax | `test_000025.npy` | 9.49 | 28.75 | 24.63 | 28.65 | -0.103 | `03_Anisotropic_high_snr_low_missing_test_000025_seismic.png` |
+| 4 | Kerry3D | low_snr_high_missing | normalized per-patch absmax | `test_000081.npy` | -2.96 | 6.05 | 5.92 | 6.04 | -0.008 | `04_Kerry3D_low_snr_high_missing_test_000081_seismic.png` |
+| 5 | Kerry3D | mid_snr_mid_missing | normalized per-patch absmax | `test_000084.npy` | 0.08 | 11.49 | 10.83 | 11.47 | -0.020 | `05_Kerry3D_mid_snr_mid_missing_test_000084_seismic.png` |
+| 6 | Kerry3D | high_snr_low_missing | normalized per-patch absmax | `test_000077.npy` | 10.00 | 10.63 | 11.27 | 10.64 | 0.008 | `06_Kerry3D_high_snr_low_missing_test_000077_seismic.png` |
+| 7 | Shots0001 | low_snr_high_missing | normalized per-patch absmax | `test_000374.npy` | -3.01 | 12.81 | 12.11 | 12.78 | -0.037 | `07_Shots0001_low_snr_high_missing_test_000374_seismic.png` |
+| 8 | Shots0001 | mid_snr_mid_missing | normalized per-patch absmax | `test_000395.npy` | 0.22 | 17.08 | 16.50 | 17.04 | -0.033 | `08_Shots0001_mid_snr_mid_missing_test_000395_seismic.png` |
+| 9 | Shots0001 | high_snr_low_missing | normalized per-patch absmax | `test_000349.npy` | 9.84 | 20.85 | 18.69 | 20.80 | -0.046 | `09_Shots0001_high_snr_low_missing_test_000349_seismic.png` |
+| 10 | `SCRN-main/test_data` | default_single_sample | raw default SCRN sample | `clear.npy` | 3.97 | 13.88 | 13.47 | 13.89 | 0.011 | `10_default_single_sample_seismic_raw_amplitude.png` |
+
+Verification:
+
+- Generated `10` PNG files under the run `figures/` directory.
+- Each figure is `3600 x 720`.
+- This does not change the W4A32 baseline choice: E007 single-GPU remains the default W4A8 activation-init base.
