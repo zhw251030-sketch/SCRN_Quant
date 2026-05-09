@@ -5023,3 +5023,131 @@ By-source：
 - `find SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization -maxdepth 1 -type d -name 'NE000*' -printf '%f\n' | sort`
   - `NE000_0_normalized_w4a8_activation_reconstruction`
   - `NE000_1_packed_deployment_equivalence`
+
+## 2026-05-09 NE000_2 归一化 W4A4 激活量化探针
+
+完成 `NE000_2_normalized_w4a4_activation_reconstruction_probe`：在不进入 NE001 的前提下，从当前默认 E007 单卡 W4A32 checkpoint 出发，只把 activation bitwidth 从 A8 降到 A4，测试 normalized 协议下 tensor-wise W4A4 是否仍可用。
+
+预检：
+
+- Branch：`main`
+- Worktree：clean
+- Repo root：`/home/data1/hanwen/project/Project/SCRN_Quant`
+- GPU：`0/1/2/3` 仅 Xorg 低占用；本次使用物理 GPU `1`
+
+输入和执行说明：
+
+- 原始 E007 W4A32 checkpoint：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq.pth`
+- A4 seed metadata checkpoint：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/inputs/e007_w4a32_nbitsa4_metadata_seed.pth`
+- 说明：
+  - `activation_only_quantize_scrn.py` 当前 CLI 没有 `--n-bits-a` 参数，且 E007 checkpoint 的 `quant_config.n_bits_a=8` 会覆盖 `--config`。
+  - 因此本次生成仅修改 `quant_config.n_bits_a: 8 -> 4` 的 seed metadata checkpoint；权重张量保持 E007 不变。
+  - 这是为了执行 W4A4 探针，不是新的 W4 weight reconstruction。
+
+Quant run：
+
+- Run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/quant/20260509_232313_normalized_w4a4_tensor_a5000_1024cali_single_gpu1`
+- Pre-act checkpoint：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/quant/20260509_232313_normalized_w4a4_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq_pre_act_recon.pth`
+- Final checkpoint：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/quant/20260509_232313_normalized_w4a4_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq.pth`
+- 核心配置：
+  - `n_bits_w=4`
+  - `n_bits_a=4`
+  - `activation_granularity=tensor`
+  - `activation_range_method=none`
+  - `num_samples=1024`
+  - `batch_size=16`
+  - `init_batch_size=64`
+  - `iters_a=5000`
+  - `activation_lr=0.0004`
+  - `lp_norm=2.4`
+
+运行时间和 single-sample sanity：
+
+- Activation initialization：`24.8694 s`
+- Activation reconstruction：`1328.2162 s` / `22.1369 min`
+- Total elapsed：`1356.1941 s` / `22.6032 min`
+- `post_weight_snr=13.8918`
+- `pre_act_snr=13.1723`
+- `act_init_delta=-0.7195`
+- `quant_post_act_recon_snr_db=13.2697`
+- `quant_act_recon_snr_gain_db=0.0974`
+- `non_positive_delta_count=0`
+
+Checkpoint verification：
+
+- Pre-act：
+  - `passed=true`
+  - `final_quant_state={"weight_quant": true, "act_quant": true}`
+  - `n_bits_a=4`
+  - `activation_delta_count=52`
+  - `activation_zero_point_count=52`
+  - `weight_bit_counts={"4": 50, "8": 2}`
+  - `level_offender_count=0`
+- Final：
+  - `passed=true`
+  - `final_quant_state={"weight_quant": true, "act_quant": true}`
+  - `n_bits_a=4`
+  - `activation_delta_count=52`
+  - `activation_zero_point_count=52`
+  - `weight_bit_counts={"4": 50, "8": 2}`
+  - `level_offender_count=0`
+- 额外 delta 检查：
+  - Pre：`52` 个 activation delta，`non_positive=0`，`min=0.0088924468`，`max=0.5482574105`
+  - Final：`52` 个 activation delta，`non_positive=0`，`min=0.0088924468`，`max=0.4546860754`
+
+Grid eval：
+
+- Eval run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/eval/20260509_234948_normalized_w4a4_tensor_a5000_grid478_seed20260507`
+- Row count：`11950`
+- Eval elapsed：`238.4515 s`
+- Test protocol：
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+  - SNR settings：`-2,-1,1,5,10`
+  - missing rates：`0.02,0.08,0.18,0.28,0.38`
+  - seed：`20260507`
+
+Overall：
+
+| model | SNR mean | SNR median | SSIM mean | SSIM median |
+|---|---:|---:|---:|---:|
+| FP32 | `17.832885` | `18.174198` | `0.964330` | `0.978794` |
+| E007 W4A32 final | `17.785582` | `18.112757` | `0.964137` | `0.978461` |
+| NE000 W4A8 final | `17.449507` | `17.877689` | `0.962868` | `0.977292` |
+| NE000_2 W4A4 pre-act | `11.172733` | `11.157722` | `0.941492` | `0.955772` |
+| NE000_2 W4A4 final | `12.914963` | `13.118019` | `0.939563` | `0.954078` |
+
+W4A4 final gaps：
+
+- vs FP32：
+  - SNR mean / median：`-4.917922 / -4.152035`
+  - SSIM mean / median：`-0.024767 / -0.025209`
+- vs E007 W4A32：
+  - SNR mean / median：`-4.870618 / -4.994738`
+  - SSIM mean / median：`-0.024574 / -0.024384`
+- vs NE000 W4A8：
+  - SNR mean / median：`-4.534544 / -4.759669`
+  - SSIM mean / median：`-0.023305 / -0.023215`
+- Activation reconstruction gain：
+  - SNR mean / median：`+1.742231 / +1.861192`
+  - SSIM mean / median：`-0.001929 / -0.002785`
+
+By-source：
+
+| source | rows | FP32 SNR mean | W4A4 pre SNR mean | W4A4 final SNR mean | final-FP32 SNR mean | W4A4 final SSIM mean |
+|---|---:|---:|---:|---:|---:|---:|
+| Anisotropic | `1875` | `22.059463` | `10.712972` | `13.280217` | `-8.779246` | `0.966844` |
+| Kerry3D | `400` | `9.608488` | `9.108445` | `9.033177` | `-0.575312` | `0.929975` |
+| Shots0001 | `9675` | `17.353808` | `11.347179` | `13.004665` | `-4.349143` | `0.934673` |
+
+判断：
+
+- W4A4 checkpoint 状态合法，确认是 `n_bits_a=4` 且 52 个 activation quantizer 均已保存和恢复。
+- W4A4 不像旧 raw 协议 W4A8 那样完全崩坏，但相对 W4A8 掉点约 `4.53 dB` mean SNR，不应视为当前可部署候选。
+- Activation reconstruction 对 W4A4 有明显 SNR 正收益（`+1.74 dB` mean），但 SSIM 略降，说明 A4 的 reconstruction 目标和视觉结构指标存在张力。
+- 暂不做 W4A4 packed export；NE001 主线仍应先诊断 NE000 W4A8，W4A4 作为后续 range/granularity/mixed precision 的强压力对照保留。
