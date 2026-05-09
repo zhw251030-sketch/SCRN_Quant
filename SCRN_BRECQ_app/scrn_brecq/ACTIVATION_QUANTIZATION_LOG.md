@@ -6780,3 +6780,74 @@ By-source：
 - 若 W4A32 对齐但 W4A8 不对齐，优先定位 activation qparams restore 或 W4A8 packed eval 状态。
 - 若两者都不对齐，优先定位 packed weight integer export/restore。
 - 若两者都对齐，则可认为 NE000 的结果不仅存在于恢复型 `.pth` fake-quant checkpoint 中，可以继续进入 NE001 diagnostics。
+
+## 2026-05-09 NE000_1 packed grid evaluator
+
+为 NE000_1 实现 packed deployment full-grid 等价评估入口。本次只新增评估工具，不运行正式 packed export/eval 结论。
+
+新增文件：
+
+- `SCRN_BRECQ_app/scrn_brecq/cli/evaluate_packed_scrn_grid.py`
+- `SCRN_BRECQ_app/scrn_brecq/tests/test_evaluate_packed_scrn_grid.py`
+
+评估语义：
+
+- reference checkpoint：
+  - 使用 checkpoint 的 final quant state。
+  - W4A32 为 `weight_quant=true, act_quant=false`。
+  - W4A8 为 `weight_quant=true, act_quant=true`。
+- packed-restored artifact：
+  - 从 `weights.bin` 解包权重整数并反量化写回模型；
+  - 从 `aux_fp32.bin` 恢复 weight / activation qparams 和必要 FP32 参数；
+  - 推理时使用 `weight_quant=false`；
+  - `act_quant` 从 packed manifest final state / quant config 继承。
+
+默认协议：
+
+- Test set：
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- Grid：
+  - SNR settings：`-2,-1,1,5,10`
+  - Missing rates：`0.02,0.08,0.18,0.28,0.38`
+  - Seed：`20260507`
+
+输出和指标：
+
+- `per_sample_metrics.jsonl`
+- `metrics.json`
+- `config.json`
+- `summary.md`
+- 每行记录：
+  - `fp32_snr_db / fp32_ssim`
+  - `checkpoint_snr_db / checkpoint_ssim`
+  - `packed_snr_db / packed_ssim`
+  - `packed_minus_checkpoint_*`
+  - `packed_vs_checkpoint_mse`
+  - `packed_vs_checkpoint_mean_abs_diff`
+  - `packed_vs_checkpoint_max_abs_diff`
+- 聚合维度：
+  - overall
+  - by source
+  - by SNR setting
+  - by missing rate
+  - by condition
+
+测试记录：
+
+- TDD RED：
+  - 新增 test 后先运行：
+    - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_packed_scrn_grid -v`
+  - 预期失败：
+    - `ModuleNotFoundError: No module named 'SCRN_BRECQ_app.scrn_brecq.cli.evaluate_packed_scrn_grid'`
+- GREEN：
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_packed_scrn_grid -v`
+  - 5 tests OK
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_packed_scrn_grid SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_packed_scrn SCRN_BRECQ_app.scrn_brecq.tests.test_packed_deployment -v`
+  - 13 tests OK
+  - `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/evaluate_packed_scrn_grid.py`
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_packed_scrn_grid --help`
+
+下一步：
+
+- 提交工具后，继续执行 NE000_1a / NE000_1b packed export。
+- 然后使用该 evaluator 跑 W4A32 和 W4A8 的 normalized `478 x 25` packed equivalence。

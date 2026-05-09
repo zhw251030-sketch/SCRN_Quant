@@ -4780,3 +4780,75 @@ By-source：
 - 如果 W4A32 对齐但 W4A8 不对齐，优先怀疑 activation qparams restore 或 packed W4A8 eval 状态处理。
 - 如果两者都不对齐，优先检查 packed weight integer export/restore 链路。
 - 如果两者都对齐，则可认为 NE000 的好结果不只存在于恢复型 `.pth` fake-quant checkpoint 中，可以进入 NE001 diagnostics。
+
+## 2026-05-09 NE000_1 packed grid evaluator
+
+为 NE000_1 增加 packed deployment full-grid 等价评估入口。
+
+新增：
+
+- CLI：
+  - `SCRN_BRECQ_app/scrn_brecq/cli/evaluate_packed_scrn_grid.py`
+- Unit tests：
+  - `SCRN_BRECQ_app/scrn_brecq/tests/test_evaluate_packed_scrn_grid.py`
+
+功能：
+
+- 加载 packed deployment artifact：
+  - `manifest.json`
+  - `weights.bin`
+  - `aux_fp32.bin`
+- 同时加载 reference quantized checkpoint。
+- 在 fixed normalized grid 上对齐：
+  - FP32 reference path；
+  - checkpoint final quant path；
+  - packed-restored path。
+- packed-restored 推理语义：
+  - `weight_quant=false`，因为权重已由 packed integer payload 恢复为部署量化权重；
+  - `act_quant` 从 packed manifest final state / quant config 继承；
+  - W4A8 仍保持 activation fake quant。
+
+默认 grid：
+
+- SNR settings：`-2,-1,1,5,10`
+- Missing rates：`0.02,0.08,0.18,0.28,0.38`
+- Seed：`20260507`
+
+输出：
+
+- `config.json`
+- `metrics.json`
+- `summary.md`
+- `per_sample_metrics.jsonl`
+
+逐样本字段：
+
+- `fp32_snr_db / fp32_ssim`
+- `checkpoint_snr_db / checkpoint_ssim`
+- `packed_snr_db / packed_ssim`
+- `packed_minus_checkpoint_snr_db / packed_minus_checkpoint_ssim`
+- `packed_vs_checkpoint_mse`
+- `packed_vs_checkpoint_mean_abs_diff`
+- `packed_vs_checkpoint_max_abs_diff`
+
+聚合维度：
+
+- overall
+- by source
+- by SNR setting
+- by missing rate
+- by condition
+
+验证：
+
+- 先运行新增测试，确认缺少 CLI 时失败：
+  - `ModuleNotFoundError: No module named 'SCRN_BRECQ_app.scrn_brecq.cli.evaluate_packed_scrn_grid'`
+- 实现后通过：
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_packed_scrn_grid -v`
+  - 5 tests OK
+- 相关 packed 测试通过：
+  - `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_packed_scrn_grid SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_packed_scrn SCRN_BRECQ_app.scrn_brecq.tests.test_packed_deployment -v`
+  - 13 tests OK
+- CLI 检查通过：
+  - `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/evaluate_packed_scrn_grid.py`
+  - `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_packed_scrn_grid --help`
