@@ -7235,3 +7235,112 @@ By-source：
 - W4A4 packed-restored 与 NE000_2 W4A4 checkpoint final 高度对齐，mean SNR delta 约 `7.27e-05 dB`，远小于 `0.01 dB` 阈值。
 - W4A4 是合法、可导出、可恢复的 A4 activation 压力对照，但当前 full-grid 指标明显低于 W4A8，不作为部署候选。
 - W4A8 是当前最重要的可用 activation quantization baseline；NE001 主线仍应优先诊断 NE000 W4A8。
+
+## 2026-05-10 四个核心结果与重建前后结论汇总
+
+本节补充记录 NE000 系列到目前为止最重要的横向结论。这里的“四个核心结果”指：
+
+1. normalized FP32 baseline；
+2. E007 W4A32 final，当前默认 weight-only baseline；
+3. NE000 W4A8 final，当前最重要的可用 activation quantization baseline；
+4. NE000_2 W4A4 final，合法可部署恢复的 A4 压力对照。
+
+### 四个核心结果的最终指标
+
+| object | SNR mean | SNR median | SSIM mean | SSIM median | FP32 SNR gap mean |
+|---|---:|---:|---:|---:|---:|
+| FP32 | `17.832885` | `18.174198` | `0.964330` | `0.978794` | `0.000000` |
+| E007 W4A32 final | `17.785582` | `18.112757` | `0.964137` | `0.978461` | `-0.047304` |
+| NE000 W4A8 final | `17.449507` | `17.877689` | `0.962868` | `0.977292` | `-0.383378` |
+| NE000_2 W4A4 final | `12.914963` | `13.118019` | `0.939563` | `0.954078` | `-4.917922` |
+
+跨对象差距：
+
+| comparison | SNR mean delta | SNR median delta | SSIM mean delta |
+|---|---:|---:|---:|
+| E007 W4A32 final - FP32 | `-0.047304` | `-0.061441` | `-0.000193` |
+| NE000 W4A8 final - E007 W4A32 final | `-0.336075` | `-0.235068` | `-0.001269` |
+| NE000_2 W4A4 final - NE000 W4A8 final | `-4.534544` | `-4.759669` | `-0.023305` |
+| NE000_2 W4A4 final - E007 W4A32 final | `-4.870618` | `-4.994738` | `-0.024574` |
+
+### 三个重建实验的 pre/post 改变量
+
+这三个模型都涉及重建，pre/post 改变量是判断该阶段是否真正有效的关键指标。
+
+| model | pre SNR mean | post SNR mean | SNR gain | pre SSIM mean | post SSIM mean | SSIM gain | post-FP32 SNR |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| E007 W4A32 weight recon | `16.614250` | `17.785582` | `+1.171332` | `0.935462` | `0.964137` | `+0.028675` | `-0.047304` |
+| NE000 W4A8 act recon | `17.372734` | `17.449507` | `+0.076773` | `0.962674` | `0.962868` | `+0.000195` | `-0.383378` |
+| NE000_2 W4A4 act recon | `11.172733` | `12.914963` | `+1.742231` | `0.941492` | `0.939563` | `-0.001929` | `-4.917922` |
+
+Median 视角：
+
+| model | pre SNR median | post SNR median | SNR gain median | pre SSIM median | post SSIM median | SSIM gain median |
+|---|---:|---:|---:|---:|---:|---:|
+| E007 W4A32 weight recon | `17.177490` | `18.112757` | `+0.805456` | `0.949638` | `0.978461` | `+0.023764` |
+| NE000 W4A8 act recon | `17.785509` | `17.877689` | `+0.006535` | `0.977030` | `0.977292` | `+0.000069` |
+| NE000_2 W4A4 act recon | `11.157722` | `13.118019` | `+1.861192` | `0.955772` | `0.954078` | `-0.002785` |
+
+结论：
+
+- E007 W4A32 的 weight reconstruction 是强有效步骤：mean SNR `+1.17 dB`，mean SSIM `+0.0287`，最终距离 FP32 只剩 `0.047 dB`，因此它是后续所有 activation quantization 的稳固起点。
+- NE000 W4A8 的 activation reconstruction 是小幅精修：A8 init 本身已经接近 final，mean SNR 只再提升 `0.0768 dB`，说明新 normalized 协议下 A8 的主要改善来自数据/幅值协议和合法量化状态，而不是 activation reconstruction 大幅救回。
+- NE000_2 W4A4 的 activation reconstruction 对 SNR 有强正收益：mean SNR `+1.742 dB`，但 SSIM 反而下降 `0.00193`，说明当前 reconstruction 目标对 A4 会优先优化能量误差，不一定同步改善结构相似性。
+- A4 final 虽然合法且可恢复，但仍比 W4A8 final 低 `4.53 dB` mean SNR；A4 后续需要 range/granularity/mixed precision 的专门路线，不能直接当部署候选。
+
+### 按 source 看重建收益
+
+E007 W4A32：
+
+| source | rows | pre SNR | post SNR | SNR gain | post-FP32 SNR | pre SSIM | post SSIM | SSIM gain |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Anisotropic | `1875` | `20.003475` | `21.971755` | `+1.968280` | `-0.087708` | `0.981766` | `0.992832` | `+0.011066` |
+| Kerry3D | `400` | `9.437826` | `9.608163` | `+0.170337` | `-0.000326` | `0.950352` | `0.949887` | `-0.000465` |
+| Shots0001 | `9675` | `16.254123` | `17.312392` | `+1.058270` | `-0.041416` | `0.925873` | `0.959165` | `+0.033292` |
+
+NE000 W4A8：
+
+| source | rows | pre SNR | post SNR | SNR gain | post-FP32 SNR | pre SSIM | post SSIM | SSIM gain |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Anisotropic | `1875` | `21.289510` | `21.287277` | `-0.002234` | `-0.772186` | `0.991605` | `0.991631` | `+0.000026` |
+| Kerry3D | `400` | `9.581705` | `9.570384` | `-0.011321` | `-0.038104` | `0.948793` | `0.948695` | `-0.000098` |
+| Shots0001 | `9675` | `16.935779` | `17.031505` | `+0.095726` | `-0.322303` | `0.957641` | `0.957880` | `+0.000239` |
+
+NE000_2 W4A4：
+
+| source | rows | pre SNR | post SNR | SNR gain | post-FP32 SNR | pre SSIM | post SSIM | SSIM gain |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Anisotropic | `1875` | `10.712972` | `13.280217` | `+2.567245` | `-8.779246` | `0.969940` | `0.966844` | `-0.003096` |
+| Kerry3D | `400` | `9.108445` | `9.033177` | `-0.075269` | `-0.575312` | `0.939263` | `0.929975` | `-0.009288` |
+| Shots0001 | `9675` | `11.347179` | `13.004665` | `+1.657486` | `-4.349143` | `0.936071` | `0.934673` | `-0.001399` |
+
+Source 结论：
+
+- `Anisotropic` 是 activation bitwidth 压力最强的 source：W4A8 final 已有 `-0.772 dB` gap，W4A4 final 扩大到 `-8.779 dB`。后续 NE001/NE004 应重点检查它对应样本上的 activation range、Conv2d fake-quant error 和 stage 输出误差。
+- `Kerry3D` 对 activation bitwidth 最不敏感：W4A8 gap 只有 `-0.038 dB`，W4A4 gap 也只有 `-0.575 dB`，说明 A4 崩坏不是所有 source 的统一现象。
+- `Shots0001` 是总体结论的主导 source，因为样本数 `9675/11950`；W4A8 在这里仍有 `-0.322 dB` gap，W4A4 为 `-4.349 dB`。
+- W4A8 activation reconstruction 对 Anisotropic/Kerry3D 的 SNR 没有正收益，主要收益来自 Shots0001；因此 NE001 不应只看 overall gain。
+- W4A4 activation reconstruction 对 Anisotropic 和 Shots0001 的 SNR 有大幅恢复，但 Kerry3D 轻微变差，并且三个 source 的 SSIM gain 都为负，说明 A4 的重建目标存在 source-dependent tradeoff。
+
+### packed deployment 等价链路
+
+| packed object | checkpoint SNR mean | packed SNR mean | packed-checkpoint SNR mean | pred MSE mean | max abs diff mean |
+|---|---:|---:|---:|---:|---:|
+| E007 W4A32 packed | `17.785581719` | `17.785577215` | `-0.000004504` | `3.94828666378e-10` | `0.000225479` |
+| NE000 W4A8 packed | `17.449507172` | `17.449533809` | `0.000026637` | `3.75735863461e-07` | `0.002595615` |
+| NE000_2 W4A4 packed | `12.914963390` | `12.915036109` | `0.000072719` | `3.89312694599e-06` | `0.009579206` |
+
+Deployment 结论：
+
+- W4A32、W4A8、W4A4 三个量化模型都已经通过 packed export / restore / full-grid equivalence；这些结果不只是 `.pth` fake-quant checkpoint 内的偶然状态。
+- packed-vs-checkpoint 差异随 activation bitwidth 变低而增大，但三者 mean SNR delta 都远低于 `0.01 dB` 验收阈值。
+- 后续比较精度时可以优先引用 checkpoint final 的 grid 指标；讨论部署链路时引用 packed equivalence 证明。
+
+### 当前研究判断和后续优先级
+
+- 默认对比表应固定为 FP32 / E007 W4A32 / NE000 W4A8 / NE000_2 W4A4。
+- 后续 NE001 diagnostics 的主对象仍是 NE000 W4A8，因为它是当前最接近可用部署的 activation quantization 结果。
+- NE000_2 W4A4 应作为压力对照进入诊断视野，但不应把主线改成 A4 优化；A4 的主要价值是放大 activation quantization 热点。
+- 下一步诊断必须同时报告 pre/post reconstruction，而不是只报告 final。特别是 W4A8 的 final gain 很小，单看 final 容易误判 activation reconstruction 的作用。
+- 如果 NE001 发现 W4A8 和 W4A4 的误差热点高度重合，NE004/NE006 的 Conv2d sensitivity 和结构化 granularity 搜索可能同时解释 A8 gap 和 A4 崩坏。
+- 如果 W4A4 的热点与 W4A8 不重合，则 A4 应另开 A4-specific range/granularity/mixed precision 路线，不能用 W4A8 的诊断结论直接外推。
