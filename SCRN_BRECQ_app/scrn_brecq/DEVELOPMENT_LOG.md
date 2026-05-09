@@ -4356,3 +4356,58 @@ Decision:
 - E009 dist4/global128 improves over E008 dist4/global64 by `+0.0250 dB` mean SNR and `+0.0096 dB` median SNR, so effective batch size explains part of the E008 gap.
 - E009 still remains below E007 single-GPU by `0.0486 dB` mean SNR and `0.0292 dB` median SNR, and it is much slower in wall-clock reconstruction.
 - Do not replace E007 as the preferred W4A8 starting checkpoint. Keep E009 as diagnostic evidence that larger distributed batch partially helps SNR but does not solve the distributed quality/runtime tradeoff under the normalized protocol.
+
+## 2026-05-09 Normalized W4A32 single-GPU representative visual comparisons
+
+Generated representative visual comparisons for the current default W4A32 baseline, E007 single-GPU. No reconstruction or grid metrics were rerun; the script selected rows from the existing E007 full 478x25 grid metrics and regenerated only the chosen degraded inputs and predictions for visualization.
+
+Run:
+
+- Visualization run:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E010_normalized_w4a32_single_gpu_visuals/20260509_204855_representative_figures_source_x_condition`
+- Checkpoint:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq.pth`
+- Pre-recon checkpoint:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq_pre_recon.pth`
+- Source metric rows:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E007_normalized_w4a32_baseline/eval/20260509_153415_normalized_w4a32_single_gpu1_grid478_seed20260507/per_sample_metrics.jsonl`
+- Output files:
+  - `config.json`
+  - `selected_samples.json`
+  - `summary.md`
+  - `figures/*.png`
+
+Selection strategy:
+
+- Sources: `Anisotropic`, `Kerry3D`, `Shots0001`
+- Conditions:
+  - `low_snr_high_missing`: SNR `-2`, missing rate `0.38`
+  - `mid_snr_mid_missing`: SNR `1`, missing rate `0.18`
+  - `high_snr_low_missing`: SNR `10`, missing rate `0.02`
+- For each source and condition group, selected the row whose `quant_post_minus_fp32_snr_db` was closest to that group median.
+- This produced `9` figures, each with panels:
+  - Ground Truth
+  - Input
+  - FP32
+  - W4A32 pre-recon
+  - W4A32 post-recon
+
+Generated figures:
+
+| # | source | condition | patch | input SNR | FP32 SNR | pre SNR | post SNR | post-FP32 | figure |
+|---:|---|---|---|---:|---:|---:|---:|---:|---|
+| 1 | Anisotropic | low_snr_high_missing | `test_000044.npy` | -2.95 | 18.29 | 17.38 | 18.19 | -0.100 | `01_Anisotropic_low_snr_high_missing_test_000044.png` |
+| 2 | Anisotropic | mid_snr_mid_missing | `test_000013.npy` | 0.06 | 23.32 | 21.77 | 23.21 | -0.114 | `02_Anisotropic_mid_snr_mid_missing_test_000013.png` |
+| 3 | Anisotropic | high_snr_low_missing | `test_000025.npy` | 9.49 | 28.75 | 24.63 | 28.65 | -0.103 | `03_Anisotropic_high_snr_low_missing_test_000025.png` |
+| 4 | Kerry3D | low_snr_high_missing | `test_000081.npy` | -2.96 | 6.05 | 5.92 | 6.04 | -0.008 | `04_Kerry3D_low_snr_high_missing_test_000081.png` |
+| 5 | Kerry3D | mid_snr_mid_missing | `test_000084.npy` | 0.08 | 11.49 | 10.83 | 11.47 | -0.020 | `05_Kerry3D_mid_snr_mid_missing_test_000084.png` |
+| 6 | Kerry3D | high_snr_low_missing | `test_000077.npy` | 10.00 | 10.63 | 11.27 | 10.64 | 0.008 | `06_Kerry3D_high_snr_low_missing_test_000077.png` |
+| 7 | Shots0001 | low_snr_high_missing | `test_000374.npy` | -3.01 | 12.81 | 12.11 | 12.78 | -0.037 | `07_Shots0001_low_snr_high_missing_test_000374.png` |
+| 8 | Shots0001 | mid_snr_mid_missing | `test_000395.npy` | 0.22 | 17.08 | 16.50 | 17.04 | -0.033 | `08_Shots0001_mid_snr_mid_missing_test_000395.png` |
+| 9 | Shots0001 | high_snr_low_missing | `test_000349.npy` | 9.84 | 20.85 | 18.69 | 20.80 | -0.046 | `09_Shots0001_high_snr_low_missing_test_000349.png` |
+
+Verification:
+
+- `find .../figures -name '*.png' | wc -l` returned `9`.
+- `file .../figures/*.png` reported all figures as PNG images with size `3600 x 720`.
+- The run was generated on CPU because only 9 selected samples were needed; this did not alter any W4A32 checkpoint or evaluation metric.
