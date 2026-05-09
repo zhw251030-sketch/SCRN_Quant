@@ -5332,6 +5332,40 @@ Deployment 结论：
 - packed-vs-checkpoint 差异随 activation bitwidth 变低而增大，但三者 mean SNR delta 都远低于 `0.01 dB` 验收阈值。
 - 后续比较精度时可以优先引用 checkpoint final 的 grid 指标；讨论部署链路时引用 packed equivalence 证明。
 
+### 模型大小与部署存储对比
+
+Checkpoint / estimated packed size：
+
+| object | checkpoint MiB | estimated packed MiB | estimated compression | quantized weight MiB | weight compression | act quantizers |
+|---|---:|---:|---:|---:|---:|---:|
+| E007 W4A32 | `5.0736` | `0.2427` | `6.7654x` | `0.2037` | `7.9784x` | `0` |
+| NE000 W4A8 | `5.1112` | `0.2427` | `6.7654x` | `0.2037` | `7.9784x` | `52` |
+| NE000_2 W4A4 | `5.1112` | `0.2427` | `6.7654x` | `0.2037` | `7.9784x` | `52` |
+
+Packed export files：
+
+| object | `weights.bin` MiB | `aux_fp32.bin` MiB | raw payload MiB | `manifest.json` MiB | `summary.json` MiB | total export MiB |
+|---|---:|---:|---:|---:|---:|---:|
+| E007 W4A32 | `0.2037` | `0.0390` | `0.2427` | `0.0899` | `0.0026` | `0.3352` |
+| NE000 W4A8 | `0.2037` | `0.0394` | `0.2431` | `0.1159` | `0.0026` | `0.3616` |
+| NE000_2 W4A4 | `0.2037` | `0.0394` | `0.2431` | `0.1160` | `0.0026` | `0.3616` |
+
+Parameter / layer accounting：
+
+| object | base params | quantized weight params | non-quantized params | 4bit layers | 8bit layers |
+|---|---:|---:|---:|---:|---:|
+| E007 W4A32 | `430437` | `426112` | `4325` | `50` | `2` |
+| NE000 W4A8 | `430437` | `426112` | `4325` | `50` | `2` |
+| NE000_2 W4A4 | `430437` | `426112` | `4325` | `50` | `2` |
+
+Size 结论：
+
+- 三个量化模型的权重存储完全一致：`weights.bin=0.2037 MiB`，因为它们共享同一套 W4 weight reconstruction，且 head/tail 保持 8bit。
+- W4A8/W4A4 的 estimated packed model size 与 W4A32 基本相同，都是 `0.2427 MiB`；当前 packed 估算主要统计权重和必要 FP32 aux，不把 activation bitwidth 带来的运行时激活张量存储作为模型文件大小收益。
+- W4A8/W4A4 比 W4A32 多出 activation qparams，因此 checkpoint 从 `5.0736 MiB` 增至 `5.1112 MiB`，`aux_fp32.bin` 从 `0.0390 MiB` 增至 `0.0394 MiB`。
+- W4A8 与 W4A4 的模型文件大小几乎相同，因为两者都保存 52 个 activation `delta/zero_point` 浮点参数；activation bitwidth 影响推理 fake quant 网格和精度，不显著改变当前 packed artifact 的文件体积。
+- 实际 export 文件总大小大于 raw payload，是因为 `manifest.json` 和 `summary.json` 记录了层级元数据、量化状态和可复现实验信息；部署时真正的二进制 payload 主要是 `weights.bin + aux_fp32.bin`。
+
 ### 当前研究判断和后续优先级
 
 - 默认对比表应固定为 FP32 / E007 W4A32 / NE000 W4A8 / NE000_2 W4A4。
