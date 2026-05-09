@@ -6601,11 +6601,11 @@ Verification:
 NE000 quant run：
 
 - Run dir：
-  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1`
 - Pre-act-recon checkpoint：
-  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq_pre_act_recon.pth`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq_pre_act_recon.pth`
 - Final checkpoint：
-  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq.pth`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq.pth`
 - 配置：
   - `n_bits_w=4`
   - `n_bits_a=8`
@@ -6659,7 +6659,7 @@ Checkpoint verification：
 Normalized `478 x 25` grid eval：
 
 - Eval run dir：
-  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_normalized_w4a8_activation_reconstruction/eval/20260509_221644_normalized_w4a8_tensor_a5000_grid478_seed20260507`
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction/eval/20260509_221644_normalized_w4a8_tensor_a5000_grid478_seed20260507`
 - 产物：
   - `config.json`
   - `metrics.json`
@@ -6720,7 +6720,7 @@ By-source：
 | 子实验 | 输入 checkpoint | 量化状态 | 验证目的 |
 |---|---|---|---|
 | NE000_1a | `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq.pth` | W4A32，`weight_quant=true, act_quant=false` | 验证默认 E007 单卡 W4A32 weight-recon checkpoint 的 packed 权重导出和恢复是否对齐。 |
-| NE000_1b | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq.pth` | W4A8，`weight_quant=true, act_quant=true` | 验证 NE000 W4A8 final checkpoint 在 packed 权重整数化并恢复 activation qparams 后是否仍对齐。 |
+| NE000_1b | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq.pth` | W4A8，`weight_quant=true, act_quant=true` | 验证 NE000 W4A8 final checkpoint 在 packed 权重整数化并恢复 activation qparams 后是否仍对齐。 |
 
 关于 W4A32 对照的解释：
 
@@ -6933,7 +6933,7 @@ By-source：
 
 输入 checkpoint：
 
-- `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq.pth`
+- `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq.pth`
 
 Packed export：
 
@@ -7002,3 +7002,23 @@ By-source：
 - 两者均远小于 `0.01 dB` 验收阈值。
 - NE000 的 W4A8 结果不仅存在于恢复型 `.pth` fake-quant checkpoint 中；packed 整数权重导出、activation qparams 恢复和部署视角 PyTorch restore 链路均通过 full-grid 等价验证。
 - 下一步可以进入 NE001 diagnostics。
+
+## 2026-05-09 NE000 目录排序重命名
+
+为让 NE000 baseline 目录在排序中位于 `NE000_1_packed_deployment_equivalence` 之前，将 NE000 原始目录重命名：
+
+- 旧目录：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_normalized_w4a8_activation_reconstruction`
+- 新目录：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction`
+
+同步处理：
+
+- `SCRN_BRECQ_app/` 下文本型记录文件中的路径已替换为新目录名。
+- 本日志和 `DEVELOPMENT_LOG.md` 中的 NE000 checkpoint / eval 路径已同步更新。
+- 二进制 `.pth` checkpoint 内部历史运行配置不做原地改写；模型加载、验证和 grid evaluation 不依赖该路径字段。
+
+当前 NE000 排序：
+
+- `NE000_0_normalized_w4a8_activation_reconstruction`
+- `NE000_1_packed_deployment_equivalence`
