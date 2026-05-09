@@ -4232,3 +4232,127 @@ Decision:
 - This dist4 run is slightly worse in SNR than the single-GPU baseline by `0.0736 dB` mean and `0.0387 dB` median, while SSIM is comparable.
 - This run was also slower than the single-GPU run in wall-clock reconstruction time, likely affected by GPU `0` contention and distributed overhead.
 - Keep the single-GPU normalized W4A32 checkpoint as the preferred W4A8 starting point for now; keep this dist4 checkpoint as a valid distributed comparison baseline, not the default replacement.
+
+## 2026-05-09 Normalized W4A32 four-GPU global128 probe
+
+Ran a second distributed W4A32 weight-only reconstruction on the normalized protocol with local batch `32`, effective global batch `128`. The goal was to test whether the E008 dist4/global64 gap to E007 single-GPU was mainly an effective-batch issue.
+
+Execution notes:
+
+- The first sandboxed `torchrun --standalone` attempt failed before model work with the same local TCP rendezvous restriction seen in E008:
+  - error class: `RendezvousConnectionError`
+  - relevant message: `Operation not permitted`
+- The command was rerun outside the sandbox with unchanged experiment parameters.
+- GPU `0` had an external `swinir` process using about `5.6 GiB` during the first part of reconstruction; it exited before the run finished.
+- The run completed without OOM, but reconstruction timing should still be treated as affected by early GPU `0` contention and distributed overhead.
+
+Run:
+
+- Quantization run:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_182611_normalized_w4a32_1024cali_w20000_dist4_bsz32_global128`
+- Post-reconstruction checkpoint:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_182611_normalized_w4a32_1024cali_w20000_dist4_bsz32_global128/checkpoints/quantized_scrn_brecq.pth`
+- Pre-reconstruction checkpoint:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_182611_normalized_w4a32_1024cali_w20000_dist4_bsz32_global128/checkpoints/quantized_scrn_brecq_pre_recon.pth`
+- Source FP32 checkpoint:
+  - `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
+- Calibration dataset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- Test dataset:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- Distributed settings:
+  - physical GPUs: `0,1,2,3`
+  - `world_size=4`
+  - local rank batch size: `32`
+  - effective reconstruction global batch: `128`
+- BRECQ settings:
+  - `num_samples=1024`
+  - `iters_w=20000`
+  - `n_bits_w=4`
+  - `n_bits_a=8`
+  - `act_quant=false` via `--no-act-quant`
+- Single-sample CLI sanity output:
+  - `fp32_snr=13.8808`
+  - `pre_w_snr=13.4675`
+  - `post_w_snr=13.8346`
+  - `post_recon_ssim=0.9280`
+  - `reconstruction_seconds=6920.35`
+  - `elapsed_seconds=7076.65`
+
+Checkpoint verification:
+
+- Verification JSON:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_182611_normalized_w4a32_1024cali_w20000_dist4_bsz32_global128/verification.json`
+- `passed=true`
+- final quant state:
+  - `weight_quant=true`
+  - `act_quant=false`
+- config:
+  - distributed enabled: `true`
+  - `world_size=4`
+  - local batch size: `32`
+  - `n_bits_w=4`
+  - `n_bits_a=8`
+  - `channel_wise=true`
+  - `scale_method=mse`
+- layer summary:
+  - quant modules: `52`
+  - weight bit counts: `4bit=50`, `8bit=2`
+  - `level_offender_count=0`
+- activation summary:
+  - activation quant modules: `52`
+  - activation delta count: `0`
+
+Normalized 478x25 grid eval:
+
+- Eval run:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E009_normalized_w4a32_dist4_global128_probe/eval/20260509_202444_normalized_w4a32_dist4_bsz32_global128_grid478_seed20260507`
+- Rows:
+  - `11950 = 478 patches * 25 conditions`
+- Grid:
+  - SNR settings: `-2,-1,1,5,10`
+  - missing rates: `0.02,0.08,0.18,0.28,0.38`
+  - seed: `20260507`
+- Eval runtime:
+  - elapsed seconds: `198.69`
+  - FP32 inference seconds: `26.76`
+  - pre-recon quant inference seconds: `82.52`
+  - post-recon quant inference seconds: `27.77`
+
+Overall grid metrics:
+
+| path | SNR mean | SNR median | SSIM mean | SSIM median |
+|---|---:|---:|---:|---:|
+| FP32 | 17.8329 | 18.1742 | 0.964330 | 0.978794 |
+| W4A32 pre-recon | 16.6142 | 17.1775 | 0.935462 | 0.949638 |
+| W4A32 post-recon dist4 global128 | 17.7370 | 18.0836 | 0.963943 | 0.978616 |
+
+Overall deltas:
+
+| delta | SNR mean | SNR median | SSIM mean | SSIM median |
+|---|---:|---:|---:|---:|
+| pre - FP32 | -1.2186 | -0.8585 | -0.028868 | -0.024085 |
+| post - FP32 | -0.0959 | -0.0589 | -0.000387 | -0.000446 |
+| post - pre | 1.1228 | 0.7935 | 0.028481 | 0.023789 |
+
+By-source post-recon metrics:
+
+| source | rows | FP32 SNR mean | W4A32 global128 SNR mean | delta mean | FP32 SSIM mean | W4A32 global128 SSIM mean | delta SSIM mean |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Anisotropic | 1875 | 22.0595 | 21.9149 | -0.1446 | 0.992762 | 0.992198 | -0.000564 |
+| Kerry3D | 400 | 9.6085 | 9.6534 | 0.0449 | 0.950559 | 0.950640 | 0.000080 |
+| Shots0001 | 9675 | 17.3538 | 17.2616 | -0.0922 | 0.959390 | 0.959018 | -0.000372 |
+
+Comparison with normalized W4A32 baselines:
+
+| checkpoint | SNR mean | SNR median | SSIM mean | SSIM median | post - FP32 SNR mean | reconstruction seconds |
+|---|---:|---:|---:|---:|---:|---:|
+| E007 single GPU | 17.7856 | 18.1128 | 0.964137 | 0.978461 | -0.0473 | 2597.64 |
+| E008 dist4 global64 | 17.7120 | 18.0740 | 0.964234 | 0.978921 | -0.1209 | 4046.79 |
+| E009 dist4 global128 | 17.7370 | 18.0836 | 0.963943 | 0.978616 | -0.0959 | 6920.35 |
+
+Decision:
+
+- E009 dist4/global128 improves over E008 dist4/global64 by `+0.0250 dB` mean SNR and `+0.0096 dB` median SNR, so effective batch size explains part of the E008 gap.
+- E009 still remains below E007 single-GPU by `0.0486 dB` mean SNR and `0.0292 dB` median SNR, and it is much slower in wall-clock reconstruction.
+- Do not replace E007 as the preferred W4A8 starting checkpoint. Keep E009 as diagnostic evidence that larger distributed batch partially helps SNR but does not solve the distributed quality/runtime tradeoff under the normalized protocol.

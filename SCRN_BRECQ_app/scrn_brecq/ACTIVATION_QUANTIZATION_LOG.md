@@ -6083,3 +6083,121 @@ Conclusion for activation quantization:
 - E008 dist4 is a valid W-only checkpoint and remains close to FP32, but it is slightly worse in SNR than E007 single GPU.
 - E008 was slower than E007 in this run, likely due to GPU `0` contention and distributed overhead, so it should not replace E007 as the preferred W4A8 starting checkpoint.
 - Keep E007 single-GPU W4A32 as the default W4A8 activation-init base unless a clean uncontended dist4 rerun shows both comparable quality and a real speed benefit.
+
+## 2026-05-09 E009 normalized W4A32 dist4 global128 probe
+
+Ran a second normalized W4A32 distributed reconstruction with local batch `32`, effective global batch `128`. This was a controlled probe against E008: the intended experiment change was only `batch_size=16 -> 32`, with the same FP32 checkpoint, calibration set, W4A32 settings, and normalized 478x25 eval.
+
+Execution notes:
+
+- The sandboxed `torchrun --standalone` attempt failed before model work with `RendezvousConnectionError` / `Operation not permitted`, so the same command was rerun outside the sandbox with unchanged parameters.
+- GPU `0` had an external `swinir` process using about `5.6 GiB` during the first part of reconstruction; it ended before completion.
+- The run completed without OOM.
+
+Protocol:
+
+- Dataset family:
+  - `paper5_energy_filtered_perpatch_absmax`
+- FP32 checkpoint:
+  - `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
+- Calibration:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- Test:
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+
+W4A32 distributed reconstruction:
+
+- Run:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_182611_normalized_w4a32_1024cali_w20000_dist4_bsz32_global128`
+- Checkpoint:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_182611_normalized_w4a32_1024cali_w20000_dist4_bsz32_global128/checkpoints/quantized_scrn_brecq.pth`
+- Pre-recon checkpoint:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_182611_normalized_w4a32_1024cali_w20000_dist4_bsz32_global128/checkpoints/quantized_scrn_brecq_pre_recon.pth`
+- Distributed config:
+  - GPUs: `0,1,2,3`
+  - `world_size=4`
+  - local batch size: `32`
+  - effective reconstruction global batch: `128`
+- Settings:
+  - `num_samples=1024`
+  - `iters_w=20000`
+  - `n_bits_w=4`
+  - `n_bits_a=8`
+  - `act_quant=false`
+- Single-sample sanity:
+  - `fp32_snr=13.8808`
+  - `pre_w_snr=13.4675`
+  - `post_w_snr=13.8346`
+  - `post_recon_ssim=0.9280`
+  - `reconstruction_seconds=6920.35`
+  - `elapsed_seconds=7076.65`
+
+Verification:
+
+- JSON:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_182611_normalized_w4a32_1024cali_w20000_dist4_bsz32_global128/verification.json`
+- `passed=true`
+- final state:
+  - `weight_quant=true`
+  - `act_quant=false`
+- weight quantization:
+  - quant modules: `52`
+  - weight bit counts: `4bit=50`, `8bit=2`
+  - `level_offender_count=0`
+- activation quantization:
+  - activation quant modules: `52`
+  - activation delta count: `0`
+
+Grid eval:
+
+- Run:
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E009_normalized_w4a32_dist4_global128_probe/eval/20260509_202444_normalized_w4a32_dist4_bsz32_global128_grid478_seed20260507`
+- Rows:
+  - `11950 = 478 * 25`
+- Grid:
+  - SNR settings: `-2,-1,1,5,10`
+  - missing rates: `0.02,0.08,0.18,0.28,0.38`
+  - seed: `20260507`
+- Eval runtime:
+  - elapsed seconds: `198.69`
+  - FP32 inference seconds: `26.76`
+  - pre-recon quant inference seconds: `82.52`
+  - post-recon quant inference seconds: `27.77`
+
+Overall normalized 478x25 result:
+
+| path | SNR mean | SNR median | SSIM mean | SSIM median |
+|---|---:|---:|---:|---:|
+| FP32 | 17.8329 | 18.1742 | 0.964330 | 0.978794 |
+| W4A32 pre-recon | 16.6142 | 17.1775 | 0.935462 | 0.949638 |
+| W4A32 post-recon dist4 global128 | 17.7370 | 18.0836 | 0.963943 | 0.978616 |
+
+Overall deltas:
+
+| delta | SNR mean | SNR median | SSIM mean | SSIM median |
+|---|---:|---:|---:|---:|
+| pre - FP32 | -1.2186 | -0.8585 | -0.028868 | -0.024085 |
+| post - FP32 | -0.0959 | -0.0589 | -0.000387 | -0.000446 |
+| post - pre | 1.1228 | 0.7935 | 0.028481 | 0.023789 |
+
+By-source W4A32 post-recon:
+
+| source | rows | FP32 SNR mean | W4A32 global128 SNR mean | delta mean | FP32 SSIM mean | W4A32 global128 SSIM mean | delta SSIM mean |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Anisotropic | 1875 | 22.0595 | 21.9149 | -0.1446 | 0.992762 | 0.992198 | -0.000564 |
+| Kerry3D | 400 | 9.6085 | 9.6534 | 0.0449 | 0.950559 | 0.950640 | 0.000080 |
+| Shots0001 | 9675 | 17.3538 | 17.2616 | -0.0922 | 0.959390 | 0.959018 | -0.000372 |
+
+Baseline comparison:
+
+| checkpoint | SNR mean | SNR median | SSIM mean | SSIM median | post - FP32 SNR mean | reconstruction seconds |
+|---|---:|---:|---:|---:|---:|---:|
+| E007 single GPU | 17.7856 | 18.1128 | 0.964137 | 0.978461 | -0.0473 | 2597.64 |
+| E008 dist4 global64 | 17.7120 | 18.0740 | 0.964234 | 0.978921 | -0.1209 | 4046.79 |
+| E009 dist4 global128 | 17.7370 | 18.0836 | 0.963943 | 0.978616 | -0.0959 | 6920.35 |
+
+Conclusion for activation quantization:
+
+- E009 confirms that increasing dist4 effective batch from `64` to `128` partially recovers SNR: `+0.0250 dB` mean and `+0.0096 dB` median over E008.
+- E009 still trails E007 single GPU by `0.0486 dB` mean SNR and `0.0292 dB` median SNR, and reconstruction is much slower.
+- E007 single-GPU W4A32 remains the default W4A8 activation-init base. E009 should be kept as evidence that distributed batch size matters, not as the preferred checkpoint.
