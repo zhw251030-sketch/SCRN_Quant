@@ -5151,3 +5151,83 @@ By-source：
 - W4A4 不像旧 raw 协议 W4A8 那样完全崩坏，但相对 W4A8 掉点约 `4.53 dB` mean SNR，不应视为当前可部署候选。
 - Activation reconstruction 对 W4A4 有明显 SNR 正收益（`+1.74 dB` mean），但 SSIM 略降，说明 A4 的 reconstruction 目标和视觉结构指标存在张力。
 - 暂不做 W4A4 packed export；NE001 主线仍应先诊断 NE000 W4A8，W4A4 作为后续 range/granularity/mixed precision 的强压力对照保留。
+
+## 2026-05-10 NE000_1c W4A4 packed deployment 等价验证
+
+完成 `NE000_1c`：将 `NE000_2` W4A4 final checkpoint 导出为 packed deployment artifact，并在 normalized `478 x 25` grid 上验证 packed-restored 推理与原 W4A4 checkpoint final 是否等价。
+
+Packed export：
+
+- 输入 checkpoint：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/quant/20260509_232313_normalized_w4a4_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq.pth`
+- Export dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_1_packed_deployment_equivalence/w4a4_packed/ne000_2_normalized_w4a4_tensor_a5000_final`
+- Manifest / summary：
+  - `final_quant_state={"weight_quant": true, "act_quant": true}`
+  - `quant_config.n_bits_a=4`
+  - `quantized_layer_count=52`
+  - `activation_quantizer_count=52`
+  - `estimated_model_compression_ratio=6.765430740455495`
+
+Artifact sizes：
+
+| item | bytes | MiB |
+|---|---:|---:|
+| source `.pth` | `5359500` | `5.1112` |
+| `weights.bin` | `213632` | `0.2037` |
+| `aux_fp32.bin` | `41276` | `0.0394` |
+| `manifest.json` | `121590` | `0.1160` |
+| `summary.json` | `2708` | `0.0026` |
+| raw deployment payload | `254908` | `0.2431` |
+| export files including `summary.json` | `379206` | `0.3616` |
+
+Packed grid eval：
+
+- Eval run dir：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_1_packed_deployment_equivalence/eval/20260510_001507_ne000_1c_w4a4_packed_grid478_seed20260507`
+- Row count：`11950`
+- Eval elapsed：`237.7457 s`
+- Restore summary：
+  - `restored_quantized_layers=52`
+  - `restored_non_quantized_tensors=70`
+  - `restored_activation_quantizers=52`
+  - `final_quant_state={"weight_quant": true, "act_quant": true}`
+
+Overall equivalence：
+
+| metric | checkpoint | packed-restored | packed-checkpoint |
+|---|---:|---:|---:|
+| SNR mean | `12.914963390` | `12.915036109` | `0.000072719` |
+| SNR median | `13.118019299` | `13.120819498` | `0.000000000` |
+| SSIM mean | `0.939563064` | `0.939564812` | `0.000001748` |
+| SSIM median | `0.954077528` | `0.954055301` | `0.000000000` |
+
+Prediction diff：
+
+- `packed_vs_checkpoint_mse_mean=3.893126945986073e-06`
+- `packed_vs_checkpoint_mean_abs_diff_mean=0.0003266090435713198`
+- `packed_vs_checkpoint_max_abs_diff_mean=0.009579205599552113`
+- `packed_vs_checkpoint_max_abs_diff_max=0.07725390791893005`
+
+By-source：
+
+| source | rows | checkpoint SNR mean | packed SNR mean | packed-checkpoint SNR mean | checkpoint SSIM mean | packed SSIM mean |
+|---|---:|---:|---:|---:|---:|---:|
+| Anisotropic | `1875` | `13.280216794` | `13.280417211` | `0.000200416` | `0.966843563` | `0.966847291` |
+| Kerry3D | `400` | `9.033176792` | `9.033380279` | `0.000203487` | `0.929975485` | `0.929969113` |
+| Shots0001 | `9675` | `13.004665148` | `13.004707713` | `0.000042565` | `0.934672531` | `0.934674231` |
+
+后续核心对比对象：
+
+| object | SNR mean | SNR median | SSIM mean | SSIM median | role |
+|---|---:|---:|---:|---:|---|
+| FP32 | `17.832885` | `18.174198` | `0.964330` | `0.978794` | normalized upper baseline |
+| E007 W4A32 final | `17.785582` | `18.112757` | `0.964137` | `0.978461` | default W4 weight-only baseline |
+| NE000 W4A8 final | `17.449507` | `17.877689` | `0.962868` | `0.977292` | current usable activation quantization baseline |
+| NE000_2 W4A4 final | `12.914963` | `13.118019` | `0.939563` | `0.954078` | A4 pressure reference, not deployment candidate |
+
+判断：
+
+- W4A4 packed-restored 与 NE000_2 W4A4 checkpoint final 高度对齐，mean SNR delta 约 `7.27e-05 dB`，远小于 `0.01 dB` 阈值。
+- W4A4 是合法、可导出、可恢复的 A4 activation 压力对照，但当前 full-grid 指标明显低于 W4A8，不作为部署候选。
+- W4A8 是当前最重要的可用 activation quantization baseline；NE001 主线仍应优先诊断 NE000 W4A8。
