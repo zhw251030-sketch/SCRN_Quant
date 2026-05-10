@@ -7595,3 +7595,129 @@ W4A4 final role summary，按 relative MSE mean 排序：
   - NE002：确认 full-reference legality / state 表已经满足可继续条件；
   - NE003：固定代表样本图和 full-grid 可视化口径；
   - 然后 NE004 直接以 W4A4 分组 sensitivity 为主。
+
+## 2026-05-11 NE001 结果解释与旧 E 系列对照
+
+本节把 NE001 的诊断结果整理成人类可读结论，重点说明各指标的含义、NE001 与旧 E001-E006 的一致/不一致之处，以及对后续实验的直接指导。
+
+### 一句话结论
+
+NE001 的核心结论是：
+
+> `W4A4` 低指标不是因为 checkpoint 状态错误、activation delta 非法、没有真正启用 activation quantization，或者 packed/reload 失败；它是真实的 A4 activation bitwidth 压力。`W4A8` 的热点结构与 `W4A4` 高度重合，但 A8 有足够量化级别，因此误差仍可接受；A4 把同一批敏感结构的误差放大到不可部署的量级。
+
+后续主线应从“继续修 W4A8”转为：
+
+> 以 W4A8 为成功参照和护栏，重点定位并优化 W4A4 的 A4-specific activation bottleneck。
+
+### NE001 中各类指标分别说明什么
+
+| 指标 | 读法 | NE001 观察 | 说明 |
+|---|---|---|---|
+| full-grid SNR / SSIM | 最终任务质量，决定模型是否真的可用。 | W4A32 final `17.7856 dB`，W4A8 final `17.4495 dB`，W4A4 final `12.9150 dB`。 | W4A32 几乎贴近 FP32；W4A8 可用；W4A4 有约 `4.53 dB` A4 gap，是主攻对象。 |
+| pre/final gain | 重建阶段是否有效。 | W4A4 act recon `+1.7422 dB`，W4A8 act recon `+0.0768 dB`，W4A32 weight recon `+1.1713 dB`。 | W4A4 reconstruction 有明显 SNR 收益，但仍不足；W4A8 reconstruction 只是微调。 |
+| `activation_quantizers` | 模型中被包装的 activation quantizer 数量。 | A4/A8/W4A32 都统计到 `52` 个 QuantModule。 | 结构插入位置一致，便于横向对比。 |
+| `activation_delta_count` / `initialized_activation_quantizers` | activation quantizer 是否真正初始化。 | W4A4/W4A8 为 `52/52`；W4A32 为 `0/0`。 | W4A4/W4A8 确实启用了 activation quantization；W4A32 正确保持 weight-only。 |
+| `non_positive_delta_count` | 是否存在非法 scale。 | A4/A8 全部为 `0`。 | 当前问题不是旧 E001 中的负 delta bug。 |
+| fake-quant MSE mean/max | 局部 activation 被量化前后的绝对误差。 | W4A4 final `0.00468 / 0.04647`，W4A8 final `4.43e-05 / 0.000242`。 | A4 局部误差比 A8 高约两个数量级。 |
+| effective int levels | 实际使用了多少整数格点。 | W4A4 final min `14`，W4A8 final min `153`。 | A4 的核心瓶颈是表达级别太少；A8 仍有足够离散级别。 |
+| absolute MSE top layers | 哪些层制造最大绝对误差。 | W4A4 final top 是 `stage3/stage2/stage4 attention_qkv` 和部分 CNN conv。 | A4 下 attention qkv 不能忽略。 |
+| relative MSE top layers | 哪些层相对自身信号最脆弱。 | W4A4 final top 是 `stage_output_conv`、`merge_proj`、`stage5 attention_proj/mlp`。 | A4 的弱点不只在大误差层，也在结构边界和融合层。 |
+| top10 热点重合 | A4/A8 是否是同一种结构问题。 | W4A4 final 与 W4A8 final absolute MSE top10 重合 `7/10`。 | 热点位置相似，但 A4 误差量级远大于 A8。 |
+
+### 为什么 W4A4 final SNR 提升但 SSIM 下降
+
+W4A4 activation reconstruction 让 mean SNR 从 `11.1727` 提升到 `12.9150`，但 mean SSIM 从 `0.941492` 降到 `0.939563`。
+
+这说明：
+
+- 当前 reconstruction 目标更接近局部 MSE / 能量误差优化。
+- SNR 受能量误差影响较大，因此可以明显提高。
+- SSIM 更关注结构相似性；A4 下如果 reconstruction 把误差重新分配到结构敏感位置，SSIM 可能下降。
+- 后续 A4 优化不能只看 SNR；NE003 代表图和 by-source SSIM 必须保留。
+
+### 与旧 E 系列的一致之处
+
+| 旧 E 系列结论 | NE001 是否支持 | 说明 |
+|---|---|---|
+| activation quantization 需要固定多样本评估，单样本不可靠。 | 支持。 | NE001 继续使用 normalized `478 x 25` full-grid 作为最终质量口径，diagnostics 只解释局部机制。 |
+| 负 delta 是必须修复的合法性 bug，但不是全部问题。 | 支持。 | NE001 中 A4/A8 都没有负 delta，但 A4 仍明显掉点。 |
+| Conv2d activation quantization 是重要误差来源。 | 部分支持。 | W4A4 Conv2d relative MSE 仍高，Conv branch 多层进入 top list。 |
+| split/merge/stage_output 是结构化粒度的重要候选。 | 支持且加强。 | W4A4 relative MSE top 明确包含 `stage_output_conv`、`merge_proj`、`split_proj`。 |
+| stage5 独立策略需要谨慎。 | 支持。 | W4A4 relative MSE 中 stage5 attention_proj/mlp 很突出，但旧 E006c 发现 stage5 独立细粒度可能有害，后续需要作为 sanity 而不是直接默认优化。 |
+
+### 与旧 E 系列不完全一致的地方
+
+| 旧 E 系列结论 | NE001 新观察 | 是否矛盾 | 当前解释 |
+|---|---|---|---|
+| 旧 raw 协议下 W4A8 一做 activation quantization 就严重崩坏。 | normalized 协议下 W4A8 final 只比 W4A32 低约 `0.336 dB`。 | 不是直接矛盾。 | 数据协议、幅值归一化、FP32 起点、eval 口径都变了；旧数值不能迁移。normalized per-patch absmax 极大缓解了 A8 activation range 压力。 |
+| 旧 E004d 认为 W4A8 A8 init 崩坏主因是 Conv2d，Linear/transformer 不是主因。 | NE001 中 W4A4 final absolute MSE top 是 attention_qkv，Linear max MSE 高于 Conv2d。 | 不完全一致，但不是直接冲突。 | 旧 E004d 是 W4A8 raw 协议的 full-grid sensitivity；NE001 是 W4A4 normalized 协议的局部 diagnostics。bitwidth、数据协议、指标语义都不同。 |
+| 旧 E004/E006 主线从 transformer 转向 Conv2d。 | NE001 显示 A4 下 transformer attention qkv/proj 重新变得重要。 | 是 A4-specific 新信号。 | A8 有 153+ effective levels 时 transformer 误差可接受；A4 只有约 14-16 levels 时 transformer 和融合边界会重新成为瓶颈。 |
+| 旧 E005 tensor-wise range/clipping 基本无效。 | NE001 显示 A4 effective levels 很低，似乎 range 可能重要。 | 不能直接推翻旧结论。 | 低 effective levels 说明 A4 表达力不足，但不等于 tensor-wise clipping 能修复。必须先做 NE004 sensitivity，再对目标组做 NE005 range。 |
+| 旧 E006c 最强候选是 selective split/merge/stage_output Conv2d 粒度。 | NE001 的 relative MSE 明确指向 stage_output/merge/split。 | 一致。 | 这条旧结论在新协议下仍有机制支持，值得优先复测，但目标应从 W4A8 扩展到 W4A4。 |
+
+### 关键区别：diagnostics 不是 sensitivity
+
+NE001 的 fake-quant MSE / relative MSE 是局部指标，它回答：
+
+- 哪些层本地量化误差大？
+- 哪些层相对自身信号最脆弱？
+- A4 和 A8 的局部误差结构是否相似？
+
+它不能直接回答：
+
+- 关闭某组 activation quantizer 后 full-grid SNR 能恢复多少？
+- 某层局部误差大是否一定导致最终输出差？
+- 某个结构是否应该保留 FP32、改 per-channel，还是改 range？
+
+因此 NE001 只能给 NE004 排序和分组优先级，不能替代 NE004 sensitivity。
+
+### 对 NE004 的直接指导
+
+NE004 不应只复刻旧 E004 的 `all Conv2d` / `all Linear` 二分实验。新 W4A4 主线需要同时覆盖 absolute MSE 和 relative MSE 两类热点。
+
+建议 NE004 第一轮分组：
+
+| 优先级 | group | 来源 | 要回答的问题 |
+|---:|---|---|---|
+| 1 | `attention_qkv` | W4A4 absolute MSE top | qkv 的巨大局部误差是否真的主导 full-grid A4 gap？ |
+| 2 | `cnn conv_branch` | W4A4 absolute MSE top + 旧 E004 Conv2d 结论 | CNN conv 累积误差是否仍是 A4 的主要 SNR 损失来源？ |
+| 3 | `stage_output_conv` | W4A4 relative MSE top + 旧 E006c 强候选 | stage 输出卷积是否解释 A4 结构性失真？ |
+| 4 | `split_proj + merge_proj` | W4A4 relative MSE top + 旧 E006c 强候选 | 融合投影是否是 A4 下最值得做细粒度的结构？ |
+| 5 | `stage5 attention_proj/mlp` | W4A4 relative MSE top + 旧 stage5 风险 | stage5 transformer 是否是 A4-specific 风险点，还是旧 E006c 中“独立 stage5 有害”的延续？ |
+| 6 | `all Conv2d` / `all Linear` | 旧 E004 对照 | 用全局组验证 A4 是否仍满足“Conv2d 主导”假设。 |
+
+NE004 判读规则：
+
+- 如果 `attention_qkv` 关闭后 full-grid 恢复很小，说明 attention qkv 的 high absolute MSE 可能被后续结构吸收，主线回到 Conv2d/fusion/stage_output。
+- 如果 `attention_qkv` 关闭后恢复很大，W4A4 需要 A4-specific transformer 策略，不能只沿用旧 E006 Conv2d selective granularity。
+- 如果 `stage_output_conv` 或 `split+merge` 恢复大，旧 E006c 的 selective granularity 候选应直接迁移到 W4A4。
+- 如果 `all Conv2d` 仍远强于细分组，说明 A4 可能存在更广泛的 Conv2d 累积误差，NE006 要考虑 all Conv2d per-channel 作为上限。
+
+### 对 NE005 / NE006 的影响
+
+NE005：
+
+- 不应马上大范围做 percentile / MSE-grid range sweep。
+- 只应在 NE004 证明敏感的组上做 range/clipping。
+- 需要同时看 SNR 和 SSIM，因为 W4A4 reconstruction 已经表现出 SNR/SSIM tradeoff。
+
+NE006：
+
+- 旧 E006c 的 `split_proj + merge_proj + stage_output_conv` selective per-channel / g4 仍是优先候选。
+- 但 W4A4 还应加入 `attention_qkv` 或 transformer qkv/proj 的 A4-specific 候选：
+  - selective A8 fallback；
+  - qkv-only higher precision；
+  - qkv per-channel / group-wise；
+  - qkv 保持 FP32 作为上限反事实。
+- W4A8 不再作为主要优化对象，但每个 W4A4 策略都应至少验证不会明显破坏 W4A8。
+
+### 当前对“冲突”的最终判断
+
+NE001 和旧 E 系列不是简单互相否定，而是说明：
+
+1. 旧 E 系列回答的是 raw-amplitude 旧协议下的 W4A8 崩坏机制。
+2. NE001 回答的是 normalized 新协议下 W4A4 的 A4-specific 压力机制。
+3. 旧结论中 “Conv2d / split / merge / stage_output 很重要” 仍然成立。
+4. 旧结论中 “Linear/transformer 不是主因” 不能直接外推到 W4A4。
+5. 后续实验必须以 full-grid sensitivity 验证 NE001 的局部诊断，不能只凭 diagnostics 排序决定最终策略。
