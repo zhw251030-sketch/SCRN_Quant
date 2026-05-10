@@ -7420,3 +7420,178 @@ Size 结论：
 - 如果 W4A4 热点明显不同于 W4A8，后续不要把 W4A8 的好结果外推到 A4；NE004-NE006 必须以 A4-specific 分组和 source-specific 结论为准。
 - 如果 W4A4 的 SSIM 持续随 reconstruction 或 range 改善而下降，需要单独记录 SNR/SSIM tradeoff，并考虑 reconstruction loss 或代表样本可视化，而不是只追求 SNR。
 - W4A8 目前不需要主动优化，但每个最终候选策略都应至少用 W4A8 做护栏验证，防止为了 A4 引入会破坏 A8 的工程默认配置。
+
+## 2026-05-10 NE001 full-reference activation diagnostics
+
+完成 `NE001`：以 `NE000_2 W4A4 pre/final` 为主诊断对象，同时纳入 `NE000 W4A8 pre/final`、`E007 W4A32 pre/final` 和 FP32 上限指标，建立完整参考链条。
+
+### 运行口径
+
+- Branch：`main`
+- 开始时 worktree：clean，本地领先 `origin/main` 28 个提交。
+- 数据协议：`paper5_energy_filtered_perpatch_absmax`
+- Calibration：
+  - `SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- Diagnostics 参数：
+  - `num_samples=1024`
+  - `batch_size=16`
+  - `num_workers=0`
+  - `seed=1005`
+- 输出根目录：
+  - `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE001_w4a4_centered_activation_diagnostics/diagnostics`
+
+GPU 说明：
+
+- 预检时 GPU `0/1/2/3` 基本空闲，默认优先选择 GPU `1`。
+- 首次按计划使用 GPU `1` 跑 `W4A4 pre-act` diagnostics 时，sandbox 外 CUDA 可用，但现有 `diagnose_activation_quantization` 会把 1024 个 calibration samples 整批送入一次 forward；`batch_size=16` 只影响 DataLoader，不影响 diagnostics forward。
+- GPU run 在 full-batch activation diagnostics 中 OOM：
+  - 错误点：`_per_channel_absmax_stats`
+  - 现象：尝试额外分配约 `4.00 GiB`，进程已占约 `12.38 GiB`
+- 为保持“不改代码、不降 num_samples”的计划约束，本次 6 个 diagnostics 全部改用 CPU fallback 完成，并在 run name 中显式标注 `cpu_fallback`。
+
+### Diagnostics run directories
+
+| object | run dir |
+|---|---|
+| W4A4 pre-act | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE001_w4a4_centered_activation_diagnostics/diagnostics/20260510_015710_ne001a_w4a4_pre_act_diagnostics_1024cali_cpu_fallback` |
+| W4A4 final | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE001_w4a4_centered_activation_diagnostics/diagnostics/20260510_020106_ne001b_w4a4_final_diagnostics_1024cali_cpu_fallback` |
+| W4A8 pre-act | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE001_w4a4_centered_activation_diagnostics/diagnostics/20260510_020454_ne001c_w4a8_pre_act_reference_diagnostics_1024cali_cpu_fallback` |
+| W4A8 final | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE001_w4a4_centered_activation_diagnostics/diagnostics/20260510_020847_ne001d_w4a8_final_reference_diagnostics_1024cali_cpu_fallback` |
+| W4A32 pre-recon | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE001_w4a4_centered_activation_diagnostics/diagnostics/20260510_021257_ne001e_w4a32_pre_recon_reference_diagnostics_1024cali_cpu_fallback` |
+| W4A32 final | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE001_w4a4_centered_activation_diagnostics/diagnostics/20260510_021648_ne001f_w4a32_final_reference_diagnostics_1024cali_cpu_fallback` |
+
+每个 run 均生成：
+
+- `config.json`
+- `summary.json`
+- `summary.md`
+- `quantizers.csv`
+- `activation_stats.jsonl`
+- `offender_layers.json`
+
+### 八个对象的 fixed-grid 指标
+
+FP32 checkpoint：
+
+- `SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth`
+
+| object | SNR mean | SNR median | SSIM mean | SSIM median | post/pre gain SNR mean |
+|---|---:|---:|---:|---:|---:|
+| FP32 | `17.832885` | `18.174198` | `0.964330` | `0.978794` | N/A |
+| E007 W4A32 pre-recon | `16.614250` | `17.177490` | `0.935462` | `0.949638` | N/A |
+| E007 W4A32 final | `17.785582` | `18.112757` | `0.964137` | `0.978461` | `+1.171332` |
+| NE000 W4A8 pre-act | `17.372734` | `17.785509` | `0.962674` | `0.977030` | N/A |
+| NE000 W4A8 final | `17.449507` | `17.877689` | `0.962868` | `0.977292` | `+0.076773` |
+| NE000_2 W4A4 pre-act | `11.172733` | `11.157722` | `0.941492` | `0.955772` | N/A |
+| NE000_2 W4A4 final | `12.914963` | `13.118019` | `0.939563` | `0.954078` | `+1.742231` |
+
+### Legality / diagnostics summary
+
+| object | final state | act bits | delta/init | non-positive delta | delta min/max | fake-quant MSE mean/max | effective levels min/max |
+|---|---|---:|---:|---:|---:|---:|---:|
+| W4A4 pre | `W=true A=true` | `4/8` | `52/52` | `0` | `0.00889245 / 0.548257` | `0.00612955 / 0.027745` | `13 / 246` |
+| W4A4 final | `W=true A=true` | `4/8` | `52/52` | `0` | `0.00889245 / 0.454686` | `0.00468151 / 0.0464743` | `14 / 235` |
+| W4A8 pre | `W=true A=true` | `8` | `52/52` | `0` | `0.00416813 / 0.0480133` | `5.65246e-05 / 0.000505416` | `168 / 256` |
+| W4A8 final | `W=true A=true` | `8` | `52/52` | `0` | `0.00401271 / 0.0526452` | `4.43473e-05 / 0.000241724` | `153 / 256` |
+| W4A32 pre | `W=true A=false` | `8` | `0/0` | `0` | `None / None` | `None / None` | `None / None` |
+| W4A32 final | `W=true A=false` | `8` | `0/0` | `0` | `None / None` | `None / None` | `None / None` |
+
+结论：
+
+- W4A4/W4A8 checkpoint 都是真正启用 activation quantization 的状态：`act_quant=true`，52 个 activation quantizer 均初始化，`non_positive_delta_count=0`。
+- W4A32 pre/final 是合法 weight-only 对照：`act_quant=false`，activation delta count 为 `0`，fake-quant MSE 为 `None` 符合预期。
+- A4 的 fake-quant MSE 比 A8 高约两个数量级；A4 final 的 mean MSE 比 A4 pre 降低，但 max MSE 从 `0.027745` 升到 `0.0464743`，说明 reconstruction 改善总体误差时把最坏层压力集中到少数层。
+- A4 final effective levels 最低只有 `14`，A8 final 最低为 `153`，A4 的核心问题是有效量化级别严重不足，而不是非法 scale。
+
+### Module type 对比
+
+| object | Conv2d MSE mean/max | Conv2d relative MSE mean/max | Linear MSE mean/max | Linear relative MSE mean/max |
+|---|---:|---:|---:|---:|
+| W4A4 pre | `0.00688291 / 0.0222065` | `0.0351968 / 0.0674264` | `0.00492416 / 0.027745` | `0.0216285 / 0.0524481` |
+| W4A4 final | `0.00448758 / 0.0136385` | `0.0273810 / 0.0546570` | `0.00499179 / 0.0464743` | `0.0211767 / 0.0470783` |
+| W4A8 pre | `7.25379e-05 / 0.000505416` | `0.000491862 / 0.00160065` | `3.09033e-05 / 0.000137540` | `0.000302101 / 0.000998137` |
+| W4A8 final | `5.08725e-05 / 0.000138683` | `0.000451410 / 0.00165058` | `3.39071e-05 / 0.000241724` | `0.000212343 / 0.000597379` |
+
+判断：
+
+- W4A4 reconstruction 明显降低 Conv2d mean/max MSE，但 Linear max MSE 升高，主要来自 attention qkv。
+- 旧协议里 “Conv2d 是主瓶颈” 不能直接完整外推到 W4A4。A4 下需要同时看：
+  - Conv2d / stage output / fusion 的 relative error；
+  - attention qkv 的 absolute MSE；
+  - stage5 transformer 的 low effective-level 和 relative error。
+
+### W4A4 final 热点
+
+W4A4 final absolute MSE top layers：
+
+| layer | type | role | stage | fake-quant MSE |
+|---|---|---|---|---:|
+| `model.stage3.0.block.trans_branch.attn.qkv` | Linear | attention_qkv | stage3 | `0.0464743` |
+| `model.stage2.0.block.trans_branch.attn.qkv` | Linear | attention_qkv | stage2 | `0.0226427` |
+| `model.stage1.0.block.conv_branch.3` | Conv2d | conv | stage1 | `0.0136385` |
+| `model.stage2.0.block.conv_branch.3` | Conv2d | conv | stage2 | `0.0114776` |
+| `model.stage4.0.block.trans_branch.attn.qkv` | Linear | attention_qkv | stage4 | `0.0109560` |
+| `model.stage3.0.block.conv_branch.0` | Conv2d | conv | stage3 | `0.0107701` |
+| `model.stage3.0.block.conv_branch.3` | Conv2d | conv | stage3 | `0.0099101` |
+| `model.stage1.0.block.conv_branch.0` | Conv2d | conv | stage1 | `0.00983864` |
+
+W4A4 final relative MSE top layers：
+
+| layer | type | role | stage | relative MSE |
+|---|---|---|---|---:|
+| `model.stage1.1` | Conv2d | stage_output_conv | stage1 | `0.0546570` |
+| `model.stage5.0.block.trans_branch.attn.proj` | Linear | attention_proj | stage5 | `0.0470783` |
+| `model.stage5.0.block.trans_branch.mlp.2` | Linear | mlp | stage5 | `0.0442115` |
+| `model.stage2.1` | Conv2d | stage_output_conv | stage2 | `0.0439959` |
+| `model.stage1.0.block.merge_proj` | Conv2d | merge_proj | stage1 | `0.0431563` |
+| `model.stage4.1` | Conv2d | stage_output_conv | stage4 | `0.0419215` |
+| `model.stage1.0.block.trans_branch.mlp.2` | Linear | mlp | stage1 | `0.0399722` |
+| `model.stage2.0.block.merge_proj` | Conv2d | merge_proj | stage2 | `0.0388929` |
+
+W4A4 final role summary，按 relative MSE mean 排序：
+
+| role | count | MSE mean | relative MSE mean | effective levels min |
+|---|---:|---:|---:|---:|
+| merge_proj | `5` | `0.00134185` | `0.0388603` | `16` |
+| tail | `1` | `0.000599201` | `0.0355458` | `16` |
+| stage_output_conv | `5` | `0.000991273` | `0.0342028` | `16` |
+| split_proj | `5` | `0.000734917` | `0.0284331` | `16` |
+| attention_proj | `5` | `0.000465102` | `0.0240871` | `14` |
+| mlp | `10` | `0.000415627` | `0.0232609` | `16` |
+| conv | `15` | `0.00851042` | `0.0221592` | `16` |
+| attention_qkv | `5` | `0.0186708` | `0.0140978` | `16` |
+| head | `1` | `6.80622e-06` | `0.000778224` | `235` |
+
+### W4A4 vs W4A8 热点重合
+
+- W4A4 final 与 W4A8 final 的 absolute MSE top10 有 `7/10` 层重合。
+- 重合层：
+  - `model.stage1.0.block.conv_branch.3`
+  - `model.stage2.0.block.conv_branch.3`
+  - `model.stage2.0.block.trans_branch.attn.qkv`
+  - `model.stage3.0.block.conv_branch.0`
+  - `model.stage3.0.block.trans_branch.attn.qkv`
+  - `model.stage4.0.block.conv_branch.3`
+  - `model.stage4.0.block.trans_branch.attn.qkv`
+
+判断：
+
+- W4A4 和 W4A8 的热点结构高度重合，但 A4 把这些热点放大到部署不可接受的量级。
+- A4 的 absolute MSE 首要热点是 `attention_qkv` 和部分 CNN conv；relative MSE 首要热点是 `stage_output_conv`、`merge_proj`、`stage5 attention_proj/mlp`。
+- NE004 不应只复刻旧 E004 的 all Conv2d 关闭实验；应该把 W4A4 分组 sensitivity 设计成：
+  1. `attention_qkv`；
+  2. CNN `conv_branch`；
+  3. `stage_output_conv`；
+  4. `split_proj + merge_proj`；
+  5. stage5 transformer sanity；
+  6. all Conv2d 与 all Linear/transformer 作为全局对照。
+
+### NE001 结论
+
+- W4A4 低指标不是 activation delta 非法、checkpoint reload 错误或没有真正启用 activation quantization；它是真实 A4 bitwidth 压力。
+- W4A4 activation reconstruction 对 full-grid SNR 有明显收益，但 diagnostics 显示它更像“整体误差再分配”：Conv2d 误差下降，attention qkv 最坏层压力上升。
+- W4A8 当前足够好，不需要把 NE001-NE006 主线用于继续修 W4A8；W4A8 应作为成功参照和护栏。
+- 下一步进入 NE004 前，建议先做一个轻量 NE002/NE003 收尾：
+  - NE002：确认 full-reference legality / state 表已经满足可继续条件；
+  - NE003：固定代表样本图和 full-grid 可视化口径；
+  - 然后 NE004 直接以 W4A4 分组 sensitivity 为主。
