@@ -6206,3 +6206,209 @@ NE003 显示协议：
   - Kerry3D 存在 reconstruction 变差与 SSIM drop 代表样本，是后续 sensitivity / range / granularity 优先排查对象；
   - Shots0001 多数样本有中等恢复，是判断策略是否泛化的重要 source。
 - NE003 不改变任何实验结论本身；它固定的是“后续怎么比较”和“图怎么看”的协议。
+
+## 2026-05-11 NE002 / NE003 整理版与 NE004-NE006 后续计划
+
+本节把 NE002 和 NE003 的结果整理成后续实验可以直接引用的结论，并明确 NE004、NE005、NE006 分别要做什么、怎么做、判断什么。后续主对象按当前讨论调整为 `NE000_2 W4A4`；`NE000 W4A8` 作为成功参照，`E007 W4A32` 和 FP32 作为上下限参照。
+
+### NE002 / NE003 已经确认的事实
+
+| 类别 | 结论 | 对后续实验的意义 |
+|---|---|---|
+| checkpoint legality | W4A4 pre/final、W4A8 pre/final、W4A32 pre/final 全部 verification passed。 | 后续不再优先怀疑 checkpoint reload、bitwidth、quant state 错误。 |
+| activation 状态 | W4A4/W4A8 均为 `weight_quant=true, act_quant=true`，activation delta `52/52` 初始化；W4A32 为 `act_quant=false`。 | W4A4 低指标是真实 A4 activation pressure，不是“没开/开错 activation quant”。 |
+| state toggle | W4A4/W4A8 `all_on` 与 `all_off` 输出明显不同；二者 `all_off` 回到 W4A32-like 行为。 | activation quantizer 开关有效，NE004 可以做分组 sensitivity。 |
+| packed deployment | W4A32/W4A8/W4A4 packed restored 与 fake-quant checkpoint full-grid mean SNR delta 均远小于 `0.01 dB`。 | 当前结果不仅存在于恢复型 `.pth` 中，也能经 packed artifact 恢复对齐。 |
+| fixed grid | NE003 固定 normalized `478 x 25` 为正式评估口径。 | 后续所有策略必须用同一 grid 判断，不用默认单样本做结论。 |
+| fixed visuals | NE003 固定 15 个 normalized 代表样本 + 1 个默认单样本 sanity，使用 `seismic` 和 manifest 反归一化显示。 | 后续候选策略要复用同一批图，避免图像选择偏差。 |
+
+核心对比指标：
+
+| object | SNR mean / median | SSIM mean / median | 角色 |
+|---|---:|---:|---|
+| FP32 | 17.832885 / 18.174198 | 0.964330 / 0.978794 | normalized 上限。 |
+| E007 W4A32 final | 17.785582 / 18.112757 | 0.964137 / 0.978461 | weight-only 主参照，几乎贴近 FP32。 |
+| NE000 W4A8 final | 17.449507 / 17.877689 | 0.962868 / 0.977292 | A8 成功参照，优化空间小。 |
+| NE000_2 W4A4 final | 12.914963 / 13.118019 | 0.939563 / 0.954078 | 后续主优化对象。 |
+
+重建前后变化：
+
+| object | SNR mean delta | SSIM mean delta | 解释 |
+|---|---:|---:|---|
+| E007 W4A32 final - pre | +1.171332 | +0.028675 | weight reconstruction 明确有效。 |
+| NE000 W4A8 final - pre | +0.076773 | +0.000195 | A8 init 已经很好，activation reconstruction 只是小幅微调。 |
+| NE000_2 W4A4 final - pre | +1.742231 | -0.001929 | A4 reconstruction 恢复 SNR，但 SSIM 略降；后续不能只追 SNR。 |
+
+当前最重要的可读结论：
+
+- W4A8 已经足够好，后续不应把主资源放在继续提高 A8；它主要用于判断 W4A4 的异常是否是 A4 专属。
+- W4A4 是合法、可恢复、可 packed 对齐的 A4 activation checkpoint，但与 W4A32 / FP32 仍有约 `4.87 dB` mean SNR gap。
+- W4A4 reconstruction 的行为有 source 差异：Anisotropic 和 Shots0001 多数样本 SNR 恢复明显，Kerry3D 出现 reconstruction 变差和 SSIM drop，是后续优先关注对象。
+- 后续优化目标不是“让单个样本好看”，而是在 normalized `478 x 25` grid 上缩小 W4A4 final 与 W4A32 final 的 gap，同时不能牺牲 SSIM 和 by-source 稳定性。
+
+### NE004：W4A4 activation quantizer 分组 sensitivity
+
+实验目标：
+
+- 找出 W4A4 full-grid gap 主要来自哪些 activation quantizer 组。
+- 验证旧 E004 的“Conv2d activation 多层累积误差主导”在新 normalized 数据 + A4 bitwidth 下是否仍成立。
+- 将 NE001 的局部统计热点转化为 full-grid 行为证据，为 NE005/NE006 缩小搜索空间。
+
+实验对象：
+
+| 对象 | 用途 |
+|---|---|
+| `NE000_2 W4A4 final` | 主 sensitivity 对象。 |
+| `NE000_2 W4A4 pre` | 可选对照，用于判断 activation reconstruction 是否改变热点。 |
+| `NE000 W4A8 final` | 成功参照；同样分组关闭时应表现为小幅变化。 |
+| `E007 W4A32 final` / FP32 | 固定上限参照，不做 activation sensitivity。 |
+
+实验方法：
+
+1. 使用现有 activation sensitivity 工具或补一个最小选择文件接口，固定 normalized `478 x 25` grid。
+2. 对 W4A4 final 运行：
+   - `all_on`：完整 W4A4 final；
+   - `all_off`：activation 全关，得到 W4A32-like 参照；
+   - `conv2d_off`：只关闭 Conv2d activation quantizers；
+   - `linear_off`：只关闭 Linear / transformer activation quantizers；
+   - `stage_output_conv_off`；
+   - `split_proj_off`；
+   - `merge_proj_off`；
+   - `split_proj + merge_proj + stage_output_conv_off`；
+   - stage-wise off：stage1、stage2、stage3、stage4、stage5；
+   - role-wise off：attention projection、FFN / MLP、input/output quantizer，如工具可表达则纳入。
+3. 对 W4A8 final 跑一个精简同构 sanity：`all_on`、`all_off`、`conv2d_off`、`split/merge/stage_output_conv_off`。
+4. 每个 run 记录 overall、by-source、by-condition、相对 W4A4 all_on 的 SNR/SSIM gain。
+5. 对最有价值的 2-3 个 sensitivity 结果复用 NE003 代表样本生成图。
+
+验收标准：
+
+- 每个正式 sensitivity run 行数为 `11950`。
+- 明确给出“关闭哪一组最能恢复 W4A4”，以及该恢复是否集中在 Anisotropic / Kerry3D / Shots0001。
+- 如果关闭某组能显著提升 W4A4 SNR 且 SSIM 不下降，NE006 优先把该组改为 finer granularity。
+- 如果关闭某组只提升单一 source 或导致 SSIM 明显下降，后续不能直接作为部署策略，只作为诊断证据。
+
+预期产物：
+
+- `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE004_w4a4_activation_sensitivity/...`
+- sensitivity 汇总表；
+- top group 的 NE003 同口径代表图；
+- 两份日志中的最终判断：A4 主瓶颈是 Conv2d、stage、role，还是少数组合。
+
+### NE005：W4A4 activation range / clipping / calibration 口径实验
+
+实验目标：
+
+- 判断 W4A4 剩余 gap 是否主要来自 tensor-wise activation range 估计过宽、离群值、clip 策略或 calibration 分布。
+- 复核旧 E005 “range / clipping 对 W4A8 帮助有限”的结论在 A4 上是否仍成立；A4 bitwidth 更低，旧结论不能直接照搬。
+
+实验对象：
+
+| 对象 | 用途 |
+|---|---|
+| `E007 W4A32 final` | 所有 W4A4 range 变体的共同起点。 |
+| `NE000_2 W4A4 final` | baseline：tensor-wise A4、range method `none`、a5000。 |
+| `NE000 W4A8 final` | 判断 range 变化是否只对 A4 敏感。 |
+
+实验方法：
+
+1. 先检查 `activation_only_quantize_scrn` 当前支持的 `activation_range_method` 和 clipping 参数；如不支持需要的策略，单独做小补丁并测试。
+2. 保持核心变量不变：
+   - `n_bits_w=4`
+   - `n_bits_a=4`
+   - `activation_granularity=tensor`
+   - `num_samples=1024`
+   - `batch_size=16`
+   - `init_batch_size=64`
+   - `iters_a=5000`
+   - `activation_lr=0.0004`
+   - `lp_norm=2.4`
+3. 只改 range / clipping / calibration 相关变量，候选包括：
+   - percentile clipping：如 p99、p99.5、p99.9、p99.99；
+   - MSE grid range init；
+   - absmax / no-clipping baseline 复跑；
+   - 按 NE001 / NE004 热点只对敏感 group 试 clipping；
+   - 可选：校准集 source balance 或 per-source calibration 对照。
+4. 每个候选都跑 pre-act 和 final full-grid eval，记录重建前后变化。
+5. 对有希望的候选复用 NE003 代表图，尤其检查 Kerry3D worst recon change 和 max SSIM drop。
+
+验收标准：
+
+- 候选策略必须在 normalized `478 x 25` 上超过 NE000_2 W4A4 final，而不是只提升单样本。
+- 主要比较：
+  - W4A4 final mean/median SNR 是否提高；
+  - SSIM mean/median 是否不再下降；
+  - by-source 是否改善 Kerry3D 且不明显伤害 Anisotropic / Shots0001；
+  - activation delta、bitwidth、packed restore 是否仍合法。
+- 若 range / clipping 全部收益有限，则明确排除“简单调 range 能解决 A4”的路径，进入 NE006 granularity。
+
+预期产物：
+
+- `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE005_w4a4_range_clipping/...`
+- range variant 表；
+- 每个 variant 的 pre/final 指标与相对 NE000_2 的 gain；
+- 是否值得做 packed export 的判断。
+
+### NE006：W4A4 structured granularity / selective fine granularity
+
+实验目标：
+
+- 在 NE004 定位出的敏感组上测试 finer activation granularity，寻找 W4A4 可部署候选。
+- 复核旧 E006 的核心发现：selective fine granularity 可能优于 all Conv2d fine granularity；但 NE006 必须以新 normalized 数据和 A4 为准。
+
+实验对象：
+
+| 对象 | 用途 |
+|---|---|
+| `E007 W4A32 final` | 所有 W4A4 granularity 变体共同起点。 |
+| `NE000_2 W4A4 final` | tensor-wise A4 baseline。 |
+| `NE000 W4A8 final` | 成功参照，不作为主要优化目标。 |
+
+实验方法：
+
+1. 保持 NE000_2 的 reconstruction 设置不变，只改 activation granularity / 选择组。
+2. 至少测试以下候选：
+   - all Conv2d activation per-channel；
+   - all Conv2d activation group-wise g4；
+   - `split_proj + merge_proj + stage_output_conv` per-channel；
+   - `split_proj + merge_proj + stage_output_conv` g4；
+   - `stage_output_conv` g4；
+   - stage5 单独 finer granularity 或 stage5 保持 tensor-wise 的对照；
+   - Linear / transformer sanity：只改 Linear 或只关 Linear，确认是否不是主路径。
+3. 每个候选都从 E007 W4A32 final 出发重跑 activation init + activation reconstruction，随后做 normalized full-grid eval。
+4. 对 top candidates 生成 NE003 同口径代表图。
+5. 对最终候选做 verification 和 packed deployment equivalence，确认不是 fake-quant-only 结果。
+
+验收标准：
+
+- 目标是 W4A4 final 明显缩小与 W4A32 final 的 gap，同时保持 SSIM 不恶化。
+- 优先级：
+  - 若 per-channel 提升最大但部署成本高，记录为上限参考；
+  - 若 g4 接近 per-channel 且 packed 等价通过，优先作为部署候选；
+  - 若 all Conv2d 不如 selective，保留旧 E006 的机制链条；
+  - 若 stage5 finer granularity 仍有害，应明确记录为禁用方向。
+- 最终至少给出：
+  - W4A4 tensor-wise baseline；
+  - 最强质量候选；
+  - 最强部署友好候选；
+  - 与 W4A8 / W4A32 / FP32 的 gap 表。
+
+预期产物：
+
+- `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE006_w4a4_structured_granularity/...`
+- granularity strategy 表；
+- top candidates 的 NE003 代表图；
+- verification / packed equivalence；
+- 是否进入后续 mixed precision 或 selective FP32 的决策。
+
+### NE004-NE006 执行顺序建议
+
+1. 先做 NE004：它决定“该改哪里”，避免 NE005/NE006 盲扫。
+2. 再做 NE005：如果 A4 是 range / clipping 问题，成本最低；若无效，尽早排除。
+3. 最后做 NE006：用 NE004 定位和 NE005 排除结果指导 selective granularity，寻找真正候选。
+
+阶段性成功标准：
+
+- 短期：W4A4 final mean SNR 从 `12.914963` 明显提高，且 SSIM 不再继续下降。
+- 中期：找到一个 W4A4 selective granularity 策略，full-grid 指标稳定优于 tensor-wise W4A4，并通过 packed equivalence。
+- 长期：形成一条清晰机制结论，说明 normalized 数据下 A8 为什么成功、A4 为什么仍有 gap、哪些结构性策略能恢复 A4。
