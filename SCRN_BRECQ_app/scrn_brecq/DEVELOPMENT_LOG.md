@@ -6412,3 +6412,48 @@ NE003 显示协议：
 - 短期：W4A4 final mean SNR 从 `12.914963` 明显提高，且 SSIM 不再继续下降。
 - 中期：找到一个 W4A4 selective granularity 策略，full-grid 指标稳定优于 tensor-wise W4A4，并通过 packed equivalence。
 - 长期：形成一条清晰机制结论，说明 normalized 数据下 A8 为什么成功、A4 为什么仍有 gap、哪些结构性策略能恢复 A4。
+
+## 2026-05-11 NE004 grid sensitivity evaluator 实现记录
+
+为 NE004 正式实验新增 normalized fixed-grid activation sensitivity 工具。原因是旧 `evaluate_activation_sensitivity.py` 仍使用旧 multi-sample degradation 口径，不能作为 NE003 固定的 normalized `478 x 25` 正式结论。
+
+代码变更：
+
+- 新增 `SCRN_BRECQ_app/scrn_brecq/cli/evaluate_activation_sensitivity_grid.py`
+  - 复用 `evaluate_quantized_scrn_grid.py` 的 fixed grid、manifest source map、SNR/SSIM 和 aggregation。
+  - 支持 `all_on`、`all_off`、`disable_group`、`enable_group` 等现有 sensitivity mode。
+  - 输出 `config.json`、`metrics.json`、`summary.md`、`per_sample_metrics.jsonl`、`selected_quantizers.csv`。
+- 扩展 `SCRN_BRECQ_app/scrn_brecq/quant/activation_sensitivity.py`
+  - 新增 plural OR selector：`stages`、`branches`、`roles`、`module_types`。
+  - 保留原有 singular selector，跨字段仍为 AND，同一 plural 字段内部为 OR。
+- 更新测试：
+  - `SCRN_BRECQ_app/scrn_brecq/tests/test_activation_sensitivity.py`
+  - `SCRN_BRECQ_app/scrn_brecq/tests/test_evaluate_activation_sensitivity_grid.py`
+
+验证：
+
+- TDD RED 已确认：
+  - plural selector 缺失时报 `unexpected keyword argument 'roles'`；
+  - grid CLI 缺失时报 `ModuleNotFoundError`。
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_sensitivity -v`：7 tests 通过。
+- `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_activation_sensitivity_grid -v`：5 tests 通过。
+- `conda run -n quant python -m py_compile SCRN_BRECQ_app/scrn_brecq/cli/evaluate_activation_sensitivity_grid.py`：通过。
+- `conda run -n quant python -m SCRN_BRECQ_app.scrn_brecq.cli.evaluate_activation_sensitivity_grid --help`：通过。
+
+Smoke：
+
+- 命令对象：`NE000_2 W4A4 final`
+- mode：`disable_group --module-types Conv2d`
+- subset：`num_eval_samples=2`、`snr_settings=1`、`missing_rates=0.08`
+- GPU：物理 GPU `1`；普通沙箱内 CUDA 不可用，按同参数升级执行。
+- run dir：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE004_w4a4_activation_sensitivity/smoke/20260511_190920_ne004_smoke_w4a4_conv2d_off_2patch_1cond`
+- selected quantizers：`31`
+- rows：`2`
+- quant SNR mean / median：`19.1097 / 19.1097`
+- quant SSIM mean：`0.973638`
+
+下一步：
+
+- 以该 grid sensitivity CLI 跑 NE004 W4A4 full-grid run matrix。
+- 再跑 W4A8 sanity subset。
+- 汇总各组相对 W4A4 all_on 的 full-grid gain，判断 NE005/NE006 优先方向。

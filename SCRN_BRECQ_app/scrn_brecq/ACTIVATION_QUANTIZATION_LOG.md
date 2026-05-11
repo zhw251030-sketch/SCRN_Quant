@@ -8396,3 +8396,44 @@ NE003 对后续实验的约束：
 - 短期：W4A4 final mean SNR 明显高于 `12.914963`，SSIM 不再继续下降。
 - 中期：找到 full-grid 稳定优于 tensor-wise W4A4 的 selective strategy。
 - 长期：给出清晰机制链条：normalized 数据下 A8 为什么成功、A4 gap 来自哪里、什么结构策略能恢复 A4。
+
+## 2026-05-11 NE004 grid sensitivity evaluator 实现记录
+
+为 NE004 新增 normalized fixed-grid activation sensitivity evaluator。旧 `evaluate_activation_sensitivity.py` 仍是旧 multi-sample degradation 口径；NE004 正式结论必须使用 NE003 固定的 normalized `478 x 25` grid，因此新增 grid 版工具。
+
+代码与接口：
+
+- 新增 `SCRN_BRECQ_app/scrn_brecq/cli/evaluate_activation_sensitivity_grid.py`
+  - fixed grid 默认：SNR `-2,-1,1,5,10`，missing rate `0.02,0.08,0.18,0.28,0.38`，seed `20260507`。
+  - 输出 `per_sample_metrics.jsonl`、`metrics.json`、`config.json`、`summary.md`、`selected_quantizers.csv`。
+  - 聚合维度继承 grid evaluator：overall、by-source、by-SNR、by-missing-rate、by-condition。
+- 扩展 `activation_sensitivity.py`
+  - 新增 plural OR selector：`--stages`、`--branches`、`--roles`、`--module-types`。
+  - singular selector 保留；不同 selector 字段之间仍为 AND。
+  - 默认继续排除 output quantizer，除非显式 `--include-output-quantizer`。
+
+验证：
+
+- TDD RED：
+  - plural selector 缺失时报 `unexpected keyword argument 'roles'`；
+  - grid CLI 缺失时报 `ModuleNotFoundError`。
+- selector tests：`7 tests OK`
+- grid evaluator tests：`5 tests OK`
+- `py_compile`：通过
+- CLI `--help`：通过
+
+Smoke run：
+
+| item | value |
+|---|---|
+| checkpoint | `NE000_2 W4A4 final` |
+| mode | `disable_group --module-types Conv2d` |
+| subset | `2 patches x 1 condition` |
+| GPU | physical GPU `1` |
+| run dir | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE004_w4a4_activation_sensitivity/smoke/20260511_190920_ne004_smoke_w4a4_conv2d_off_2patch_1cond` |
+| selected quantizers | 31 |
+| rows | 2 |
+| quant SNR mean / median | 19.1097 / 19.1097 |
+| quant SSIM mean | 0.973638 |
+
+该 smoke 只验证工具链可用，不作为 NE004 结论。下一步使用同一 CLI 跑 W4A4 full-grid sensitivity matrix 和 W4A8 sanity subset。

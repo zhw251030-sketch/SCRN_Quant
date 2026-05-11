@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterable, Iterator, Sequence
 
 from torch import nn
 
@@ -30,6 +30,10 @@ def select_activation_quantizers(
     branch: str | None = None,
     role: str | None = None,
     module_type: str | None = None,
+    stages: Sequence[str] | None = None,
+    branches: Sequence[str] | None = None,
+    roles: Sequence[str] | None = None,
+    module_types: Sequence[str] | None = None,
     include_output_quantizer: bool = False,
 ) -> list[dict[str, Any]]:
     """Return quantizer rows matching the provided selector fields."""
@@ -45,6 +49,10 @@ def select_activation_quantizers(
             branch=branch,
             role=role,
             module_type=module_type,
+            stages=stages,
+            branches=branches,
+            roles=roles,
+            module_types=module_types,
         )
     ]
 
@@ -60,6 +68,10 @@ def apply_activation_sensitivity_mode(
     branch: str | None = None,
     role: str | None = None,
     module_type: str | None = None,
+    stages: Sequence[str] | None = None,
+    branches: Sequence[str] | None = None,
+    roles: Sequence[str] | None = None,
+    module_types: Sequence[str] | None = None,
     include_output_quantizer: bool = False,
 ) -> Iterator[list[dict[str, Any]]]:
     """Temporarily apply an E004 activation quantizer sensitivity mode."""
@@ -82,6 +94,10 @@ def apply_activation_sensitivity_mode(
         branch=branch,
         role=role,
         module_type=module_type,
+        stages=stages,
+        branches=branches,
+        roles=roles,
+        module_types=module_types,
     )
     selected_indices = {int(row["index"]) for row in selected}
     _validate_selection(mode, selected)
@@ -115,6 +131,10 @@ def _selected_rows_for_mode(
     branch: str | None,
     role: str | None,
     module_type: str | None,
+    stages: Sequence[str] | None,
+    branches: Sequence[str] | None,
+    roles: Sequence[str] | None,
+    module_types: Sequence[str] | None,
 ) -> list[dict[str, Any]]:
     if mode in {"all_on", "all_off"}:
         return list(candidates)
@@ -129,6 +149,10 @@ def _selected_rows_for_mode(
             branch=branch,
             role=role,
             module_type=module_type,
+            stages=stages,
+            branches=branches,
+            roles=roles,
+            module_types=module_types,
         )
     ]
 
@@ -149,6 +173,10 @@ def _row_matches(
     branch: str | None,
     role: str | None,
     module_type: str | None,
+    stages: Sequence[str] | None = None,
+    branches: Sequence[str] | None = None,
+    roles: Sequence[str] | None = None,
+    module_types: Sequence[str] | None = None,
 ) -> bool:
     if index is not None and int(row["index"]) != int(index):
         return False
@@ -161,6 +189,14 @@ def _row_matches(
     if role and str(row["role"]) != str(role):
         return False
     if module_type and str(row["module_type"]) != str(module_type):
+        return False
+    if stages and str(row["stage"]) not in {str(value) for value in stages}:
+        return False
+    if branches and str(row["branch"]) not in {str(value) for value in branches}:
+        return False
+    if roles and str(row["role"]) not in {str(value) for value in roles}:
+        return False
+    if module_types and str(row["module_type"]) not in {str(value) for value in module_types}:
         return False
     return True
 

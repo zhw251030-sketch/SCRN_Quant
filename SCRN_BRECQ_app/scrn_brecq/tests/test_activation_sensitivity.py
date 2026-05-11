@@ -76,6 +76,23 @@ class ActivationSensitivityTest(unittest.TestCase):
         self.assertEqual(by_stage_role[0]["name"], by_name[0]["name"])
         self.assertEqual(by_type[0]["branch"], "cnn")
 
+    def test_selector_accepts_plural_or_filters(self) -> None:
+        model = _model()
+
+        by_roles = select_activation_quantizers(
+            model,
+            roles=("attention_qkv", "attention_proj"),
+            include_output_quantizer=True,
+        )
+        by_stages = select_activation_quantizers(model, stages=("stage1", "stage4"), include_output_quantizer=True)
+        by_branches = select_activation_quantizers(model, branches=("cnn", "transformer"), include_output_quantizer=True)
+        by_types = select_activation_quantizers(model, module_types=("Conv2d", "Linear"), include_output_quantizer=True)
+
+        self.assertEqual([row["role"] for row in by_roles], ["attention_qkv", "attention_proj"])
+        self.assertEqual([row["stage"] for row in by_stages], ["stage1", "stage4", "stage4"])
+        self.assertEqual([row["branch"] for row in by_branches], ["cnn", "transformer", "transformer"])
+        self.assertEqual([row["module_type"] for row in by_types], ["Conv2d", "Linear", "Linear"])
+
     def test_modes_set_disable_act_quant_and_restore_original_state(self) -> None:
         model = _model()
         modules = [module for module in model.modules() if isinstance(module, QuantModule)]
@@ -113,6 +130,15 @@ class ActivationSensitivityTest(unittest.TestCase):
         with apply_activation_sensitivity_mode(model, mode="enable_group", branch="transformer") as selected:
             self.assertEqual([row["role"] for row in selected], ["attention_qkv"])
             self.assertEqual([module.disable_act_quant for module in modules], [True, False, True])
+
+        with apply_activation_sensitivity_mode(
+            model,
+            mode="disable_group",
+            roles=("attention_qkv", "attention_proj"),
+            include_output_quantizer=True,
+        ) as selected:
+            self.assertEqual([row["role"] for row in selected], ["attention_qkv", "attention_proj"])
+            self.assertEqual([module.disable_act_quant for module in modules], [False, True, True])
 
 
 if __name__ == "__main__":
