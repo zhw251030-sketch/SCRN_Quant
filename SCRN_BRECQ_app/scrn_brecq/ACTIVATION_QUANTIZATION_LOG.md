@@ -8110,3 +8110,97 @@ Packed full-grid equivalence：
 - E007 W4A32 pre/final 是合法 weight-only 参照。
 - W4A32 / W4A8 / W4A4 packed deployment 均与对应 fake-quant checkpoint full-grid 对齐。
 - NE002 sanity 通过，可以进入 NE003 固定代表图口径，并随后进入 NE004 W4A4 分组 sensitivity。
+
+## 2026-05-11 NE003 fixed grid visual protocol 结果
+
+完成 NE003：固定后续 W4A4 activation quantization 优化实验的 full-grid 数值解释与代表图口径。本轮只生成统一可视化和摘要，不改 checkpoint、不重新量化、不做 sensitivity。
+
+新增 CLI 与测试：
+
+- `SCRN_BRECQ_app/scrn_brecq/cli/visualize_quantized_scrn_grid.py`
+- `SCRN_BRECQ_app/scrn_brecq/tests/test_visualize_quantized_scrn_grid.py`
+
+验证：
+
+- unit test：`5 tests OK`
+- `py_compile`：通过
+- CLI `--help`：通过
+
+运行产物：
+
+- run dir：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE003_fixed_grid_visual_protocol/20260511_140941_ne003_w4a4_w4a8_w4a32_seismic_denorm_seed20260507`
+- GPU：物理 GPU `1`；普通沙箱内 CUDA 不可用，按同参数升级执行。
+- 输出：`config.json`、`metrics_summary.json`、`selected_samples.json`、`summary.md`、`figures/*.png`
+- 图像数量：`16`
+  - normalized representative：`15`
+  - default single sanity：`1`
+
+### NE003 固定显示协议
+
+- 正式数值指标继续使用 normalized `478 x 25` grid。
+- normalized 样本显示使用 manifest 反归一化：`display = normalized * normalization_scale`。
+- 图像 colormap 固定为 `seismic`，并以 0 为中心对称显示。
+- 每张正式代表图包含：
+  - Clean、Input、FP32、W4A32 final、W4A8 final、W4A4 final；
+  - W4A32 pre/final、W4A8 pre/final、W4A4 pre/final；
+  - Input / FP32 / W4A32 final / W4A8 final / W4A4 final error map。
+- prediction panel 使用同图统一尺度；error panel 使用独立统一误差尺度。
+- 默认单样本 `SCRN-main/test_data` 只保留历史 sanity 作用，不纳入 normalized full-grid 结论。
+
+### NE003 核心 full-grid 对比
+
+| object | SNR mean | SNR median | SSIM mean | SSIM median |
+|---|---:|---:|---:|---:|
+| FP32 | 17.832885 | 18.174198 | 0.964330 | 0.978794 |
+| E007 W4A32 pre | 16.614250 | 17.177490 | 0.935462 | 0.949638 |
+| E007 W4A32 final | 17.785582 | 18.112757 | 0.964137 | 0.978461 |
+| NE000 W4A8 pre | 17.372734 | 17.785509 | 0.962674 | 0.977030 |
+| NE000 W4A8 final | 17.449507 | 17.877689 | 0.962868 | 0.977292 |
+| NE000_2 W4A4 pre | 11.172733 | 11.157722 | 0.941492 | 0.955772 |
+| NE000_2 W4A4 final | 12.914963 | 13.118019 | 0.939563 | 0.954078 |
+
+重建前后变化：
+
+| object | SNR mean delta | SNR median delta | SSIM mean delta | SSIM median delta |
+|---|---:|---:|---:|---:|
+| E007 W4A32 | +1.171332 | +0.805456 | +0.028675 | +0.023764 |
+| NE000 W4A8 | +0.076773 | +0.006535 | +0.000195 | +0.000069 |
+| NE000_2 W4A4 | +1.742231 | +1.861192 | -0.001929 | -0.002785 |
+
+关键解释：
+
+- W4A8 final 已经很接近 W4A32 / FP32，后续继续提高 W4A8 的空间有限；它更适合作为“A8 成功参照”。
+- W4A4 final 仍有明显 SNR gap，但 activation reconstruction 对 W4A4 的 SNR 恢复幅度大于 W4A8，说明 A4 仍有可优化空间。
+- W4A4 的 SSIM 平均略降，不能只按 SNR 选择策略。后续 NE004-NE006 必须同时报告 SNR、SSIM 和 NE003 error map。
+- Kerry3D 的 W4A4 代表样本出现 reconstruction 变差，是后续 sensitivity 中优先排查的 source / condition。
+
+### NE003 代表图集合
+
+| # | selection | source | patch | condition | W4A4 final SNR | W4A4 SNR gain |
+|---:|---|---|---|---:|---:|---:|
+| 1 | E012 continuity low | Anisotropic | `test_000044.npy` | 4 | 13.516 | +3.153 |
+| 2 | E012 continuity mid | Anisotropic | `test_000013.npy` | 12 | 14.195 | +3.404 |
+| 3 | E012 continuity high | Anisotropic | `test_000025.npy` | 20 | 16.486 | +3.086 |
+| 4 | E012 continuity low | Kerry3D | `test_000081.npy` | 4 | 5.825 | +0.076 |
+| 5 | E012 continuity mid | Kerry3D | `test_000084.npy` | 12 | 10.817 | +0.181 |
+| 6 | E012 continuity high | Kerry3D | `test_000077.npy` | 20 | 7.928 | -0.254 |
+| 7 | E012 continuity low | Shots0001 | `test_000374.npy` | 4 | 10.554 | +2.087 |
+| 8 | E012 continuity mid | Shots0001 | `test_000395.npy` | 12 | 13.752 | +2.063 |
+| 9 | E012 continuity high | Shots0001 | `test_000349.npy` | 20 | 16.642 | +1.028 |
+| 10 | W4A4 worst final SNR | Anisotropic | `test_000034.npy` | 18 | -1.504 | -0.153 |
+| 11 | W4A4 best final SNR | Shots0001 | `test_000334.npy` | 20 | 18.571 | +1.803 |
+| 12 | W4A4 median final SNR | Shots0001 | `test_000372.npy` | 8 | 13.118 | +2.394 |
+| 13 | W4A4 max recon gain | Anisotropic | `test_000037.npy` | 22 | 16.447 | +3.912 |
+| 14 | W4A4 worst recon change | Kerry3D | `test_000091.npy` | 20 | 13.302 | -1.363 |
+| 15 | W4A4 max SSIM drop | Kerry3D | `test_000086.npy` | 22 | 12.714 | -1.107 |
+| 16 | default single sanity | `SCRN-main/test_data` | `clear.npy` | -1 | 13.270 | +0.097 |
+
+NE003 对后续实验的约束：
+
+- 后续 W4A4 策略候选必须优先用 normalized `478 x 25` 指标判断，不使用默认单样本做结论。
+- 后续每个重要候选都应复用 NE003 代表图集合，特别检查：
+  - W4A4 worst final SNR 是否被修复；
+  - max recon gain 是否继续保持；
+  - Kerry3D worst recon change / max SSIM drop 是否改善；
+  - W4A8 / W4A32 参照是否保持稳定。
+- NE004 应以 W4A4 sensitivity 为主线；W4A8 只作为成功参照，不作为主要优化对象。
