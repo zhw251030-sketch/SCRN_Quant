@@ -6457,3 +6457,100 @@ Smoke：
 - 以该 grid sensitivity CLI 跑 NE004 W4A4 full-grid run matrix。
 - 再跑 W4A8 sanity subset。
 - 汇总各组相对 W4A4 all_on 的 full-grid gain，判断 NE005/NE006 优先方向。
+
+## 2026-05-11 NE004 W4A4 activation sensitivity 结果记录
+
+NE004 使用新 `evaluate_activation_sensitivity_grid.py` 完成 normalized `478 x 25 = 11950` full-grid sensitivity。执行 GPU 为物理 GPU `1`；普通沙箱内 `torch.cuda.is_available()` 为 false，正式矩阵按完全相同参数升级执行。GPU 2 当时仍有外部 `swinir` 进程，未使用。
+
+验收：
+
+- W4A4 full matrix：17 个 run 全部完成。
+- W4A8 sanity subset：4 个 run 全部完成。
+- 每个 run 都生成 `per_sample_metrics.jsonl`、`metrics.json`、`config.json`、`summary.md`、`selected_quantizers.csv`。
+- 每个 full-grid run 的 row count 都是 `11950`。
+- selected quantizer count 与计划一致：all on/off `51`，Conv2d `31`，Linear `20`，split/merge/stage-output `15`，stage-output `5`，单 stage `10`。
+
+输出根目录：
+
+- `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE004_w4a4_activation_sensitivity/eval`
+
+关键 run dirs：
+
+- W4A4 all_on：`20260511_191550_ne004a_w4a4_all_on_grid478_seed20260507`
+- W4A4 all_off：`20260511_191826_ne004b_w4a4_all_off_grid478_seed20260507`
+- W4A4 Conv2d off：`20260511_192011_ne004c_w4a4_conv2d_off_grid478_seed20260507`
+- W4A4 Linear off：`20260511_192222_ne004d_w4a4_linear_off_grid478_seed20260507`
+- W4A4 split/merge/stage-output off：`20260511_193421_ne004i_w4a4_split_merge_stage_output_off_grid478_seed20260507`
+- W4A4 stage5 off：`20260511_195435_ne004m5_w4a4_stage5_off_grid478_seed20260507`
+- W4A8 all_on：`20260511_200058_ne004n_w4a8_all_on_grid478_seed20260507`
+- W4A8 all_off：`20260511_200344_ne004o_w4a8_all_off_grid478_seed20260507`
+- W4A8 Conv2d off：`20260511_200535_ne004p_w4a8_conv2d_off_grid478_seed20260507`
+- W4A8 split/merge/stage-output off：`20260511_200753_ne004q_w4a8_split_merge_stage_output_off_grid478_seed20260507`
+
+W4A4 overall 结果，相对 gain 均以 W4A4 all_on 为基准：
+
+| run | selected | SNR mean | SNR median | SSIM mean | gain |
+|---|---:|---:|---:|---:|---:|
+| all_on | 51 | 12.9150 | 13.1180 | 0.939563 | +0.0000 |
+| all_off | 51 | 17.7856 | 18.1128 | 0.964137 | +4.8706 |
+| Conv2d off | 31 | 17.1117 | 17.6774 | 0.960019 | +4.1968 |
+| Linear off | 20 | 13.2336 | 13.4659 | 0.940903 | +0.3187 |
+| cnn branch off | 15 | 13.4094 | 13.6834 | 0.943983 | +0.4944 |
+| fusion branch off | 10 | 13.5998 | 13.8398 | 0.949349 | +0.6848 |
+| transformer branch off | 20 | 13.2336 | 13.4659 | 0.940903 | +0.3187 |
+| stage_output_conv off | 5 | 13.8209 | 14.0836 | 0.945819 | +0.9060 |
+| split_proj+merge_proj+stage_output_conv off | 15 | 14.8177 | 15.0830 | 0.955504 | +1.9027 |
+| conv role off | 15 | 13.4094 | 13.6834 | 0.943983 | +0.4944 |
+| attention_qkv+attention_proj off | 10 | 12.9862 | 13.1711 | 0.940272 | +0.0712 |
+| mlp off | 10 | 13.1516 | 13.3905 | 0.940516 | +0.2366 |
+| stage1 off | 10 | 13.7005 | 13.9380 | 0.944190 | +0.7855 |
+| stage2 off | 10 | 12.8254 | 13.0275 | 0.940593 | -0.0895 |
+| stage3 off | 10 | 13.0420 | 13.2555 | 0.940532 | +0.1270 |
+| stage4 off | 10 | 13.7307 | 14.0081 | 0.943316 | +0.8157 |
+| stage5 off | 10 | 14.1329 | 14.4166 | 0.951537 | +1.2179 |
+
+W4A8 sanity subset，相对 gain 均以 W4A8 all_on 为基准：
+
+| run | selected | SNR mean | SNR median | SSIM mean | gain |
+|---|---:|---:|---:|---:|---:|
+| W4A8 all_on | 51 | 17.4495 | 17.8777 | 0.962868 | +0.0000 |
+| W4A8 all_off | 51 | 17.7856 | 18.1128 | 0.964137 | +0.3361 |
+| W4A8 Conv2d off | 31 | 17.7775 | 18.1059 | 0.964084 | +0.3279 |
+| W4A8 split/merge/stage-output off | 15 | 17.6917 | 18.0479 | 0.963734 | +0.2422 |
+
+By-source 重点结果：
+
+| run | Anisotropic mean / gain | Kerry3D mean / gain | Shots0001 mean / gain |
+|---|---:|---:|---:|
+| W4A4 all_on | 13.2802 / +0.0000 | 9.0332 / +0.0000 | 13.0047 / +0.0000 |
+| W4A4 all_off | 21.9718 / +8.6915 | 9.6082 / +0.5750 | 17.3124 / +4.3077 |
+| W4A4 Conv2d off | 20.4664 / +7.1862 | 9.5707 / +0.5375 | 16.7734 / +3.7687 |
+| W4A4 split/merge/stage-output off | 16.3668 / +3.0866 | 9.4215 / +0.3883 | 14.7406 / +1.7359 |
+| W4A4 stage_output_conv off | 14.8241 / +1.5439 | 9.2018 / +0.1686 | 13.8175 / +0.8128 |
+| W4A4 stage5 off | 15.1255 / +1.8453 | 9.3795 / +0.3463 | 14.1370 / +1.1324 |
+
+结论：
+
+- W4A4 的 activation gap 是真实且主要由 activation quantization 造成的：`all_off` 回到 E007 W4A32 final，说明权重量化状态没有混入异常。
+- Conv2d activation 是主导因素：关闭 31 个 Conv2d quantizer 追回 `+4.1968 dB`，接近 all_off 的 `+4.8706 dB`；关闭 20 个 Linear/transformer quantizer 只有 `+0.3187 dB`。
+- 结构化小集合仍然有效：`split_proj + merge_proj + stage_output_conv` 只覆盖 15 个 quantizer，却追回 `+1.9027 dB`，是目前最强 selective group。
+- `stage_output_conv` 单独 5 个 quantizer 追回 `+0.9060 dB`，stage5 单独关闭追回 `+1.2179 dB`；stage1/stage4 也有中等收益，stage2 单独关闭略负。
+- Attention 和 MLP 不是主线：attention group 仅 `+0.0712 dB`，MLP 仅 `+0.2366 dB`。
+- W4A8 的 gap 很小，但方向一致：W4A8 Conv2d off 追回 `+0.3279 dB`，几乎等于 all_off 的 `+0.3361 dB`。这说明 A8 成功不是因为 activation quantization 未开启，而是 normalized 数据和 A8 bitwidth 下 Conv2d activation 误差已经很小。
+
+与旧 E 系列的关系：
+
+- 与旧 E004 一致：主因仍是 Conv2d activation，不是 Linear/transformer，不是单个 attention/MLP 组。
+- 与旧 E006C 一致：`split_proj + merge_proj + stage_output_conv` 仍是比普通 branch/stage 更有信息量的结构化候选。
+- 与旧 E 系列不同的是：normalized 数据下 W4A8 不再崩坏，A4 才重新暴露出强 activation sensitivity。因此 NE 系列的主对象应继续以 W4A4 为中心，W4A8 作为成功参照。
+- `stage5 off` 在 sensitivity 中有收益，但这不等价于“stage5 finer granularity 一定有益”。旧 E006C 曾观察 stage5 独立细粒度可能有害；NE006 需要把 stage5 作为高风险组单独验证，而不能直接把 disable 结果外推为 granularity 策略。
+
+下一步决策：
+
+- NE005 仍可按计划做 range / clipping sanity，但预期它只能解释一部分问题；NE004 已显示主要恢复来自 Conv2d 结构组，而不是全局开关。
+- NE006 应优先测试：
+  - all Conv2d per-channel / g4，作为质量上限和部署上限参考；
+  - `split_proj + merge_proj + stage_output_conv` per-channel / g4，作为最强 selective 候选；
+  - `stage_output_conv` g4；
+  - stage5 单独 finer granularity 与 stage5 保持 tensor-wise 对照。
+- 后续正式比较仍必须使用 normalized `478 x 25` grid，不能回退到旧 multi-sample sensitivity 口径。
