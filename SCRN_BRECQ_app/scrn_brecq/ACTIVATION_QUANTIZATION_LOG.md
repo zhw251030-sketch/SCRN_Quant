@@ -7996,3 +7996,117 @@ NE003 不做：
 1. 先执行 NE002，正式锁定 checkpoint 和 packed deployment 的合法性。
 2. 再执行 NE003，固定代表图和 full-grid 解释口径。
 3. 然后进入 NE004，以 W4A4 分组 sensitivity 验证 NE001 的局部诊断是否真的能转化为 full-grid 恢复。
+
+## 2026-05-11 NE002 checkpoint / deployment sanity 结果
+
+完成 NE002 合法状态与部署等价 sanity。NE002 不改变 checkpoint、不重新量化、不做优化，只确认当前 W4A4 / W4A8 / W4A32 结果是否可以作为后续 NE003 / NE004 的可靠输入。
+
+执行环境：
+
+- branch：`main`
+- repo root：`/home/data1/hanwen/project/Project/SCRN_Quant`
+- 初始 worktree：clean
+- GPU：物理 GPU `1`
+- 备注：普通沙箱内 `torch.cuda.is_available() == False`，实际 GPU 命令按同参数在沙箱外执行；GPU 2 当时有外部 `swinir` 进程，未使用。
+
+### NE002 verification 产物
+
+输出目录：
+
+- `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE002_checkpoint_deployment_sanity/verification`
+
+| object | verification JSON | passed | weight_quant | act_quant | n_bits_a | weight bits | level offenders | activation delta / initialized |
+|---|---|---:|---:|---:|---:|---|---:|---|
+| W4A4 pre | `ne002_w4a4_pre_verification.json` | true | true | true | 4 | `{"4":50,"8":2}` | 0 | `52 / 52` |
+| W4A4 final | `ne002_w4a4_final_verification.json` | true | true | true | 4 | `{"4":50,"8":2}` | 0 | `52 / 52` |
+| W4A8 pre | `ne002_w4a8_pre_verification.json` | true | true | true | 8 | `{"4":50,"8":2}` | 0 | `52 / 52` |
+| W4A8 final | `ne002_w4a8_final_verification.json` | true | true | true | 8 | `{"4":50,"8":2}` | 0 | `52 / 52` |
+| W4A32 pre | `ne002_w4a32_pre_verification.json` | true | true | false | 8 | `{"4":50,"8":2}` | 0 | `0 / 0` |
+| W4A32 final | `ne002_w4a32_final_verification.json` | true | true | false | 8 | `{"4":50,"8":2}` | 0 | `0 / 0` |
+
+非正 activation delta 复核：
+
+- `verify_quantized_scrn` 当前报告 activation delta 是否恢复，但不单独输出 `non_positive_delta_count` 字段。
+- 复用 NE001 同 checkpoint diagnostics summary 交叉确认：
+  - W4A4 pre：`non_positive_delta_count=0`
+  - W4A4 final：`non_positive_delta_count=0`
+  - W4A8 pre：`non_positive_delta_count=0`
+  - W4A8 final：`non_positive_delta_count=0`
+  - W4A32 pre/final：`act_quant=false`，activation delta 为 `0/0`，不适用。
+
+判断：
+
+- W4A4/W4A8 checkpoint 都是真正的 W4 activation + A4/A8 activation fake-quant checkpoint。
+- W4A32 pre/final 都是合法 W4A32 weight-only checkpoint。
+- 6 个 checkpoint 均无 weight level offender。
+
+### NE002 state toggle smoke
+
+输出目录：
+
+- `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE002_checkpoint_deployment_sanity/state_toggle`
+
+设置：
+
+- eval dataset：`SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- `num_eval_samples=16`
+- `batch_size=16`
+- `seed=20260507`
+- GPU：物理 GPU `1`
+- 说明：这只是 activation state toggle sanity，不作为正式 full-grid 指标。
+
+| run | mode | selected quantizers | samples | FP32 SNR mean | quant SNR mean | quant SSIM mean | quant-FP32 SNR |
+|---|---|---:|---:|---:|---:|---:|---:|
+| `20260511_125156_ne002_w4a4_final_all_on` | all_on | 51 | 16 | 16.4840 | 12.0236 | 0.930772 | -4.4604 |
+| `20260511_125203_ne002_w4a4_final_all_off` | all_off | 51 | 16 | 16.4840 | 16.4281 | 0.953357 | -0.0559 |
+| `20260511_125210_ne002_w4a8_final_all_on` | all_on | 51 | 16 | 16.4840 | 16.1103 | 0.951832 | -0.3737 |
+| `20260511_125216_ne002_w4a8_final_all_off` | all_off | 51 | 16 | 16.4840 | 16.4281 | 0.953357 | -0.0559 |
+
+判断：
+
+- `all_on` / `all_off` 都选中 51 个候选 activation quantizer，符合默认排除 output quantizer 的预期。
+- W4A4 与 W4A8 的 `all_on` 和 `all_off` 输出明显不同，说明 activation quantizer 开关确实生效。
+- W4A4 `all_on` 明显低于 W4A8 `all_on`，且二者 `all_off` 回到相同的 W4A32-like 行为；这支持 W4A4 问题来自 activation A4，而不是 weight checkpoint 或 eval 流程。
+
+### NE002 packed deployment equivalence 复核
+
+已复核的 packed export 目录：
+
+- W4A32：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_1_packed_deployment_equivalence/w4a32_packed/e007_normalized_w4a32_single_gpu1_final`
+- W4A8：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_1_packed_deployment_equivalence/w4a8_packed/ne000_normalized_w4a8_tensor_a5000_final`
+- W4A4：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_1_packed_deployment_equivalence/w4a4_packed/ne000_2_normalized_w4a4_tensor_a5000_final`
+
+三组 packed artifact 均包含：
+
+- `weights.bin`
+- `aux_fp32.bin`
+- `manifest.json`
+- `summary.json`
+
+| object | weights.bin | aux_fp32.bin | manifest.json | raw payload | total export | quantized layers | activation quantizers |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| W4A32 packed | 213632 | 40860 | 94254 | 254492 | 348746 | 52 | 0 |
+| W4A8 packed | 213632 | 41276 | 121554 | 254908 | 376462 | 52 | 52 |
+| W4A4 packed | 213632 | 41276 | 121590 | 254908 | 376498 | 52 | 52 |
+
+Packed full-grid equivalence：
+
+| object | eval rows | packed runtime state | checkpoint SNR mean | packed SNR mean | packed-checkpoint SNR | checkpoint SSIM mean | packed SSIM mean | pred MSE mean |
+|---|---:|---|---:|---:|---:|---:|---:|---:|
+| W4A32 | 11950 | `weight_quant=false, act_quant=false` | 17.785582 | 17.785577 | -0.000005 | 0.964137 | 0.964137 | 3.95e-10 |
+| W4A8 | 11950 | `weight_quant=false, act_quant=true` | 17.449507 | 17.449534 | +0.000027 | 0.962868 | 0.962869 | 3.76e-07 |
+| W4A4 | 11950 | `weight_quant=false, act_quant=true` | 12.914963 | 12.915036 | +0.000073 | 0.939563 | 0.939565 | 3.89e-06 |
+
+判断：
+
+- 三个 packed restored 模型的 mean SNR delta 绝对值都远小于 `0.01 dB`，通过部署等价阈值。
+- W4A8 / W4A4 packed restore 使用 `weight_quant=false, act_quant=true`，语义正确：权重已经恢复为部署量化值，activation fake quant 仍开启。
+- W4A4 packed 部署等价通过，因此 W4A4 可作为合法 A4 压力对照继续进入后续实验。
+
+### NE002 最终结论
+
+- W4A4 低指标不是 checkpoint reload 错误、bitwidth 配错、activation quantizer 未启用、负 scale 或 packed restore 不一致导致的。
+- W4A8 好结果也不是因为 activation quantization 没有真正开启；W4A8 final 是合法 W4A8 activation quantization baseline。
+- E007 W4A32 pre/final 是合法 weight-only 参照。
+- W4A32 / W4A8 / W4A4 packed deployment 均与对应 fake-quant checkpoint full-grid 对齐。
+- NE002 sanity 通过，可以进入 NE003 固定代表图口径，并随后进入 NE004 W4A4 分组 sensitivity。
