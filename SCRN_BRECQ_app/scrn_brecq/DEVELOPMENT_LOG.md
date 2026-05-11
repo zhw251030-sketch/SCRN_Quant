@@ -5717,3 +5717,166 @@ NE001 和旧 E 系列不是简单互相否定，而是说明：
 3. 旧结论中 “Conv2d / split / merge / stage_output 很重要” 仍然成立。
 4. 旧结论中 “Linear/transformer 不是主因” 不能直接外推到 W4A4。
 5. 后续实验必须以 full-grid sensitivity 验证 NE001 的局部诊断，不能只凭 diagnostics 排序决定最终策略。
+
+## 2026-05-11 NE001 统计项横向对比与指标用途
+
+本节补充 NE001 中此前没有展开的统计项。NE001 实际记录了大量 activation distribution / quantization error / structure grouping 统计，但不同统计项回答的问题不同，不能全部按同一权重解释。
+
+### 指标分层
+
+| 指标组 | 包含字段 | 回答的问题 | 后续主要服务 |
+|---|---|---|---|
+| 任务质量 | SNR、SSIM、pre/final gain | 模型最终是否可用，重建是否真的提升输出质量。 | 所有实验的最终验收。 |
+| 合法性 | quant state、delta count、initialized count、non-positive delta | checkpoint 是否真的启用 activation quantization，scale 是否非法。 | NE002 sanity / state verification。 |
+| 量化误差 | fake-quant MSE、relative MSE | 哪些层量化前后局部误差大，哪些层相对自身信号最脆弱。 | NE004 sensitivity 分组。 |
+| 有效级别 | effective int levels | activation 实际利用了多少整数格点。 | 判断 A4 是否是 bitwidth 表达力瓶颈。 |
+| 分布离群 | min/max/std、p99、p99.9、p99.99、absmax、absmax/p99 | range 是否被长尾或离群值撑大。 | NE005 range / clipping。 |
+| 通道不均衡 | per-channel absmax ratio | 同一层内通道幅值差异是否大，tensor-wise scale 是否过粗。 | NE006 per-channel / group-wise granularity。 |
+| 结构分组 | module type、stage、branch、role summary | 误差是否集中在 Conv2d、Linear、stage output、fusion、attention 等结构。 | NE004 分组、NE006 selective strategy。 |
+
+因此，NE001 的正确读法不是“谁的数最大就直接修谁”，而是：
+
+1. 先用 full-grid SNR/SSIM 判断现象是否真实重要；
+2. 用 legality 排除状态错误；
+3. 用 fake-quant MSE / relative MSE 形成 NE004 sensitivity 候选；
+4. 用 outlier 和 per-channel ratio 分别决定 NE005 / NE006 是否值得做。
+
+### 六个 diagnostics 对象的横向可比性
+
+| 对象 | 可比较字段 | 不应比较字段 | 原因 |
+|---|---|---|---|
+| W4A4 pre/final | 全部 activation diagnostics 字段。 | N/A | 主对象，`act_quant=true` 且 52 个 activation quantizer 均初始化。 |
+| W4A8 pre/final | 全部 activation diagnostics 字段。 | N/A | 成功参照，`act_quant=true` 且 52 个 activation quantizer 均初始化。 |
+| W4A32 pre/final | activation distribution、结构分组、最终 SNR/SSIM。 | fake-quant MSE、effective levels、delta stats。 | W4A32 是 weight-only，`act_quant=false`，没有 activation delta。 |
+| FP32 | 最终 SNR/SSIM、可视化上限。 | activation quantizer diagnostics。 | FP32 不是 quantized checkpoint，不存在 activation quantizer。 |
+
+### 六对象统计摘要
+
+| object | absmax/p99 max | top outlier layer | per-channel ratio max | top channel-imbalance layer | fake-quant MSE mean/max | relative MSE max | levels min/max |
+|---|---:|---|---:|---|---:|---:|---:|
+| W4A4 pre | `9.83285` | `model.stage5.1` | `2.68474` | `model.stage1.0.block.conv_branch.6` | `0.00612955 / 0.027745` | `0.0674264` | `13 / 246` |
+| W4A4 final | `9.83285` | `model.stage5.1` | `2.68474` | `model.stage1.0.block.conv_branch.6` | `0.00468151 / 0.0464743` | `0.0546570` | `14 / 235` |
+| W4A8 pre | `9.83285` | `model.stage5.1` | `2.68474` | `model.stage1.0.block.conv_branch.6` | `5.65246e-05 / 0.000505416` | `0.00160065` | `168 / 256` |
+| W4A8 final | `9.83285` | `model.stage5.1` | `2.68474` | `model.stage1.0.block.conv_branch.6` | `4.43473e-05 / 0.000241724` | `0.00165058` | `153 / 256` |
+| W4A32 pre | `9.08709` | `model.stage5.1` | `2.62299` | `model.stage1.0.block.conv_branch.6` | `None / None` | `None` | `None / None` |
+| W4A32 final | `9.83285` | `model.stage5.1` | `2.68474` | `model.stage1.0.block.conv_branch.6` | `None / None` | `None` | `None / None` |
+
+读法：
+
+- `absmax/p99 max` 和 `per-channel ratio max` 在 W4A4/W4A8/W4A32 final 中基本一致，说明这些分布形态主要来自模型结构和输入分布，不是 A4 特有状态错误。
+- W4A4 与 W4A8 的分布离群位置相同，但 fake-quant MSE 和 effective levels 差异巨大；这说明 A4 的主要问题不是“看到了不同分布”，而是同样分布在 A4 网格下表达不够。
+- `model.stage5.1` 是最强 outlier 层，`model.stage1.0.block.conv_branch.6` 是最强 per-channel imbalance 层。它们不是最终 SNR 结论本身，但分别是 NE005 range 和 NE006 granularity 的重点候选。
+
+### W4A4 pre -> final：reconstruction 改善了什么，又恶化了什么
+
+| role | pre MSE mean | final MSE mean | MSE delta | pre relative MSE | final relative MSE | relative delta | final levels min |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| attention_proj | `0.000525719` | `0.000465102` | `-0.0000606` | `0.0266923` | `0.0240871` | `-0.002605` | `14` |
+| attention_qkv | `0.0184496` | `0.0186708` | `+0.000221` | `0.0165272` | `0.0140978` | `-0.002429` | `16` |
+| conv | `0.0135093` | `0.00851042` | `-0.004999` | `0.0364380` | `0.0221592` | `-0.014279` | `16` |
+| merge_proj | `0.00165389` | `0.00134185` | `-0.000312` | `0.0464129` | `0.0388603` | `-0.007553` | `16` |
+| mlp | `0.000360641` | `0.000415627` | `+0.0000550` | `0.0216472` | `0.0232609` | `+0.001614` | `16` |
+| split_proj | `0.000727764` | `0.000734917` | `+0.00000715` | `0.0277123` | `0.0284331` | `+0.000721` | `16` |
+| stage_output_conv | `0.00101980` | `0.000991273` | `-0.0000285` | `0.0345558` | `0.0342028` | `-0.000353` | `16` |
+
+读法：
+
+- W4A4 reconstruction 最大的正收益来自 `conv`：MSE mean 从 `0.0135093` 降到 `0.00851042`，relative MSE mean 从 `0.0364380` 降到 `0.0221592`。
+- `merge_proj`、`attention_proj` 也有改善。
+- `attention_qkv` 的 relative MSE 下降，但 absolute MSE 略升，并且 final 的 worst layer 变成 `stage3 attention_qkv`。这解释了为什么日志中说 reconstruction 像是“整体误差再分配”。
+- `mlp` 和 `split_proj` 略有变差。虽然幅度不大，但它们提示后续不能只看 mean SNR，需要保留 role-level 表。
+
+### W4A4 final vs W4A8 final：同结构下 A4 放大了多少误差
+
+| role | A4 MSE mean | A8 MSE mean | A4/A8 MSE ratio | A4 relative mean | A8 relative mean | A4/A8 relative ratio |
+|---|---:|---:|---:|---:|---:|---:|
+| attention_proj | `0.000465102` | `3.72275e-06` | `124.9x` | `0.0240871` | `0.000202129` | `119.2x` |
+| attention_qkv | `0.0186708` | `0.000122226` | `152.8x` | `0.0140978` | `0.000105402` | `133.8x` |
+| conv | `0.00851042` | `0.0000895306` | `95.1x` | `0.0221592` | `0.000236041` | `93.9x` |
+| merge_proj | `0.00134185` | `0.0000241400` | `55.6x` | `0.0388603` | `0.000666999` | `58.3x` |
+| mlp | `0.000415627` | `0.00000483982` | `85.9x` | `0.0232609` | `0.000270922` | `85.9x` |
+| split_proj | `0.000734917` | `0.0000107998` | `68.0x` | `0.0284331` | `0.000418082` | `68.0x` |
+| stage_output_conv | `0.000991273` | `0.0000192701` | `51.4x` | `0.0342028` | `0.000855874` | `40.0x` |
+| tail | `0.000599201` | `0.00000710523` | `84.3x` | `0.0355458` | `0.000421496` | `84.3x` |
+
+读法：
+
+- A4 并不是只在某一个结构上比 A8 差，而是几乎所有 role 都被放大几十到一百多倍。
+- `attention_qkv` 的 A4/A8 MSE ratio 最高，说明 A4 的 transformer qkv 压力是新协议下必须单独验证的点。
+- `stage_output_conv` 和 `merge_proj` 的 relative MSE 很高，即使 MSE 绝对值不如 qkv，也可能对结构输出质量更敏感。
+
+### W4A4 final 的 stage 视角
+
+| stage | count | MSE mean/max | relative MSE mean/max | absmax/p99 mean/max | per-channel ratio mean/max | levels min |
+|---|---:|---:|---:|---:|---:|---:|
+| head | `1` | `6.806e-06 / 6.806e-06` | `0.000778 / 0.000778` | `6.5907 / 6.5907` | `2.2708 / 2.2708` | `235` |
+| stage1 | `10` | `0.004106 / 0.013639` | `0.027554 / 0.054657` | `5.3266 / 6.7599` | `1.6807 / 2.6847` | `16` |
+| stage2 | `10` | `0.005423 / 0.022643` | `0.026152 / 0.043996` | `4.3956 / 6.7357` | `1.4086 / 2.0229` | `16` |
+| stage3 | `10` | `0.008114 / 0.046474` | `0.024563 / 0.035186` | `4.4163 / 5.9881` | `1.4648 / 1.9141` | `16` |
+| stage4 | `10` | `0.004042 / 0.010956` | `0.023266 / 0.041922` | `5.4073 / 7.7720` | `1.5144 / 2.0534` | `16` |
+| stage5 | `10` | `0.002597 / 0.006698` | `0.024806 / 0.047078` | `6.1928 / 9.8329` | `1.6723 / 2.5266` | `14` |
+| tail | `1` | `0.000599 / 0.000599` | `0.035546 / 0.035546` | `1.9711 / 1.9711` | `1.0000 / 1.0000` | `16` |
+
+读法：
+
+- stage3 的 absolute MSE 最大，主要由 `stage3 attention_qkv` 拉高。
+- stage1 的 relative MSE max 最大，对应 `stage1.1 stage_output_conv`。
+- stage5 的 outlier 和 effective levels 最差，包含 `stage5.1`、`stage5 attention_proj/mlp` 等风险点。
+- 因此 “stage5 有信号” 和旧 E006c “stage5 独立细粒度有害” 不矛盾；它说明 stage5 需要作为 sanity check，而不是默认单独优化。
+
+### outlier 与 per-channel imbalance 的具体候选
+
+W4A4 final top per-channel imbalance：
+
+| rank | layer | type | role | stage | ratio |
+|---:|---|---|---|---|---:|
+| 1 | `model.stage1.0.block.conv_branch.6` | Conv2d | conv | stage1 | `2.68474` |
+| 2 | `model.stage5.1` | Conv2d | stage_output_conv | stage5 | `2.52657` |
+| 3 | `model.stage5.0.block.conv_branch.6` | Conv2d | conv | stage5 | `2.50420` |
+| 4 | `model.stage1.0.block.split_proj` | Conv2d | split_proj | stage1 | `2.41581` |
+| 5 | `model.head` | Conv2d | head | head | `2.27078` |
+| 6 | `model.stage5.0.block.merge_proj` | Conv2d | merge_proj | stage5 | `2.15788` |
+
+W4A4 final top outlier：
+
+| rank | layer | type | role | stage | absmax/p99 |
+|---:|---|---|---|---|---:|
+| 1 | `model.stage5.1` | Conv2d | stage_output_conv | stage5 | `9.83285` |
+| 2 | `model.stage5.0.block.conv_branch.6` | Conv2d | conv | stage5 | `8.37609` |
+| 3 | `model.stage4.0.block.conv_branch.3` | Conv2d | conv | stage4 | `7.77198` |
+| 4 | `model.stage5.0.block.conv_branch.3` | Conv2d | conv | stage5 | `7.33216` |
+| 5 | `model.stage4.0.block.conv_branch.6` | Conv2d | conv | stage4 | `7.15543` |
+| 6 | `model.stage5.0.block.merge_proj` | Conv2d | merge_proj | stage5 | `7.12966` |
+
+读法：
+
+- per-channel imbalance 指向 NE006：这些层更可能从 per-channel / group-wise activation granularity 中获益。
+- outlier 指向 NE005：这些层更值得做 percentile / MSE-grid / structured clipping。
+- 两张表高度偏向 Conv2d、stage output、split/merge，而不是 qkv；这说明 qkv 的问题更像 bitwidth/absolute MSE，Conv/fusion/stage output 的问题更像 range/granularity。
+
+### 这次完整对比对后续实验的具体影响
+
+1. NE004 sensitivity 必须先验证 diagnostics 排名是否会转化为 full-grid SNR 恢复。
+2. NE004 不能只做旧 E004 的 all Conv2d / all Linear，应加入：
+   - `attention_qkv`
+   - `cnn conv_branch`
+   - `stage_output_conv`
+   - `split_proj + merge_proj`
+   - `stage5 attention_proj/mlp`
+3. NE005 range/clipping 不应全模型乱扫，应优先对 top outlier 中的 stage5/stage4 Conv2d、stage_output、merge_proj 做。
+4. NE006 granularity 应优先覆盖 per-channel imbalance top layers 所属结构：
+   - conv_branch.6
+   - stage_output_conv
+   - split_proj / merge_proj
+5. qkv 的 high absolute MSE 不一定能被 Conv2d per-channel 修复，因此 NE006 需要保留 qkv-only A8 fallback / higher precision / group-wise 的反事实候选。
+6. W4A8 只作为护栏：若某个 W4A4 策略让 W4A8 明显变差，则不能作为通用默认策略。
+
+### 结论更新
+
+NE001 的完整统计并没有推翻前面的简化结论，而是把它细化成三条并行线索：
+
+1. **bitwidth 线索**：A4 effective levels 只有约 `14-16`，导致所有结构的误差相对 A8 放大几十到一百多倍。
+2. **range 线索**：stage5/stage4 Conv2d、stage_output、merge_proj 有明显 outlier，后续 NE005 只应优先处理这些目标组。
+3. **granularity 线索**：conv_branch.6、stage_output_conv、split/merge 有明显 per-channel imbalance，后续 NE006 的 selective per-channel / g4 应从这些结构开始。
+
+因此，进入下一部分实验前的优先级是：先做 NE004 W4A4 分组 sensitivity，验证这些局部统计是否真的对应 full-grid 恢复；再决定 NE005 range 和 NE006 granularity 的具体展开顺序。
