@@ -7884,3 +7884,115 @@ NE001 的完整统计并没有推翻前面的简化结论，而是把它细化�
 3. **granularity 线索**：conv_branch.6、stage_output_conv、split/merge 有明显 per-channel imbalance，后续 NE006 的 selective per-channel / g4 应从这些结构开始。
 
 因此，进入下一部分实验前的优先级是：先做 NE004 W4A4 分组 sensitivity，验证这些局部统计是否真的对应 full-grid 恢复；再决定 NE005 range 和 NE006 granularity 的具体展开顺序。
+
+## 2026-05-11 NE002 与 NE003 新计划记录
+
+本节把 NE002 / NE003 的新语义固定下来，避免机械复刻旧 E002 / E003。旧 E002 的核心是修复 activation `delta` 负数；旧 E003 的核心是建立 128-sample 多样本评估口径。当前 NE 系列已经换成 normalized 协议，且 W4A8 已经可用、W4A4 成为主对象，因此 NE002 / NE003 应作为进入 NE004 前的状态与解释口径收口，而不是优化实验。
+
+### NE002：合法状态、checkpoint reload 与 packed deployment sanity
+
+实验目标：
+
+- 排除 W4A4 / W4A8 结果由 checkpoint 状态错误、activation bitwidth 配错、未真正启用 activation quantization、reload 状态丢失或 packed restore 不一致造成的可能。
+- 确认 NE004-NE006 可以把差异归因到 activation quantization 策略本身，而不是工程状态问题。
+- 将 W4A4 低指标正式定性为真实 A4 activation bitwidth 压力，而不是合法性 bug。
+
+实验对象：
+
+| 类别 | 对象 | 用途 |
+|---|---|---|
+| 主对象 | `NE000_2 W4A4 pre_act_recon`、`NE000_2 W4A4 final` | 检查 A4 activation quantization 在重建前后的状态是否合法。 |
+| 成功参照 | `NE000 W4A8 pre_act_recon`、`NE000 W4A8 final` | 确认 A8 好结果不是因为 activation quantization 没有真正启用。 |
+| weight-only 参照 | `E007 W4A32 pre_recon`、`E007 W4A32 final` | 确认 W4A32 正确保持 `act_quant=false`，只作为 weight-only 对照。 |
+| 部署参照 | W4A32 packed、W4A8 packed、W4A4 packed | 确认 packed 权重整数化和恢复后仍与 fake-quant checkpoint 对齐。 |
+| 上限参照 | FP32 checkpoint | 只记录 full-grid 指标，不做 quantizer sanity。 |
+
+实验方法：
+
+1. 对 6 个 quantized checkpoint 统一运行 `verify_quantized_scrn`，输出 verification JSON。
+2. 检查每个 checkpoint 的 `final_quant_state`、weight bit counts、activation bitwidth、activation quantizer count、initialized activation quantizer count、`non_positive_delta_count`、`level_offender_count`。
+3. 对 W4A32 / W4A8 / W4A4 packed artifact 检查 `manifest.json` 和 `summary.json`，确认 `weights.bin`、`aux_fp32.bin`、activation qparams、bitwidth 和 final quant state 完整。
+4. 复核 packed-vs-checkpoint full-grid equivalence：W4A32、W4A8、W4A4 的 packed restored mean SNR delta 应保持在 `< 0.01 dB` 量级。
+5. 如现有结果仍不能充分证明 state toggle 正确，再补一个小规模 state toggle sanity：同一 checkpoint 分别强制 `act_quant=false/true`，确认输出会按预期切换。
+
+验收标准：
+
+| 对象 | 预期状态 |
+|---|---|
+| W4A4 pre/final | `weight_quant=true`、`act_quant=true`、activation bitwidth `4`、52 个 activation quantizer 初始化、`non_positive_delta_count=0`。 |
+| W4A8 pre/final | `weight_quant=true`、`act_quant=true`、activation bitwidth `8`、52 个 activation quantizer 初始化、`non_positive_delta_count=0`。 |
+| W4A32 pre/final | `weight_quant=true`、`act_quant=false`、无 activation delta，作为 weight-only 参照。 |
+| packed W4A32/W4A8/W4A4 | packed restored 与原 checkpoint full-grid 指标对齐，mean SNR delta 绝对值 `< 0.01 dB`。 |
+
+NE002 不做：
+
+- 不做新的 activation reconstruction。
+- 不做 range / clipping。
+- 不做 granularity / mixed precision。
+- 不以单样本 SNR 判断结果好坏。
+
+NE002 完成后的判断：
+
+- 若所有 sanity 均通过，进入 NE003 和 NE004。
+- 若发现 bitwidth、quant state、reload 或 packed restore 问题，先修复状态问题并重新验证，不进入 NE004。
+- 若只发现 packed 等价失败但 fake-quant checkpoint 合法，则 NE004 可继续使用 fake-quant checkpoint，但部署候选必须暂停。
+
+### NE003：固定 full-grid 解释口径和代表图口径
+
+实验目标：
+
+- 固定后续 W4A4 优化实验的数值和可视化解释口径。
+- 避免后续再次被单样本、显示尺度、反归一化方式或 source/condition 偶然性误导。
+- 为 NE004-NE006 每个候选策略提供统一的可读对比模板。
+
+实验对象：
+
+| 对象 | 角色 |
+|---|---|
+| FP32 | normalized 协议上限。 |
+| E007 W4A32 pre/final | weight-only 重建前后参照。 |
+| NE000 W4A8 pre/final | 可用 activation quantization 成功参照。 |
+| NE000_2 W4A4 pre/final | W4A4 主对象，重点看 activation reconstruction 前后差异。 |
+
+实验方法：
+
+1. 复核已有 normalized `478 x 25` full-grid 指标，统一记录 overall、by-source、by-SNR、by-missing-rate、by-condition。
+2. 固定一组代表样本：
+   - W4A4 final 最差样本；
+   - W4A4 final 中位样本；
+   - W4A4 final 较好样本；
+   - W4A4 reconstruction 提升最大样本；
+   - W4A4 reconstruction 变差或 SSIM 下降样本；
+   - 默认单样本 sanity 图，仅作为历史可视化参照，不作为正式指标。
+3. 使用一致显示规范：
+   - seismic colormap；
+   - normalized 样本使用反归一化或统一幅值尺度；
+   - 同一图内 FP32 / W4A32 / W4A8 / W4A4 使用一致 `vmin/vmax`；
+   - 同时输出误差图，误差图单独固定尺度。
+4. 每个代表样本记录 source、patch index、SNR setting、missing rate、condition index、FP32/W4A32/W4A8/W4A4 SNR/SSIM。
+
+验收标准：
+
+- 代表样本清单可复现，记录 sample id / source / condition。
+- 图像输出全部位于 `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE003_*` 下。
+- 记录 W4A4 pre -> final 的 SNR/SSIM 变化，特别保留“W4A4 SNR 提升但 SSIM 下降”的案例。
+- 后续 NE004-NE006 的每个候选策略都复用同一 full-grid 和代表图口径。
+
+NE003 不做：
+
+- 不改变 checkpoint。
+- 不改变量化参数。
+- 不做 sensitivity 或 range / granularity 搜索。
+
+### 与旧 E002 / E003 的区别
+
+| 阶段 | 旧 E 系列语义 | NE 系列新语义 |
+|---|---|---|
+| E002 / NE002 | 修复 activation `delta` 负数，并验证正 scale clamp 是否恢复 W4A8。 | 复核 W4A4/W4A8/W4A32 的 quant state、bitwidth、reload 和 packed deployment 等价。 |
+| E003 / NE003 | 建立 128-sample eval，证明单样本 SNR 不可靠。 | 固定 normalized `478 x 25` full-grid 解释口径、代表样本和 seismic 反归一化可视化规范。 |
+
+当前建议顺序：
+
+1. 先执行 NE002，正式锁定 checkpoint 和 packed deployment 的合法性。
+2. 再执行 NE003，固定代表图和 full-grid 解释口径。
+3. 然后进入 NE004，以 W4A4 分组 sensitivity 验证 NE001 的局部诊断是否真的能转化为 full-grid 恢复。
