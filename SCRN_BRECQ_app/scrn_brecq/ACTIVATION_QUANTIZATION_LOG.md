@@ -8863,3 +8863,85 @@ by-missing-rate 结论：NE005a 的微小收益主要集中在低 missing rate �
 4. mse_grid 成本更高，尤其全量 mse_grid 用时 `39.69 min`，但 final SNR 仍低于 baseline；没有继续扩大 mse_grid 搜索的价值。
 5. NE004 与 NE005 合起来给出的机制判断是：A4 gap 的主因确实在 Conv2d activation，但不是通过 tensor-wise range/clipping 可以解决，而需要改变 activation quantization granularity 或 bit allocation。
 6. 下一步 NE006 应直接做 granularity：优先 `split_proj + merge_proj + stage_output_conv` 的 g4 / per-channel，再做 all Conv2d 上限参考；range/clipping 暂时只保留为 granularity 后的辅助组合，不再作为主线。
+
+## 2026-05-12 NE006 W4A4 activation granularity 计划
+
+NE006 的核心问题：在 normalized 新协议下，`NE000_2 W4A4` 的主要 gap 是否来自 Conv2d activation tensor-wise A4 粒度过粗；如果是，能否找到比 all Conv2d per-channel 更可部署的 selective granularity 策略。
+
+为什么现在应该做 granularity：
+
+- NE004 sensitivity 已经证明 W4A4 all_off 可从 `12.9150 dB` 回到接近 W4A32 的 `17.7856 dB`，activation gap 很真实。
+- NE004 中 Conv2d off 追回 all_off gap 的 `86.2%`，Linear / transformer 只有 `6.5%`，主因集中在 Conv2d activation。
+- NE004 中 `split_proj + merge_proj + stage_output_conv` off 可追回 `39.1%` 的 all_off gap，是最强的部署可操作小集合。
+- NE005 排除了 tensor-wise range / clipping：最佳 range 只提升 `+0.0180 dB`，强 clipping 有害，mse_grid 成本高但 final 不优。
+- 旧 E006C 在旧协议下也显示 selective Conv2d granularity 比 all Conv2d per-channel 更有潜力；NE006 要在新协议和 A4 主对象上重新验证这一点。
+
+实验主对象：
+
+- 主线对象：`NE000_2 W4A4 final` 的 A4 activation 量化策略。
+- 起点：沿用 E007 W4A32 single-GPU best checkpoint / A4 metadata seed，保持与 NE000_2、NE005 相同的 W4 weight reconstruction 起点。
+- 评估：normalized `478 x 25` grid，seed `20260507`，正式结论只看 full-grid mean/median SNR、SSIM、by-source、by-input-SNR、by-missing-rate。
+- W4A8：只做 sanity subset，不作为优化主线，因为 NE000 W4A8 final 已接近 W4A32。
+
+NE006 分层实验矩阵：
+
+| priority | experiment | granularity | selected group | 目的 | 预期判断 |
+|---:|---|---|---|---|---|
+| 1 | NE006a | group-wise g4 | `split_proj + merge_proj + stage_output_conv` | 最重要部署候选，验证 selective 小集合能否低成本追回 gap | 若 `>= +1 dB`，进入代表图和 packed 候选 |
+| 2 | NE006b | per-channel | `split_proj + merge_proj + stage_output_conv` | selective 上限，复验旧 E006C 的关键结论 | 若显著强于 g4，再考虑 g2/g4/g8 sweep |
+| 3 | NE006c | group-wise g4 | all Conv2d | 部署友好的 Conv2d 上限参考 | 判断 selective 是否接近 all Conv2d |
+| 4 | NE006d | per-channel | all Conv2d | 理论上限参考 | 如果这个也弱，说明 granularity 不是主瓶颈 |
+| 5 | NE006e | group-wise g4 | `stage_output_conv` | 拆解 selective 组合，测试 stage output 单独贡献 | 若接近 NE006a，说明 stage output 是核心 |
+| 6 | NE006f | group-wise g4 | `split_proj + merge_proj` | 拆解 fusion 投影贡献 | 判断 split/merge 是否需要与 stage output 绑定 |
+| 7 | NE006g | group-wise g4 | stage5 | 风险对照；NE004 stage5 off 强，但旧 E006C 中 stage5 独立细粒度可能有害 | 只作为风险验证，不默认主线 |
+| 8 | NE006h | per-channel | stage5 | stage5 上限风险对照 | 若有害，明确禁止 stage5 独立策略 |
+| 9 | NE006i | group-wise g4 | Linear / transformer sanity | 排除项 | 只确认 Linear/transformer 不是主方向 |
+| 10 | NE006j | W4A8 sanity subset | all Conv2d 与 selective 小集合 | 检查 A8 与 A4 方向是否一致 | 不投入大规模 A8 优化 |
+
+建议先执行的最小闭环：
+
+1. `split_proj + merge_proj + stage_output_conv g4`
+2. `split_proj + merge_proj + stage_output_conv per-channel`
+3. `all Conv2d g4`
+4. `all Conv2d per-channel`
+
+这 4 个实验可以直接回答 NE006 的主问题：selective 细粒度是否有效、g4 是否足够、selective 是否接近 all Conv2d、per-channel 上限有多高。只有这 4 个有明确收益后，再拆 `stage_output_conv`、`split+merge`、`stage5`。
+
+固定实验设置建议：
+
+- `n_bits_w=4`，`n_bits_a=4`。
+- 保持 `num_samples=1024`、`batch_size=16`、`init_batch_size=64`、`iters_a=5000`、`activation_lr=0.0004`、`lp_norm=2.4`，与 NE000_2 / NE005 对齐。
+- `activation_range_method=none` 作为主线，避免把 NE006 与 NE005 的 range 因素混在一起。
+- 使用物理 GPU 优先级 `1 -> 2 -> 3 -> 0`；单卡默认 GPU 1。
+- 输出目录建议：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE006_w4a4_activation_granularity/quant` 和 `.../eval`。
+
+正式验收与解释标准：
+
+- 每个 final checkpoint 必须通过 `verify_quantized_scrn`：`passed=true`，`weight_quant=true`，`act_quant=true`，activation bitwidth `4`，`activation_delta_count=52`，`non_positive_delta_count=0`，`level_offender_count=0`。
+- 每个 grid eval 必须为 `11950` rows。
+- 与 NE000_2 W4A4 final 对比：
+  - `< +0.5 dB`：不作为主线；
+  - `+0.5 ~ +1.0 dB`：辅助价值，但不足以成为核心策略；
+  - `>= +1.0 dB`：强信号，进入代表图、packed equivalence 和后续组合优化；
+  - `>= +2.0 dB`：优先级提高，可考虑直接作为 W4A4 主候选。
+- 同时报告：
+  - overall mean/median SNR、SSIM；
+  - by-source，重点 `Anisotropic`、`Kerry3D`、`Shots0001`；
+  - by-input-SNR，确认高输入 SNR 是否追回更多；
+  - by-missing-rate，确认策略不是只改善单一 missing 条件；
+  - pre-act 与 final，判断 activation reconstruction 是否放大或抵消 granularity 收益。
+
+NE006 的关键决策树：
+
+- 如果 `selective g4` 已经接近 `selective per-channel`，优先保留 `g4`，因为部署更友好。
+- 如果 `selective per-channel` 强而 `selective g4` 弱，再做 g2/g4/g8 小 sweep。
+- 如果 `all Conv2d` 明显强于 selective，说明当前 selective 小集合还不够，需要回到 NE004 的 group 分解继续扩集合。
+- 如果 `all Conv2d per-channel` 仍提升有限，说明 A4 问题不只是 granularity，应考虑 mixed precision 或 bit allocation。
+- 如果 `stage5` 独立策略有害，则后续禁止把 stage5 单独作为 fine granularity 默认策略，只能作为组合中谨慎纳入。
+
+预期结论方向：
+
+- 最可能成为 W4A4 主候选的是 `split_proj + merge_proj + stage_output_conv g4` 或其 per-channel 版本。
+- `all Conv2d per-channel` 主要是上限，不一定适合部署。
+- `stage5` 需要单独验证风险，不应因为 NE004 stage5 off gain 高就直接作为优化策略。
+- W4A8 只做 sanity，不应挤占 W4A4 主线资源。
