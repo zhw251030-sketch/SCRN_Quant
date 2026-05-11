@@ -6673,3 +6673,123 @@ W4A8 sanity 全量表：
   4. stage5 独立策略作为风险对照；
   5. Linear / attention / MLP 只保留 sanity，不应作为主优化方向。
 - 后续报告 W4A4 改进时，必须同时报告 overall、by-source、by-input-SNR、by-missing-rate，避免一个策略只改善单一条件却被误判为通用提升。
+
+## 2026-05-11 关于最终输出 activation quantizer 禁用的说明
+
+当前 W+A 量化实现中，`act_quant=true` 表示中间层激活量化整体开启；但模型最后一个 `QuantModule` 的 activation quantizer 会通过 `disable_network_output_quantization()` 被禁用。也就是说，结构上每个 `QuantModule` 都有 activation quantizer 状态，W4A4/W4A8 checkpoint 中可以看到 52 个 activation quantizer 的 `delta/zero_point`；但实际前向部署状态下，最后网络输出层的 activation quantizer 被 bypass。因此更准确的表述是：中间激活参与量化，最终预测输出不再额外量化。
+
+这样设计的原因：
+
+- SCRN 的最终输出已经是恢复后的单通道地震 patch，不会继续作为下一层输入。对最终输出再做一次 4bit/8bit fake quantization，主要影响的是保存/评估结果本身，而不是后续低精度计算链路。
+- SNR/SSIM 和可视化比较都直接基于最终预测 patch。如果最终输出也被量化，指标会混入一层额外的输出网格截断误差，难以区分中间激活量化误差和最终结果格式误差。
+- BRECQ/PTQ 的核心目标是让量化网络内部计算尽量接近 FP32 路径；保留最终输出为浮点，更利于和 FP32、W4A32、W4A8/W4A4 之间做公平质量比较。
+
+潜在优点：
+
+- 评估更公平：SNR/SSIM 主要反映中间层权重与激活量化带来的模型误差，而不是最终输出被强制压到低 bit 网格后的显示/存储误差。
+- 视觉结果更稳定：地震 patch 输出通常用于连续幅值图像展示，保留浮点输出可以避免最后一步人为带来的条带化或离散化伪影。
+- 与当前 packed deployment 验证口径一致：packed 恢复后的模型保持内部 fake-quant 行为，并将最终输出作为浮点预测参与等价性验证。
+
+潜在缺点或注意事项：
+
+- 如果未来目标硬件要求最终输出也必须以 INT4/INT8 张量形式落盘或传给后处理算子，那么当前评估会略偏乐观，需要单独增加“output quantized”部署口径。
+- checkpoint 中仍保存最后一个 activation quantizer 的状态，容易让人误以为 52 个激活量化器全部实际生效。后续报告应明确区分“结构上存在 52 个 quantizer”和“实际启用约 51 个，中间层启用、最终输出禁用”。
+- 对比不同实验时必须保持该策略一致。若某个实验打开最终输出量化，而另一个实验关闭，就不能直接比较 SNR/SSIM。
+
+当前结论：最终输出 activation quantizer 禁用不是状态错误，而是有意的评估和部署口径选择。除非后续明确研究“最终输出也低 bit 存储/传输”的部署场景，否则 W4A4/W4A8 主线应继续保持中间激活量化、最终输出不量化。
+
+## 2026-05-12 NE005 W4A4 range / clipping sanity 结果
+
+目标：验证 normalized 新协议下，`NE000_2 W4A4` 的 A4 activation gap 是否能通过 tensor-wise range / clipping 低成本修复。NE005 不改 granularity、不做 sensitivity、不做 packed，只比较 activation range 初始化策略及其后续 activation reconstruction 的 full-grid 结果。
+
+执行环境与固定设置：
+
+- 代码改动：无。
+- GPU：物理 GPU `1`，执行前 GPU 1 空闲；GPU 2 有外部 python 进程占用约 `436 MiB`，未使用。
+- 起点 checkpoint：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/inputs/e007_w4a32_nbitsa4_metadata_seed.pth`
+- Calibration：`SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- Eval：`SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- 统一参数：`n_bits_w=4`，`n_bits_a=4`，`activation_granularity=tensor`，`num_samples=1024`，`batch_size=16`，`init_batch_size=64`，`iters_a=5000`，`activation_lr=0.0004`，`lp_norm=2.4`。
+- 正式评估口径：normalized `478 x 25` grid，`11950` rows，seed `20260507`。
+- 对照：NE000_2 W4A4 final 为 `12.9150 / 13.1180` SNR mean/median，SSIM mean `0.939563`；E007 W4A32 final 为 `17.7856 / 18.1128` SNR mean/median，SSIM mean `0.964137`。
+
+Run 目录：
+
+| id | range method / selector | selected range quantizers | quant run | eval run |
+|---|---|---:|---|---|
+| NE005a | max / all activation candidates | 51 | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE005_w4a4_range_clipping_sanity/quant/20260511_205121_ne005a_w4a4_range_max_tensor_a5000_1024cali_gpu1` | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE005_w4a4_range_clipping_sanity/eval/20260512_001617_ne005a_w4a4_range_max_grid478_seed20260507` |
+| NE005b | percentile 99.9 / all activation candidates | 51 | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE005_w4a4_range_clipping_sanity/quant/20260511_211446_ne005b_w4a4_percentile_p999_tensor_a5000_1024cali_gpu1` | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE005_w4a4_range_clipping_sanity/eval/20260512_002037_ne005b_w4a4_percentile_p999_grid478_seed20260507` |
+| NE005c | percentile 99.99 / all activation candidates | 51 | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE005_w4a4_range_clipping_sanity/quant/20260511_213752_ne005c_w4a4_percentile_p9999_tensor_a5000_1024cali_gpu1` | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE005_w4a4_range_clipping_sanity/eval/20260512_002456_ne005c_w4a4_percentile_p9999_grid478_seed20260507` |
+| NE005d | mse_grid / all activation candidates | 51 | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE005_w4a4_range_clipping_sanity/quant/20260511_220200_ne005d_w4a4_mse_grid_tensor_a5000_1024cali_gpu1` | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE005_w4a4_range_clipping_sanity/eval/20260512_002916_ne005d_w4a4_mse_grid_grid478_seed20260507` |
+| NE005e | mse_grid / Conv2d only | 31 | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE005_w4a4_range_clipping_sanity/quant/20260511_224146_ne005e_w4a4_mse_grid_conv2d_only_a5000_1024cali_gpu1` | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE005_w4a4_range_clipping_sanity/eval/20260512_003336_ne005e_w4a4_mse_grid_conv2d_only_grid478_seed20260507` |
+| NE005f | mse_grid / split_proj + merge_proj + stage_output_conv | 15 | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE005_w4a4_range_clipping_sanity/quant/20260511_230441_ne005f_w4a4_mse_grid_split_merge_stage_output_a5000_1024cali_gpu1` | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE005_w4a4_range_clipping_sanity/eval/20260512_003756_ne005f_w4a4_mse_grid_split_merge_stage_output_grid478_seed20260507` |
+| NE005g | percentile 99.9 / split_proj + merge_proj + stage_output_conv | 15 | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE005_w4a4_range_clipping_sanity/quant/20260511_232726_ne005g_w4a4_percentile_p999_split_merge_stage_output_a5000_1024cali_gpu1` | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE005_w4a4_range_clipping_sanity/eval/20260512_004215_ne005g_w4a4_percentile_p999_split_merge_stage_output_grid478_seed20260507` |
+
+合法性验证：
+
+- 7 个 final checkpoint 均 `passed=true`。
+- 7 个 final checkpoint 均为 `weight_quant=true, act_quant=true`。
+- activation bitwidth 均为 `4`，`activation_delta_count=52`，`initialized_activation_quantizers=52`。
+- weight bit counts 均保持 `4bit=50, 8bit=2`。
+- `non_positive_delta_count=0`，`level_offender_count=0`。
+- 7 个 grid eval 均生成 `11950` rows，并包含 `metrics.json`、`config.json`、`summary.md`、`per_sample_metrics.jsonl`。
+
+总体结果，正式数值来自 normalized `478 x 25` grid：
+
+| variant | selected | rows | pre SNR/SSIM mean | final SNR/SSIM mean | final SNR/SSIM median | recon gain SNR/SSIM | final vs NE000_2 W4A4 | remaining SNR gap to E007 W4A32 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| NE005a max | 51 | 11950 | 7.8501 / 0.748581 | 12.9330 / 0.938922 | 13.1377 / 0.953237 | +5.0829 / +0.190341 | +0.0180 / -0.000641 | -4.8526 |
+| NE005b p99.9 | 51 | 11950 | 10.5794 / 0.925247 | 12.2617 / 0.936723 | 12.4995 / 0.950616 | +1.6824 / +0.011476 | -0.6532 / -0.002840 | -5.5238 |
+| NE005c p99.99 | 51 | 11950 | 11.8503 / 0.892493 | 12.8394 / 0.937749 | 13.0574 / 0.951726 | +0.9892 / +0.045256 | -0.0755 / -0.001814 | -4.9462 |
+| NE005d mse_grid all | 51 | 11950 | 12.1405 / 0.900725 | 12.8898 / 0.939433 | 13.0843 / 0.954021 | +0.7492 / +0.038708 | -0.0252 / -0.000130 | -4.8958 |
+| NE005e mse_grid Conv2d | 31 | 11950 | 12.0340 / 0.901563 | 12.8932 / 0.939358 | 13.0856 / 0.953876 | +0.8592 / +0.037795 | -0.0217 / -0.000205 | -4.8923 |
+| NE005f mse_grid selective | 15 | 11950 | 11.0522 / 0.909328 | 12.8956 / 0.939338 | 13.0950 / 0.953766 | +1.8434 / +0.030010 | -0.0194 / -0.000225 | -4.8900 |
+| NE005g p99.9 selective | 15 | 11950 | 11.1966 / 0.931744 | 12.8730 / 0.939889 | 13.0629 / 0.954297 | +1.6764 / +0.008145 | -0.0420 / +0.000326 | -4.9126 |
+
+关键解释：
+
+- 最佳 SNR 变体是 NE005a `max`，但相对 NE000_2 W4A4 final 只有 `+0.0180 dB`，远低于 NE005 预设的 `+0.5 dB` 最低继续投入阈值。
+- 最佳 SSIM mean 变体是 NE005g selective p99.9，为 `0.939889`，只比 NE000_2 W4A4 final 高 `+0.000326`，幅度也不足以构成有效改进。
+- p99.9 全局 clipping 明显有害：SNR mean 从 `12.9150` 掉到 `12.2617`，说明 A4 不是简单靠强 percentile clipping 就能修复。
+- p99.99 轻 clipping 也低于 baseline：`12.8394`，说明 clipping 强度调轻后仍没有收益。
+- mse_grid 能明显改变 pre-act-recon：全量 mse_grid 的 pre SNR mean 达到 `12.1405`，比 NE000_2 原始 pre SNR mean `11.1727` 高约 `+0.9678 dB`；但经过 activation reconstruction 后 final 反而略低于 NE000_2 final。这说明 range 初始化可以改变起点，但当前 activation reconstruction 会把不同 range 初始化收敛到接近且不优于原 baseline 的区域。
+- Conv2d-only 和 selective mse_grid 没有带来收益：NE005e `12.8932`，NE005f `12.8956`，均低于 NE000_2 final。这点与 NE004 “Conv2d 是误差主因”不冲突；NE004 说明关掉这些 activation quantizer 能恢复大量 gap，但 NE005 说明仅在 tensor-wise A4 下重选 range 不能恢复该 gap。
+
+重点 source 对比，单元格为 `final SNR mean / 相对 NE000_2 W4A4 gain`：
+
+| variant | Anisotropic | Kerry3D | Shots0001 | min source gain | max source gain |
+|---|---:|---:|---:|---:|---:|
+| NE005a max | 13.3243 / +0.0441 | 9.0339 / +0.0008 | 13.0184 / +0.0137 | +0.0008 | +0.0441 |
+| NE005b p99.9 | 12.6868 / -0.5934 | 8.8181 / -0.2150 | 12.3217 / -0.6829 | -0.6829 | -0.2150 |
+| NE005c p99.99 | 13.2607 / -0.0195 | 8.9967 / -0.0365 | 12.9166 / -0.0880 | -0.0880 | -0.0195 |
+| NE005d mse_grid all | 13.2573 / -0.0229 | 9.0292 / -0.0040 | 12.9781 / -0.0265 | -0.0265 | -0.0040 |
+| NE005e mse_grid Conv2d | 13.2633 / -0.0169 | 9.0363 / +0.0032 | 12.9810 / -0.0237 | -0.0237 | +0.0032 |
+| NE005f mse_grid selective | 13.2668 / -0.0134 | 9.0315 / -0.0017 | 12.9834 / -0.0213 | -0.0213 | -0.0017 |
+| NE005g p99.9 selective | 13.2485 / -0.0317 | 9.0577 / +0.0246 | 12.9580 / -0.0467 | -0.0467 | +0.0246 |
+
+最佳 SNR 变体 NE005a 的 by-input-SNR 稳定性：
+
+| input SNR setting | NE005a final SNR | gain vs NE000_2 W4A4 |
+|---:|---:|---:|
+| -2 | 11.6748 | +0.0243 |
+| -1 | 12.0769 | +0.0194 |
+| 1 | 12.7424 | +0.0172 |
+| 5 | 13.7116 | +0.0145 |
+| 10 | 14.4594 | +0.0147 |
+
+最佳 SNR 变体 NE005a 的 by-missing-rate 稳定性：
+
+| missing rate | NE005a final SNR | gain vs NE000_2 W4A4 |
+|---:|---:|---:|
+| 0.02 | 13.9624 | +0.0378 |
+| 0.08 | 13.6566 | +0.0360 |
+| 0.18 | 13.0809 | +0.0207 |
+| 0.28 | 12.4077 | +0.0049 |
+| 0.38 | 11.5574 | -0.0094 |
+
+NE005 结论：
+
+- range / clipping 路线收益有限，应收束。最佳 SNR 改进只有 `+0.0180 dB`，不满足 `+0.5 dB` 的继续投入标准，更不接近 `+1.0 dB` 的强信号标准。
+- NE004 的主因判断仍成立：A4 gap 主要来自 Conv2d activation，尤其 selective 小集合；但 NE005 排除了“在 tensor-wise A4 下只调 range 就能修复”的低成本路径。
+- 后续应优先进入 NE006 granularity：先做 `split_proj + merge_proj + stage_output_conv` 的 g4 / per-channel，再做 all Conv2d g4 / per-channel 上限参考，stage_output_conv g4 与 stage5 独立作为对照。
+- 如果未来需要组合策略，range 只适合作为 granularity 之后的小幅辅助项，而不是主线。
