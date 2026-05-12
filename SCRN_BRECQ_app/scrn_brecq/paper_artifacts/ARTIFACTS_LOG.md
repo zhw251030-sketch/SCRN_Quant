@@ -160,3 +160,110 @@ git 提交范围调整为：
 - 不提交：本地生成脚本、测试脚本、`__pycache__`、`.pyc`、临时缓存
 
 本次规范调整会把已跟踪的本地生成脚本和测试从 git 索引中移除，但保留工作区本地文件，后续仍可继续用于生成图件。
+
+## 2026-05-12 ch4_2_exp01 W4A32 视觉恢复候选图 v002-v005 版式修正
+
+背景：
+
+- v001 图左侧行说明包含 source、patch 文件名和退化参数，文字过多，不适合直接放入论文正文。
+- 本次仅修正版式和增加候选图，不改变 W4A32 checkpoint、测试集、seed 或 fixed-grid 指标来源。
+- 本地图件脚本继续作为本地工具使用，不纳入 git 跟踪；本次提交只包含结果图、manifest、summary 和日志。
+
+本地图件脚本更新：
+
+- 新增 `row_label_style`：
+  - `compact`：左侧只显示 `Light` / `Medium` / `Heavy` 或 `Sample 1` / `Sample 2` / `Sample 3`
+  - `none`：不显示左侧行标签
+- 新增 `panel_metric_style`：
+  - `snr`：小图标题显示 SNR
+  - `none`：小图标题只保留列名，不显示 SNR
+- 新增 `figure_title_style=none`，新版图不再显示顶部大标题，便于论文中用图题说明。
+- 新增 `set_a_selection=fixed_patch_from_medium`，用于生成同一个测试 patch 在轻度、中度、重度退化下的三行对比。
+
+本地测试：
+
+- 命令：`conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.paper_artifacts.tests.test_w4a32_visual_recovery_selection`
+- 结果：通过，`Ran 7 tests in 3.403s`
+
+生成命令与版本：
+
+```bash
+conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/scripts/make_w4a32_visual_recovery.py --candidate-set all --device cuda --cuda-device-index 1 --row-label-style compact --panel-metric-style snr --figure-title-style none --set-a-selection condition_median
+```
+
+- 生成 `set_a_three_degradation_levels` v002：条件中位代表样本，compact 左侧标签，显示 SNR。
+- 生成 `set_b_three_medium_samples` v002：三 source 中等退化样本，compact 左侧标签，显示 SNR。
+
+```bash
+conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/scripts/make_w4a32_visual_recovery.py --candidate-set set_a_three_degradation_levels --device cuda --cuda-device-index 1 --row-label-style compact --panel-metric-style snr --figure-title-style none --set-a-selection fixed_patch_from_medium
+```
+
+- 生成 `set_a_three_degradation_levels` v003：固定同一个 patch，compact 左侧标签，显示 SNR。
+
+```bash
+conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/scripts/make_w4a32_visual_recovery.py --candidate-set set_a_three_degradation_levels --device cuda --cuda-device-index 1 --row-label-style compact --panel-metric-style none --figure-title-style none --set-a-selection fixed_patch_from_medium
+```
+
+- 生成 `set_a_three_degradation_levels` v004：固定同一个 patch，compact 左侧标签，不显示小图 SNR。
+
+```bash
+conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/scripts/make_w4a32_visual_recovery.py --candidate-set set_b_three_medium_samples --device cuda --cuda-device-index 1 --row-label-style compact --panel-metric-style none --figure-title-style none
+```
+
+- 生成 `set_b_three_medium_samples` v003：三 source 中等退化样本，compact 左侧标签，不显示小图 SNR。
+
+```bash
+conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/scripts/make_w4a32_visual_recovery.py --candidate-set set_a_three_degradation_levels --device cuda --cuda-device-index 1 --row-label-style none --panel-metric-style none --figure-title-style none --set-a-selection fixed_patch_from_medium
+```
+
+- 生成 `set_a_three_degradation_levels` v005：固定同一个 patch，无左侧标签，不显示小图 SNR。
+
+```bash
+conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/scripts/make_w4a32_visual_recovery.py --candidate-set set_b_three_medium_samples --device cuda --cuda-device-index 1 --row-label-style none --panel-metric-style none --figure-title-style none
+```
+
+- 生成 `set_b_three_medium_samples` v004：三 source 中等退化样本，无左侧标签，不显示小图 SNR。
+
+新增候选图：
+
+| 候选集 | 版本 | 选样 | 左侧标签 | 小图 SNR | 说明 |
+|---|---|---|---|---|---|
+| set_a | v002 | 不同退化条件分别选代表样本 | compact | yes | v001 的版式修正版 |
+| set_a | v003 | 固定 `test_000297.npy` | compact | yes | 控制变量更强，保留 SNR |
+| set_a | v004 | 固定 `test_000297.npy` | compact | no | 当前更适合正文图 |
+| set_a | v005 | 固定 `test_000297.npy` | none | no | 极简版，样本说明完全依赖图注/manifest |
+| set_b | v002 | Anisotropic/Kerry3D/Shots0001 | compact | yes | v001 的版式修正版 |
+| set_b | v003 | Anisotropic/Kerry3D/Shots0001 | compact | no | 更适合正文或附图 |
+| set_b | v004 | Anisotropic/Kerry3D/Shots0001 | none | no | 极简版，样本说明完全依赖图注/manifest |
+
+关键选样：
+
+- set_a v003-v005 固定 patch：`test_000297.npy`，`patch_index=296`，`source=Shots0001`。
+- set_a 三行退化条件：
+  - Light：`condition_index=20`，`snr_setting_db=10.0`，`missing_rate=0.02`
+  - Medium：`condition_index=12`，`snr_setting_db=1.0`，`missing_rate=0.18`
+  - Heavy：`condition_index=4`，`snr_setting_db=-2.0`，`missing_rate=0.38`
+- set_b v002-v004 三个中等退化样本：
+  - Sample 1：Anisotropic，`patch_index=50`，`test_000051.npy`
+  - Sample 2：Kerry3D，`patch_index=82`，`test_000083.npy`
+  - Sample 3：Shots0001，`patch_index=296`，`test_000297.npy`
+
+验证：
+
+- `manifest_v002` 至 `manifest_v005` 均通过 `jq empty`。
+- 新版 PNG 均为 `4260 x 2160` RGBA 图像。
+- 人工打开检查：v003/v004/v005 和 set_b v003/v004 均可正常显示，左侧冗长文字已移除。
+
+初步建议：
+
+- 正文优先考虑 `set_a_three_degradation_levels` v004：固定同一 patch，控制变量清楚，图面简洁。
+- 如果希望小图上直接显示 SNR，则考虑 `set_a_three_degradation_levels` v003。
+- 如果要展示不同数据来源/结构差异，则考虑 `set_b_three_medium_samples` v003。
+
+提交前复核：
+
+- `git diff --check -- SCRN_BRECQ_app/scrn_brecq/paper_artifacts/ARTIFACTS_LOG.md` 无输出，日志空白检查通过。
+- `manifest_v002` 至 `manifest_v005` 重新通过 `jq empty` 检查。
+- 新版 PNG 重新通过 `file` 检查，分辨率均为 `4260 x 2160`，格式为 RGBA PNG。
+- 本地选择逻辑测试重新通过：`Ran 7 tests in 3.448s`。
+- 按“只提交图件结果和日志”的原则，本地画图脚本与测试文件继续保留在工作区，但不纳入 git 提交。
