@@ -49,7 +49,7 @@
 说明：
 
 - 这些脚本和测试文件用于本地生成与验证图件。
-- 根据 2026-05-12 更新的 git 原则，后续不再把本地脚本和测试纳入 git 跟踪；git 只提交结果图、manifest/summary、README 和日志。
+- 根据 2026-05-12 进一步修订后的 git 原则，后续保留脚本和测试代码的可追踪性；git 不再提交候选图、manifest/summary 等按版本生成的结果文件。
 
 已实现的选样策略：
 
@@ -153,13 +153,13 @@ conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/
 
 git 提交范围调整为：
 
-- 提交：结果图文件，例如 `.png`、`.pdf`
-- 提交：样本追踪文件，例如 `manifest_vXXX.json`
-- 提交：选择说明文件，例如 `selection_summary_vXXX.md`
-- 提交：README、`ARTIFACTS_LOG.md`、`DEVELOPMENT_LOG.md`
-- 不提交：本地生成脚本、测试脚本、`__pycache__`、`.pyc`、临时缓存
+- 提交：README、`experiment_info.json`、`ARTIFACTS_LOG.md`、`DEVELOPMENT_LOG.md`
+- 提交：本地图件生成脚本和测试脚本，保证后续图件可复现
+- 不提交：候选图和最终图，例如 `.png`、`.pdf`
+- 不提交：按版本生成的候选结果元数据，例如 `manifest_vXXX.json`、`selection_summary_vXXX.md`
+- 不提交：`__pycache__`、`.pyc`、临时缓存
 
-本次规范调整会把已跟踪的本地生成脚本和测试从 git 索引中移除，但保留工作区本地文件，后续仍可继续用于生成图件。
+本次规范调整会把已跟踪的候选图、manifest 和 selection summary 从 git 索引中移除，但保留工作区本地文件，后续仍可继续查看和挑选。
 
 ## 2026-05-12 ch4_2_exp01 W4A32 视觉恢复候选图 v002-v005 版式修正
 
@@ -167,7 +167,7 @@ git 提交范围调整为：
 
 - v001 图左侧行说明包含 source、patch 文件名和退化参数，文字过多，不适合直接放入论文正文。
 - 本次仅修正版式和增加候选图，不改变 W4A32 checkpoint、测试集、seed 或 fixed-grid 指标来源。
-- 本地图件脚本继续作为本地工具使用，不纳入 git 跟踪；本次提交只包含结果图、manifest、summary 和日志。
+- 本地图件脚本作为可复现代码纳入 git 跟踪；候选图、manifest 和 summary 作为生成结果本地保留，不纳入后续提交。
 
 本地图件脚本更新：
 
@@ -266,7 +266,7 @@ conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/
 - `manifest_v002` 至 `manifest_v005` 重新通过 `jq empty` 检查。
 - 新版 PNG 重新通过 `file` 检查，分辨率均为 `4260 x 2160`，格式为 RGBA PNG。
 - 本地选择逻辑测试重新通过：`Ran 7 tests in 3.448s`。
-- 按“只提交图件结果和日志”的原则，本地画图脚本与测试文件继续保留在工作区，但不纳入 git 提交。
+- 按当前“提交代码和日志、结果本地保留”的原则，本地画图脚本与测试文件纳入 git 跟踪，候选图和按版本生成的结果元数据不纳入提交。
 
 ## 2026-05-12 ch4_2_exp01 W4A32 视觉恢复纯数据版 v005/v006
 
@@ -280,7 +280,7 @@ conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/
 
 - 本地画图脚本新增 `--column-label-style {labels,none}`，用于关闭顶部列标题。
 - 本地画图脚本新增 `--colorbar-style {per_row,none}`，用于关闭右侧色标。
-- 本地脚本和测试文件仍按 `.gitignore` 规则仅作为生成工具保留，不纳入提交。
+- 本地脚本和测试文件按当前 `.gitignore` 规则作为可复现代码纳入提交；候选图和按版本生成的结果元数据不纳入提交。
 
 测试：
 
@@ -388,8 +388,8 @@ conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/
 - 新建 W4A8 实验目录：`ch4_3_exp01_w4a8_visual_recovery`。
 - 新建 W4A4 实验目录：`ch4_3_exp02_w4a4_visual_recovery`。
 - 两个实验均包含 `README.md`、`experiment_info.json`、候选集目录、`shortlisted/` 和 `final/`。
-- 本地生成脚本位于 W4A8 实验的 `scripts/` 下，按 `.gitignore` 规则不纳入 git 提交。
-- 本地测试文件位于 `paper_artifacts/tests/`，同样不纳入 git 提交。
+- 本地生成脚本位于 W4A8 实验的 `scripts/` 下，按当前 `.gitignore` 规则纳入 git 提交。
+- 本地测试文件位于 `paper_artifacts/tests/`，同样作为可复现代码纳入 git 提交。
 
 数据来源：
 
@@ -464,3 +464,22 @@ conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/
 - 6 张 PNG 均为 `5040 x 2040` RGBA 图像。
 - 6 张 PDF 均为 1 页 PDF。
 - 本地联合测试通过：`Ran 14 tests in 5.238s`。
+
+## 2026-05-12 paper_artifacts git 提交范围修订
+
+背景：
+
+- 用户进一步明确 `paper_artifacts` 的 git 提交范围：该工作区下很多生成内容不需要提交，后续应参考仓库 `.gitignore` 的管理方式，只提交代码文件和日志内容。
+- 因此本轮将候选图、最终图、按版本生成的 manifest 和 selection summary 统一视为本地生成结果。
+
+规则调整：
+
+- 提交：图件生成脚本、测试脚本、README、`experiment_info.json`、`ARTIFACTS_LOG.md`、`DEVELOPMENT_LOG.md`。
+- 不提交：`.png`、`.pdf`、`manifest_vXXX.json`、`selection_summary_vXXX.md`。
+- 不提交：Python 缓存和临时文件。
+
+索引处理：
+
+- 更新 `paper_artifacts/.gitignore`，加入候选集、筛选集和最终集下图件与按版本元数据的忽略规则。
+- 只使用 `git rm --cached` 从 git 索引移除已跟踪的生成结果，保留工作区本地文件，便于继续挑图和查看。
+- 后续每次提交前需要用 `git status --short` 和 `git ls-files SCRN_BRECQ_app/scrn_brecq/paper_artifacts` 检查是否误把生成结果加入索引。

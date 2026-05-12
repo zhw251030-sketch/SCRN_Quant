@@ -1,6 +1,18 @@
-# 本地图件生成工具，不纳入 git 跟踪
-experiments/*/scripts/*.py
-tests/
+# 论文图件工作区 git 规则：
+# - 提交 README、experiment_info、日志、绘图脚本和测试脚本。
+# - 不提交候选图、最终图、按版本生成的候选结果元数据。
+experiments/*/candidates/**/*.png
+experiments/*/candidates/**/*.pdf
+experiments/*/candidates/**/manifest_v*.json
+experiments/*/candidates/**/selection_summary_v*.md
+experiments/*/shortlisted/**/*.png
+experiments/*/shortlisted/**/*.pdf
+experiments/*/shortlisted/**/manifest_v*.json
+experiments/*/shortlisted/**/selection_summary_v*.md
+experiments/*/final/**/*.png
+experiments/*/final/**/*.pdf
+experiments/*/final/**/manifest_v*.json
+experiments/*/final/**/selection_summary_v*.md
 
 # Python 缓存和临时文件
 __pycache__/

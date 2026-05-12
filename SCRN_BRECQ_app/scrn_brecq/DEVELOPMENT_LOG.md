@@ -7485,11 +7485,12 @@ by-missing-rate 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
 
 根据新的图件管理原则，后续论文图件相关日志尽量使用中文记录；命令、文件名、指标字段和实验代号保持原始形式，避免与代码和 manifest 字段不一致。
 
-git 提交范围调整为只提交结果文件和记录文件：
+git 提交范围进一步调整为只提交代码、说明和日志类文件：
 
-- 提交结果图：`.png`、`.pdf`
-- 提交样本追踪和选择说明：`manifest_vXXX.json`、`selection_summary_vXXX.md`
-- 提交说明和日志：README、`ARTIFACTS_LOG.md`、`DEVELOPMENT_LOG.md`
-- 不提交本地生成脚本、测试脚本、Python 缓存和临时文件
+- 提交说明和日志：README、`experiment_info.json`、`ARTIFACTS_LOG.md`、`DEVELOPMENT_LOG.md`
+- 提交可复现代码：图件生成脚本和测试脚本
+- 不提交候选图或最终图：`.png`、`.pdf`
+- 不提交按版本生成的候选结果元数据：`manifest_vXXX.json`、`selection_summary_vXXX.md`
+- 不提交 Python 缓存和临时文件
 
-本次同步把已跟踪的本地图件生成脚本和测试从 git 索引中移除，但保留本地文件用于继续生成候选图。
+本次同步会把已跟踪的候选图、manifest 和 selection summary 从 git 索引中移除，但保留本地文件用于继续查看和挑选。
