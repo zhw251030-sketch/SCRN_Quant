@@ -1,35 +1,34 @@
 # set_b_three_medium_samples v001
 
-## Figures
+## 图件文件
 
-- PNG: `SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/candidates/set_b_three_medium_samples/fig_ch4_2_w4a32_3x5_medium_samples_v001.png`
-- PDF: `SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/candidates/set_b_three_medium_samples/fig_ch4_2_w4a32_3x5_medium_samples_v001.pdf`
+- PNG：`SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/candidates/set_b_three_medium_samples/fig_ch4_2_w4a32_3x5_medium_samples_v001.png`
+- PDF：`SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/candidates/set_b_three_medium_samples/fig_ch4_2_w4a32_3x5_medium_samples_v001.pdf`
 
-## Selected Rows
+## 选中样本
 
-| row | source | patch_index | patch_file | condition | SNR setting | missing | FP32 SNR | W4A32 pre SNR | W4A32 final SNR | final - FP32 |
+| 行标签 | source | patch_index | patch_file | condition_index | SNR setting | missing | FP32 SNR | W4A32 pre SNR | W4A32 final SNR | final - FP32 |
 |---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|
-| sample_1 | Anisotropic | 50 | test_000051.npy | 12 | 1.0 | 0.18 | 21.9377 | 21.1601 | 21.9119 | -0.0258 |
-| sample_2 | Kerry3D | 82 | test_000083.npy | 12 | 1.0 | 0.18 | 10.8369 | 10.1483 | 10.8059 | -0.0309 |
-| sample_3 | Shots0001 | 296 | test_000297.npy | 12 | 1.0 | 0.18 | 16.6976 | 15.9910 | 16.6553 | -0.0423 |
+| sample_1 | Anisotropic | 50 | `test_000051.npy` | 12 | 1.0 | 0.18 | 21.9377 | 21.1601 | 21.9119 | -0.0258 |
+| sample_2 | Kerry3D | 82 | `test_000083.npy` | 12 | 1.0 | 0.18 | 10.8369 | 10.1483 | 10.8059 | -0.0309 |
+| sample_3 | Shots0001 | 296 | `test_000297.npy` | 12 | 1.0 | 0.18 | 16.6976 | 15.9910 | 16.6553 | -0.0423 |
 
-## Selection Policy
+## 选样策略
 
-{
-  "condition": {
-    "missing_rate": 0.18,
-    "snr_setting_db": 1.0
-  },
-  "description": "Select three source-diverse median-like representatives under medium degradation.",
-  "score_fields": [
-    "fp32_snr_db",
-    "quant_pre_minus_fp32_snr_db",
-    "quant_post_minus_fp32_snr_db",
-    "quant_post_minus_pre_snr_db"
-  ],
-  "source_priority": [
-    "Anisotropic",
-    "Kerry3D",
-    "Shots0001"
-  ]
-}
+该候选集固定中等退化条件：
+
+- `snr_setting_db=1.0`
+- `missing_rate=0.18`
+
+在该条件下选择 3 个 source 多样化的代表样本，source 优先顺序为：
+
+- `Anisotropic`
+- `Kerry3D`
+- `Shots0001`
+
+代表性评分使用以下字段相对条件中位数的偏离：
+
+- `fp32_snr_db`
+- `quant_pre_minus_fp32_snr_db`
+- `quant_post_minus_fp32_snr_db`
+- `quant_post_minus_pre_snr_db`

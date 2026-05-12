@@ -7381,3 +7381,16 @@ by-missing-rate 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
 - `SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/candidates/set_b_three_medium_samples`
 
 每套图均保存 `png`、`pdf`、`manifest_v001.json` 和 `selection_summary_v001.md`。详细选样结果和验证记录见 `SCRN_BRECQ_app/scrn_brecq/paper_artifacts/ARTIFACTS_LOG.md`。
+
+## 2026-05-12 论文图件日志语言与 git 提交范围规范
+
+根据新的图件管理原则，后续论文图件相关日志尽量使用中文记录；命令、文件名、指标字段和实验代号保持原始形式，避免与代码和 manifest 字段不一致。
+
+git 提交范围调整为只提交结果文件和记录文件：
+
+- 提交结果图：`.png`、`.pdf`
+- 提交样本追踪和选择说明：`manifest_vXXX.json`、`selection_summary_vXXX.md`
+- 提交说明和日志：README、`ARTIFACTS_LOG.md`、`DEVELOPMENT_LOG.md`
+- 不提交本地生成脚本、测试脚本、Python 缓存和临时文件
+
+本次同步把已跟踪的本地图件生成脚本和测试从 git 索引中移除，但保留本地文件用于继续生成候选图。

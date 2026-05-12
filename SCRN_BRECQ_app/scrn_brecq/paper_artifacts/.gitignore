@@ -1,0 +1,10 @@
+# 本地图件生成工具，不纳入 git 跟踪
+experiments/*/scripts/*.py
+tests/
+
+# Python 缓存和临时文件
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.tmp
+*.temp
