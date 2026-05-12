@@ -9317,3 +9317,102 @@ by-missing-rate 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
 1. 可选继续 NE006m-q：做 `stage1/2/3/4/5 Conv2d except head g4` 或 `stage_output_conv + conv role` 的 stage-level 拆分，目标是减少 selected count 并定位 residual gain。
 2. 更直接的下一阶段是 NE007：以 `all Conv2d except head g4` / `stage_output_conv + conv role g4` 为基础，做 selective A8 或 mixed precision，对 residual gap 最高的 Conv2d 子组升 A8。
 3. 暂不做 packed export。当前 W4A4 g4 最强结果仍比 E007 W4A32 低 `4.0529 dB`，packed equivalence 不会改变模型质量判断。
+
+## 2026-05-12 NE006m-q W4A4 g4 stage-level granularity 实验结果
+
+本批继续 NE006，只做 stage-level W4A4 g4 拆分，目标是解释 `NE006l all Conv2d except head g4` 的 `+0.8177 dB` 收益是否由单个 stage 主导，或来自跨 stage 叠加。
+
+固定口径：
+
+- 起点：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/inputs/e007_w4a32_nbitsa4_metadata_seed.pth`
+- calibration：`SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- eval：`SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- eval grid：`478 x 25 = 11950` rows，seed `20260507`
+- activation：W4A4，`group_wise`，`group_size=4`，`activation_range_method=mse_grid`
+- reconstruction：`iters_a=5000`，`activation_lr=0.0004`，`lp_norm=2.4`
+
+执行备注：
+
+- NE006m-p 使用 GPU `1,2,3,0` 并行完成；NE006q 最初在 GPU3 启动的 run `20260512_163124_ne006q_w4a4_g4_stage5_conv2d_a5000_1024cali_gpu3` 只产出 pre-act checkpoint，没有产出 final/config/metrics，因此不纳入结果。
+- NE006q 使用完全相同参数在 GPU3 重跑，实际有效 run 为 `20260512_172203_ne006q_w4a4_g4_stage5_conv2d_a5000_1024cali_gpu3_rerun`。
+- eval 阶段 GPU0 出现外部进程占用，正式 grid eval 使用 GPU `1,2,3` 轮转完成，未修改 batch、seed 或实验变量。
+
+run 目录：
+
+| id | quant run dir | eval run dir | selected |
+|---|---|---|---:|
+| NE006m | `.../quant/20260512_155253_ne006m_w4a4_g4_stage1_conv2d_a5000_1024cali_gpu1` | `.../eval/20260512_175147_ne006m_w4a4_g4_stage1_conv2d_grid478_seed20260507` | 6 |
+| NE006n | `.../quant/20260512_155252_ne006n_w4a4_g4_stage2_conv2d_a5000_1024cali_gpu2` | `.../eval/20260512_175147_ne006n_w4a4_g4_stage2_conv2d_grid478_seed20260507` | 6 |
+| NE006o | `.../quant/20260512_155252_ne006o_w4a4_g4_stage3_conv2d_a5000_1024cali_gpu3` | `.../eval/20260512_175146_ne006o_w4a4_g4_stage3_conv2d_grid478_seed20260507` | 6 |
+| NE006p | `.../quant/20260512_155252_ne006p_w4a4_g4_stage4_conv2d_a5000_1024cali_gpu0` | `.../eval/20260512_181016_ne006p_w4a4_g4_stage4_conv2d_grid478_seed20260507` | 6 |
+| NE006q | `.../quant/20260512_172203_ne006q_w4a4_g4_stage5_conv2d_a5000_1024cali_gpu3_rerun` | `.../eval/20260512_181016_ne006q_w4a4_g4_stage5_conv2d_grid478_seed20260507` | 6 |
+
+验证结果：5 个 final checkpoint 均 `passed=true`，`weight_quant=true`，`act_quant=true`，`n_bits_a=4`，`activation_delta_count=52`，`initialized_activation_quantizers=52`，`level_offender_count=0`。activation-only metrics 中 `non_positive_delta_count=0`。每个 eval 的 `per_sample_metrics.jsonl` 都是 `11950` 行。
+
+overall full-grid 结果：
+
+| variant | selected | pre SNR mean/median | final SNR mean/median | final SSIM mean/median | recon gain SNR/SSIM | vs NE000_2 W4A4 | gap to NE006l | gap to E007 W4A32 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| NE000_2 baseline | 51 | 11.1727 / 11.1577 | 12.9150 / 13.1180 | 0.939563 / 0.954078 | +1.7422 / -0.001929 | +0.0000 / +0.000000 | -0.8177 / -0.005740 | -4.8706 / -0.024574 |
+| NE006l all Conv2d except head | 30 | 12.6993 / 12.8885 | 13.7326 / 13.9838 | 0.945303 / 0.960038 | +1.0334 / +0.003626 | +0.8177 / +0.005740 | +0.0000 / +0.000000 | -4.0529 / -0.018834 |
+| NE006m stage1 Conv2d g4 | 6 | 11.5111 / 11.5033 | 13.1610 / 13.3724 | 0.940107 / 0.954443 | +1.6499 / +0.000399 | +0.2460 / +0.000544 | -0.5716 / -0.005195 | -4.6246 / -0.024030 |
+| NE006n stage2 Conv2d g4 | 6 | 11.0960 / 11.0894 | 12.8185 / 13.0006 | 0.939369 / 0.953903 | +1.7225 / -0.000123 | -0.0965 / -0.000194 | -0.9141 / -0.005934 | -4.9671 / -0.024768 |
+| NE006o stage3 Conv2d g4 | 6 | 11.1805 / 11.1818 | 12.8957 / 13.0939 | 0.939752 / 0.954255 | +1.7152 / -0.001827 | -0.0193 / +0.000189 | -0.8369 / -0.005551 | -4.8899 / -0.024385 |
+| NE006p stage4 Conv2d g4 | 6 | 11.6581 / 11.7158 | 13.1833 / 13.4054 | 0.940243 / 0.954534 | +1.5252 / +0.000364 | +0.2683 / +0.000680 | -0.5493 / -0.005060 | -4.6023 / -0.023895 |
+| NE006q stage5 Conv2d g4 | 6 | 11.6677 / 11.7584 | 13.2033 / 13.4520 | 0.943476 / 0.958300 | +1.5356 / +0.007208 | +0.2883 / +0.003913 | -0.5294 / -0.001827 | -4.5823 / -0.020661 |
+
+single-sample sanity 只用于确认运行，不作为策略判断：
+
+| variant | single pre SNR | single final SNR |
+|---|---:|---:|
+| NE006m stage1 | 13.2654 | 13.3391 |
+| NE006n stage2 | 13.1999 | 13.2849 |
+| NE006o stage3 | 13.2277 | 13.2529 |
+| NE006p stage4 | 13.1922 | 13.2534 |
+| NE006q stage5 | 13.0585 | 13.2928 |
+
+by-source 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
+
+| variant | Anisotropic | Kerry3D | Shots0001 |
+|---|---:|---:|---:|
+| NE006m stage1 | 13.7274 / +0.4472 | 9.0688 / +0.0356 | 13.2204 / +0.2158 |
+| NE006n stage2 | 13.1214 / -0.1589 | 9.0472 / +0.0140 | 12.9157 / -0.0889 |
+| NE006o stage3 | 13.2403 / -0.0399 | 9.0576 / +0.0244 | 12.9876 / -0.0171 |
+| NE006p stage4 | 13.7863 / +0.5061 | 9.0643 / +0.0311 | 13.2367 / +0.2321 |
+| NE006q stage5 | 13.6798 / +0.3996 | 9.0883 / +0.0552 | 13.2811 / +0.2764 |
+
+by-input-SNR 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
+
+| variant | -2 dB | -1 dB | 1 dB | 5 dB | 10 dB |
+|---|---:|---:|---:|---:|---:|
+| NE006m stage1 | 11.8556 / +0.2052 | 12.2781 / +0.2206 | 12.9693 / +0.2441 | 13.9681 / +0.2711 | 14.7339 / +0.2893 |
+| NE006n stage2 | 11.5924 / -0.0580 | 11.9858 / -0.0716 | 12.6333 / -0.0918 | 13.5742 / -0.1229 | 14.3067 / -0.1380 |
+| NE006o stage3 | 11.6430 / -0.0075 | 12.0441 / -0.0134 | 12.7083 / -0.0169 | 13.6710 / -0.0261 | 14.4122 / -0.0324 |
+| NE006p stage4 | 11.8864 / +0.2359 | 12.3045 / +0.2470 | 12.9879 / +0.2628 | 13.9860 / +0.2889 | 14.7518 / +0.3071 |
+| NE006q stage5 | 11.8788 / +0.2283 | 12.3030 / +0.2456 | 13.0011 / +0.2759 | 14.0238 / +0.3267 | 14.8096 / +0.3650 |
+
+by-missing-rate 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
+
+| variant | 0.02 | 0.08 | 0.18 | 0.28 | 0.38 |
+|---|---:|---:|---:|---:|---:|
+| NE006m stage1 | 14.2050 / +0.2805 | 13.8991 / +0.2785 | 13.3185 / +0.2584 | 12.6297 / +0.2269 | 11.7528 / +0.1860 |
+| NE006n stage2 | 13.8302 / -0.0944 | 13.5176 / -0.1030 | 12.9522 / -0.1079 | 12.3042 / -0.0986 | 11.4883 / -0.0784 |
+| NE006o stage3 | 13.9245 / -0.0000 | 13.6138 / -0.0068 | 13.0433 / -0.0168 | 12.3758 / -0.0270 | 11.5211 / -0.0456 |
+| NE006p stage4 | 14.1806 / +0.2561 | 13.8856 / +0.2650 | 13.3393 / +0.2791 | 12.6788 / +0.2760 | 11.8323 / +0.2655 |
+| NE006q stage5 | 14.2333 / +0.3088 | 13.9186 / +0.2980 | 13.3463 / +0.2862 | 12.6797 / +0.2769 | 11.8385 / +0.2717 |
+
+人类可读结论：
+
+1. 单个 stage 不能解释 `all Conv2d except head` 的收益。最强单 stage 是 NE006q stage5，仅 `+0.2883 dB`；NE006l 是 `+0.8177 dB`，说明收益来自跨 stage 叠加，而不是单 stage 主导。
+2. stage5、stage4、stage1 是正收益 stage。排序为 stage5 `+0.2883 dB`，stage4 `+0.2683 dB`，stage1 `+0.2460 dB`。
+3. stage2 和 stage3 不应作为 g4 主策略对象。stage2 相对 baseline 为 `-0.0965 dB`，stage3 为 `-0.0193 dB`，都没有正向 full-grid 价值。
+4. by-source 显示 stage1/4/5 的主要收益来自 Anisotropic 与 Shots0001，Kerry3D 始终只有很小提升。stage4 在 Anisotropic 上最高 `+0.5061 dB`，stage5 在 Shots0001 上最高 `+0.2764 dB`。
+5. by-input-SNR 显示 stage1/4/5 在高输入 SNR 条件收益更大，尤其 stage5 从 `-2 dB` 的 `+0.2283 dB` 增至 `10 dB` 的 `+0.3650 dB`。
+6. by-missing-rate 显示 stage5/stage4 的收益相对稳定；stage1 随 missing rate 增大收益下降更明显。
+
+对后续实验的影响：
+
+- 继续做纯 g4 granularity 的边际价值下降。stage-level 已证明单 stage 不够强，组合收益来自多 stage 叠加。
+- 若仍在 NE006 内收尾，唯一值得补的最小组合是 `stage1 + stage4 + stage5 Conv2d g4`，因为这三个 stage 是正收益来源，selected count 18，可能接近 NE006l 的 30 个 selected count 效果。
+- 更建议进入 NE007：以 W4A4 为主对象做 selective A8 / mixed precision。优先候选为 stage5、stage4、stage1 的 Conv2d，或者以 NE006l `all Conv2d except head g4` 为基础，将 residual 最大的 stage/role 升 A8。
+- 不建议继续研究 stage2/stage3 g4，也不建议回到 split/merge、head 或 range/clipping。
