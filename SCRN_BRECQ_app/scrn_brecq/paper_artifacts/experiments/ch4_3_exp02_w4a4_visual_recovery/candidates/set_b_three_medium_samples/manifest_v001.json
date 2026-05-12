@@ -1,0 +1,236 @@
+{
+  "activation_experiment": "w4a4",
+  "activation_label": "W4A4",
+  "candidate_set": "set_b_three_medium_samples",
+  "created_at": "2026-05-12T19:21:50",
+  "display_protocol": {
+    "amplitude_space": "restored from normalized per-patch absmax for display",
+    "color_scaling": "symmetric per row across all six panels",
+    "colorbar_style": "none",
+    "colormap": "seismic",
+    "column_label_style": "labels",
+    "columns": [
+      "Clean",
+      "Degraded input",
+      "FP32",
+      "W4A32 final",
+      "W4A4 pre-act",
+      "W4A4 final"
+    ],
+    "layout": "3 rows x 6 columns",
+    "metric_space": "normalized per-patch absmax",
+    "panel_metric_style": "snr",
+    "row_label_style": "none"
+  },
+  "experiment_id": "ch4_3_exp02_w4a4_visual_recovery",
+  "figure_files": {
+    "pdf": "SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_3_exp02_w4a4_visual_recovery/candidates/set_b_three_medium_samples/fig_ch4_3_w4a4_3x6_medium_samples_v001.pdf",
+    "png": "SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_3_exp02_w4a4_visual_recovery/candidates/set_b_three_medium_samples/fig_ch4_3_w4a4_3x6_medium_samples_v001.png"
+  },
+  "manifest_warnings": [],
+  "rows": [
+    {
+      "activation_final_minus_fp32_snr_db": -5.931477309427214,
+      "activation_final_snr_db": 12.86614819387266,
+      "activation_pre_snr_db": 12.611003046723715,
+      "computed_panel_metrics": {
+        "activation_final": {
+          "snr_db": 12.86614819387266,
+          "ssim": 0.9762163625488741
+        },
+        "activation_pre": {
+          "snr_db": 12.611003046723715,
+          "ssim": 0.982482955971416
+        },
+        "degraded": {
+          "snr_db": 0.062374108952309014,
+          "ssim": 0.6673479717653927
+        },
+        "fp32": {
+          "snr_db": 18.797625503299873,
+          "ssim": 0.9955726539004955
+        },
+        "w4a32_final": {
+          "snr_db": 18.638017328829342,
+          "ssim": 0.9962378360013949
+        }
+      },
+      "condition_index": 12,
+      "fp32_snr_db": 18.797625503299873,
+      "fp32_ssim": 0.9955726539004955,
+      "input_snr_db": 0.062374108952309014,
+      "input_ssim": 0.6673479717653927,
+      "missing_rate": 0.18,
+      "normalization_scale": 1.0,
+      "patch_file": "test_000041.npy",
+      "patch_index": 40,
+      "quant_post_minus_fp32_snr_db": -5.931477309427214,
+      "quant_post_minus_pre_snr_db": 0.2551451471489443,
+      "quant_post_recon_snr_db": 12.86614819387266,
+      "quant_post_recon_ssim": 0.9762163625488741,
+      "quant_pre_minus_fp32_snr_db": -6.186622456576158,
+      "quant_pre_recon_snr_db": 12.611003046723715,
+      "quant_pre_recon_ssim": 0.982482955971416,
+      "selection": {
+        "condition_medians": {
+          "fp32_snr_db": 18.129803862801577,
+          "quant_post_minus_fp32_snr_db": -3.6255590443485026,
+          "quant_post_minus_pre_snr_db": 1.8138751366399584,
+          "quant_pre_minus_fp32_snr_db": -5.8716357047139995
+        },
+        "method": "medium_condition_distinct_source_representative",
+        "representative_score": 1.5858353366677833,
+        "row_label": "sample_1"
+      },
+      "snr_setting_db": 1.0,
+      "source": "Anisotropic",
+      "testset_id": "paper5_energy_filtered_perpatch_absmax_478",
+      "w4a32_final_snr_db": 18.638017328829342
+    },
+    {
+      "activation_final_minus_fp32_snr_db": -4.6878146407746355,
+      "activation_final_snr_db": 5.445395475931417,
+      "activation_pre_snr_db": 5.403986463526853,
+      "computed_panel_metrics": {
+        "activation_final": {
+          "snr_db": 5.445395475931417,
+          "ssim": 0.9728070591502324
+        },
+        "activation_pre": {
+          "snr_db": 5.403986463526853,
+          "ssim": 0.9665001592950212
+        },
+        "degraded": {
+          "snr_db": 1.0000143116256033,
+          "ssim": 0.8890653135857386
+        },
+        "fp32": {
+          "snr_db": 10.133210116706053,
+          "ssim": 0.997581582305743
+        },
+        "w4a32_final": {
+          "snr_db": 10.092567252908601,
+          "ssim": 0.9975723496792371
+        }
+      },
+      "condition_index": 12,
+      "fp32_snr_db": 10.133210116706053,
+      "fp32_ssim": 0.997581582305743,
+      "input_snr_db": 1.0000143116256033,
+      "input_ssim": 0.8890653135857386,
+      "missing_rate": 0.18,
+      "normalization_scale": 0.5711080431938171,
+      "patch_file": "test_000076.npy",
+      "patch_index": 75,
+      "quant_post_minus_fp32_snr_db": -4.6878146407746355,
+      "quant_post_minus_pre_snr_db": 0.041409012404564294,
+      "quant_post_recon_snr_db": 5.445395475931417,
+      "quant_post_recon_ssim": 0.9728070591502324,
+      "quant_pre_minus_fp32_snr_db": -4.7292236531792,
+      "quant_pre_recon_snr_db": 5.403986463526853,
+      "quant_pre_recon_ssim": 0.9665001592950212,
+      "selection": {
+        "condition_medians": {
+          "fp32_snr_db": 18.129803862801577,
+          "quant_post_minus_fp32_snr_db": -3.6255590443485026,
+          "quant_post_minus_pre_snr_db": 1.8138751366399584,
+          "quant_pre_minus_fp32_snr_db": -5.8716357047139995
+        },
+        "method": "medium_condition_distinct_source_representative",
+        "representative_score": 1.9058008185935513,
+        "row_label": "sample_2"
+      },
+      "snr_setting_db": 1.0,
+      "source": "Kerry3D",
+      "testset_id": "paper5_energy_filtered_perpatch_absmax_478",
+      "w4a32_final_snr_db": 10.092567252908601
+    },
+    {
+      "activation_final_minus_fp32_snr_db": -3.8396255850632883,
+      "activation_final_snr_db": 16.007559107142935,
+      "activation_pre_snr_db": 14.133820434042683,
+      "computed_panel_metrics": {
+        "activation_final": {
+          "snr_db": 16.007559107142935,
+          "ssim": 0.9603019460132681
+        },
+        "activation_pre": {
+          "snr_db": 14.133820434042683,
+          "ssim": 0.9632993616448046
+        },
+        "degraded": {
+          "snr_db": 0.16325362436994467,
+          "ssim": 0.41471353591824517
+        },
+        "fp32": {
+          "snr_db": 19.847184692206223,
+          "ssim": 0.9826409177987601
+        },
+        "w4a32_final": {
+          "snr_db": 19.72015211051067,
+          "ssim": 0.9826599072729365
+        }
+      },
+      "condition_index": 12,
+      "fp32_snr_db": 19.847184692206223,
+      "fp32_ssim": 0.9826409177987601,
+      "input_snr_db": 0.16325362436994467,
+      "input_ssim": 0.41471353591824517,
+      "missing_rate": 0.18,
+      "normalization_scale": 0.05589843541383743,
+      "patch_file": "test_000100.npy",
+      "patch_index": 99,
+      "quant_post_minus_fp32_snr_db": -3.8396255850632883,
+      "quant_post_minus_pre_snr_db": 1.8737386731002523,
+      "quant_post_recon_snr_db": 16.007559107142935,
+      "quant_post_recon_ssim": 0.9603019460132681,
+      "quant_pre_minus_fp32_snr_db": -5.713364258163541,
+      "quant_pre_recon_snr_db": 14.133820434042683,
+      "quant_pre_recon_ssim": 0.9632993616448046,
+      "selection": {
+        "condition_medians": {
+          "fp32_snr_db": 18.129803862801577,
+          "quant_post_minus_fp32_snr_db": -3.6255590443485026,
+          "quant_post_minus_pre_snr_db": 1.8138751366399584,
+          "quant_pre_minus_fp32_snr_db": -5.8716357047139995
+        },
+        "method": "medium_condition_distinct_source_representative",
+        "representative_score": 0.21372904762982742,
+        "row_label": "sample_3"
+      },
+      "snr_setting_db": 1.0,
+      "source": "Shots0001",
+      "testset_id": "paper5_energy_filtered_perpatch_absmax_478",
+      "w4a32_final_snr_db": 19.72015211051067
+    }
+  ],
+  "selection_policy": {
+    "condition": {
+      "missing_rate": 0.18,
+      "snr_setting_db": 1.0
+    },
+    "description": "Select three source-diverse median-like representatives under medium degradation.",
+    "score_fields": [
+      "fp32_snr_db",
+      "quant_pre_minus_fp32_snr_db",
+      "quant_post_minus_fp32_snr_db",
+      "quant_post_minus_pre_snr_db"
+    ],
+    "source_priority": [
+      "Anisotropic",
+      "Kerry3D",
+      "Shots0001"
+    ]
+  },
+  "source_artifacts": {
+    "activation_eval_run": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/eval/20260509_234948_normalized_w4a4_tensor_a5000_grid478_seed20260507",
+    "activation_final_checkpoint": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/quant/20260509_232313_normalized_w4a4_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq.pth",
+    "activation_pre_act_checkpoint": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/quant/20260509_232313_normalized_w4a4_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq_pre_act_recon.pth",
+    "grid_metrics": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/eval/20260509_234948_normalized_w4a4_tensor_a5000_grid478_seed20260507/metrics.json",
+    "per_sample_metrics": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/eval/20260509_234948_normalized_w4a4_tensor_a5000_grid478_seed20260507/per_sample_metrics.jsonl",
+    "test_dataset": "SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478",
+    "test_dataset_manifest": "SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478/manifest.json",
+    "w4a32_final_checkpoint": "SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq.pth"
+  },
+  "version": "v001"
+}

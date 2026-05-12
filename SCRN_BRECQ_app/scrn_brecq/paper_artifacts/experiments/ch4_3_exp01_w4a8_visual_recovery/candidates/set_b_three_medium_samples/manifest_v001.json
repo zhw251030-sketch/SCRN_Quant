@@ -1,0 +1,236 @@
+{
+  "activation_experiment": "w4a8",
+  "activation_label": "W4A8",
+  "candidate_set": "set_b_three_medium_samples",
+  "created_at": "2026-05-12T19:21:37",
+  "display_protocol": {
+    "amplitude_space": "restored from normalized per-patch absmax for display",
+    "color_scaling": "symmetric per row across all six panels",
+    "colorbar_style": "none",
+    "colormap": "seismic",
+    "column_label_style": "labels",
+    "columns": [
+      "Clean",
+      "Degraded input",
+      "FP32",
+      "W4A32 final",
+      "W4A8 pre-act",
+      "W4A8 final"
+    ],
+    "layout": "3 rows x 6 columns",
+    "metric_space": "normalized per-patch absmax",
+    "panel_metric_style": "snr",
+    "row_label_style": "none"
+  },
+  "experiment_id": "ch4_3_exp01_w4a8_visual_recovery",
+  "figure_files": {
+    "pdf": "SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_3_exp01_w4a8_visual_recovery/candidates/set_b_three_medium_samples/fig_ch4_3_w4a8_3x6_medium_samples_v001.pdf",
+    "png": "SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_3_exp01_w4a8_visual_recovery/candidates/set_b_three_medium_samples/fig_ch4_3_w4a8_3x6_medium_samples_v001.png"
+  },
+  "manifest_warnings": [],
+  "rows": [
+    {
+      "activation_final_minus_fp32_snr_db": -0.34727238002334104,
+      "activation_final_snr_db": 22.9609109413493,
+      "activation_pre_snr_db": 22.951909492378206,
+      "computed_panel_metrics": {
+        "activation_final": {
+          "snr_db": 22.9609109413493,
+          "ssim": 0.9902552138681393
+        },
+        "activation_pre": {
+          "snr_db": 22.951909492378206,
+          "ssim": 0.9903038691921828
+        },
+        "degraded": {
+          "snr_db": 0.2327236427801259,
+          "ssim": 0.3647129203870878
+        },
+        "fp32": {
+          "snr_db": 23.308183321372642,
+          "ssim": 0.9910933190895275
+        },
+        "w4a32_final": {
+          "snr_db": 23.336316429649454,
+          "ssim": 0.9912167523603381
+        }
+      },
+      "condition_index": 12,
+      "fp32_snr_db": 23.308183321372642,
+      "fp32_ssim": 0.9910933190895275,
+      "input_snr_db": 0.2327236427801259,
+      "input_ssim": 0.3647129203870878,
+      "missing_rate": 0.18,
+      "normalization_scale": 0.07579241693019867,
+      "patch_file": "test_000072.npy",
+      "patch_index": 71,
+      "quant_post_minus_fp32_snr_db": -0.34727238002334104,
+      "quant_post_minus_pre_snr_db": 0.009001448971094561,
+      "quant_post_recon_snr_db": 22.9609109413493,
+      "quant_post_recon_ssim": 0.9902552138681393,
+      "quant_pre_minus_fp32_snr_db": -0.3562738289944356,
+      "quant_pre_recon_snr_db": 22.951909492378206,
+      "quant_pre_recon_ssim": 0.9903038691921828,
+      "selection": {
+        "condition_medians": {
+          "fp32_snr_db": 18.129803862801577,
+          "quant_post_minus_fp32_snr_db": -0.1421006710118249,
+          "quant_post_minus_pre_snr_db": 0.0027886328907760216,
+          "quant_pre_minus_fp32_snr_db": -0.15179173605970853
+        },
+        "method": "medium_condition_distinct_source_representative",
+        "representative_score": 5.304505743470226,
+        "row_label": "sample_1"
+      },
+      "snr_setting_db": 1.0,
+      "source": "Anisotropic",
+      "testset_id": "paper5_energy_filtered_perpatch_absmax_478",
+      "w4a32_final_snr_db": 23.336316429649454
+    },
+    {
+      "activation_final_minus_fp32_snr_db": -0.1417726611365957,
+      "activation_final_snr_db": 9.660625957115101,
+      "activation_pre_snr_db": 9.657102301479785,
+      "computed_panel_metrics": {
+        "activation_final": {
+          "snr_db": 9.660625957115101,
+          "ssim": 0.9897635497982502
+        },
+        "activation_pre": {
+          "snr_db": 9.657102301479785,
+          "ssim": 0.9900398688274016
+        },
+        "degraded": {
+          "snr_db": 1.0000010996233835,
+          "ssim": 0.7335940364037068
+        },
+        "fp32": {
+          "snr_db": 9.802398618251697,
+          "ssim": 0.9911510406528872
+        },
+        "w4a32_final": {
+          "snr_db": 9.775741593428346,
+          "ssim": 0.9911807887038987
+        }
+      },
+      "condition_index": 12,
+      "fp32_snr_db": 9.802398618251697,
+      "fp32_ssim": 0.9911510406528872,
+      "input_snr_db": 1.0000010996233835,
+      "input_ssim": 0.7335940364037068,
+      "missing_rate": 0.18,
+      "normalization_scale": 0.5711080431938171,
+      "patch_file": "test_000077.npy",
+      "patch_index": 76,
+      "quant_post_minus_fp32_snr_db": -0.1417726611365957,
+      "quant_post_minus_pre_snr_db": 0.003523655635316203,
+      "quant_post_recon_snr_db": 9.660625957115101,
+      "quant_post_recon_ssim": 0.9897635497982502,
+      "quant_pre_minus_fp32_snr_db": -0.1452963167719119,
+      "quant_pre_recon_snr_db": 9.657102301479785,
+      "quant_pre_recon_ssim": 0.9900398688274016,
+      "selection": {
+        "condition_medians": {
+          "fp32_snr_db": 18.129803862801577,
+          "quant_post_minus_fp32_snr_db": -0.1421006710118249,
+          "quant_post_minus_pre_snr_db": 0.0027886328907760216,
+          "quant_pre_minus_fp32_snr_db": -0.15179173605970853
+        },
+        "method": "medium_condition_distinct_source_representative",
+        "representative_score": 0.7679994208517233,
+        "row_label": "sample_2"
+      },
+      "snr_setting_db": 1.0,
+      "source": "Kerry3D",
+      "testset_id": "paper5_energy_filtered_perpatch_absmax_478",
+      "w4a32_final_snr_db": 9.775741593428346
+    },
+    {
+      "activation_final_minus_fp32_snr_db": -0.09113491188789169,
+      "activation_final_snr_db": 16.92053485816765,
+      "activation_pre_snr_db": 16.91796274359706,
+      "computed_panel_metrics": {
+        "activation_final": {
+          "snr_db": 16.92053485816765,
+          "ssim": 0.9743155541455518
+        },
+        "activation_pre": {
+          "snr_db": 16.91796274359706,
+          "ssim": 0.9739058886867221
+        },
+        "degraded": {
+          "snr_db": 0.16495148613081023,
+          "ssim": 0.3927857610033162
+        },
+        "fp32": {
+          "snr_db": 17.01166977005554,
+          "ssim": 0.9760707404057625
+        },
+        "w4a32_final": {
+          "snr_db": 16.951153478190047,
+          "ssim": 0.9758046753076435
+        }
+      },
+      "condition_index": 12,
+      "fp32_snr_db": 17.01166977005554,
+      "fp32_ssim": 0.9760707404057625,
+      "input_snr_db": 0.16495148613081023,
+      "input_ssim": 0.3927857610033162,
+      "missing_rate": 0.18,
+      "normalization_scale": 0.048245202749967575,
+      "patch_file": "test_000152.npy",
+      "patch_index": 151,
+      "quant_post_minus_fp32_snr_db": -0.09113491188789169,
+      "quant_post_minus_pre_snr_db": 0.002572114570590145,
+      "quant_post_recon_snr_db": 16.92053485816765,
+      "quant_post_recon_ssim": 0.9743155541455518,
+      "quant_pre_minus_fp32_snr_db": -0.09370702645848183,
+      "quant_pre_recon_snr_db": 16.91796274359706,
+      "quant_pre_recon_ssim": 0.9739058886867221,
+      "selection": {
+        "condition_medians": {
+          "fp32_snr_db": 18.129803862801577,
+          "quant_post_minus_fp32_snr_db": -0.1421006710118249,
+          "quant_post_minus_pre_snr_db": 0.0027886328907760216,
+          "quant_pre_minus_fp32_snr_db": -0.15179173605970853
+        },
+        "method": "medium_condition_distinct_source_representative",
+        "representative_score": 0.8806370661661357,
+        "row_label": "sample_3"
+      },
+      "snr_setting_db": 1.0,
+      "source": "Shots0001",
+      "testset_id": "paper5_energy_filtered_perpatch_absmax_478",
+      "w4a32_final_snr_db": 16.951153478190047
+    }
+  ],
+  "selection_policy": {
+    "condition": {
+      "missing_rate": 0.18,
+      "snr_setting_db": 1.0
+    },
+    "description": "Select three source-diverse median-like representatives under medium degradation.",
+    "score_fields": [
+      "fp32_snr_db",
+      "quant_pre_minus_fp32_snr_db",
+      "quant_post_minus_fp32_snr_db",
+      "quant_post_minus_pre_snr_db"
+    ],
+    "source_priority": [
+      "Anisotropic",
+      "Kerry3D",
+      "Shots0001"
+    ]
+  },
+  "source_artifacts": {
+    "activation_eval_run": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction/eval/20260509_221644_normalized_w4a8_tensor_a5000_grid478_seed20260507",
+    "activation_final_checkpoint": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq.pth",
+    "activation_pre_act_checkpoint": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq_pre_act_recon.pth",
+    "grid_metrics": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction/eval/20260509_221644_normalized_w4a8_tensor_a5000_grid478_seed20260507/metrics.json",
+    "per_sample_metrics": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction/eval/20260509_221644_normalized_w4a8_tensor_a5000_grid478_seed20260507/per_sample_metrics.jsonl",
+    "test_dataset": "SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478",
+    "test_dataset_manifest": "SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478/manifest.json",
+    "w4a32_final_checkpoint": "SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq.pth"
+  },
+  "version": "v001"
+}

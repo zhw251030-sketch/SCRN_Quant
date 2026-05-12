@@ -374,3 +374,93 @@ conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/
 - 新增 PNG 均为 `4260 x 2160` RGBA 图像，对应 PDF 均为 1 页。
 - `git diff --check -- SCRN_BRECQ_app/scrn_brecq/paper_artifacts/ARTIFACTS_LOG.md` 无输出。
 - 本地选择与版式开关测试重新通过：`Ran 9 tests in 3.230s`。
+
+## 2026-05-12 ch4_3 W4A8/W4A4 激活量化 3×6 视觉恢复候选图
+
+背景：
+
+- 用户要求为 W4A8 和 W4A4 两个激活量化实验各画一组视觉恢复图。
+- 每行 6 列，列顺序固定为：`Clean / Degraded input / FP32 / W4A32 final / W4A8 或 W4A4 pre-act / W4A8 或 W4A4 final`。
+- 本轮先为每个实验生成若干张 3 行 × 6 列候选图，用于后续挑选。
+
+文件管理：
+
+- 新建 W4A8 实验目录：`ch4_3_exp01_w4a8_visual_recovery`。
+- 新建 W4A4 实验目录：`ch4_3_exp02_w4a4_visual_recovery`。
+- 两个实验均包含 `README.md`、`experiment_info.json`、候选集目录、`shortlisted/` 和 `final/`。
+- 本地生成脚本位于 W4A8 实验的 `scripts/` 下，按 `.gitignore` 规则不纳入 git 提交。
+- 本地测试文件位于 `paper_artifacts/tests/`，同样不纳入 git 提交。
+
+数据来源：
+
+- W4A8 使用 `NE000_0_normalized_w4a8_activation_reconstruction`：
+  - pre-act checkpoint：`quantized_scrn_brecq_pre_act_recon.pth`
+  - final checkpoint：`quantized_scrn_brecq.pth`
+  - full-grid metrics：`20260509_221644_normalized_w4a8_tensor_a5000_grid478_seed20260507`
+- W4A4 使用 baseline `NE000_2_normalized_w4a4_activation_reconstruction_probe`：
+  - pre-act checkpoint：`quantized_scrn_brecq_pre_act_recon.pth`
+  - final checkpoint：`quantized_scrn_brecq.pth`
+  - full-grid metrics：`20260509_234948_normalized_w4a4_tensor_a5000_grid478_seed20260507`
+- W4A32 对照列复用 `20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq.pth`。
+
+本地测试：
+
+- 先新增脚本测试，约束 6 列顺序、W4A8/W4A4 标签和 manifest 字段。
+- 初次测试按预期失败，原因是新脚本尚不存在。
+- 实现脚本后测试通过：`Ran 4 tests in 3.404s`。
+- 之后增加固定 patch 选择测试，用于强制使用 `test_000297.npy` 生成三种退化程度候选；初次失败后实现 `--fixed-patch-file`，最终测试通过。
+- 最终联合测试：
+
+```bash
+conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.paper_artifacts.tests.test_w4a32_visual_recovery_selection SCRN_BRECQ_app.scrn_brecq.paper_artifacts.tests.test_activation_visual_recovery
+```
+
+- 结果：通过，`Ran 14 tests in 5.238s`。
+
+生成命令：
+
+```bash
+conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_3_exp01_w4a8_visual_recovery/scripts/make_activation_visual_recovery.py --activation-experiment all --candidate-set all --device cuda --cuda-device-index 1 --set-a-selection fixed_patch_from_medium --row-label-style none --panel-metric-style snr --column-label-style labels --colorbar-style none
+```
+
+- 生成 W4A8 `set_a` v001、W4A8 `set_b` v001、W4A4 `set_a` v001、W4A4 `set_b` v001。
+
+```bash
+conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_3_exp01_w4a8_visual_recovery/scripts/make_activation_visual_recovery.py --activation-experiment all --candidate-set set_a_three_degradation_levels --fixed-patch-file test_000297.npy --device cuda --cuda-device-index 1 --row-label-style none --panel-metric-style snr --column-label-style labels --colorbar-style none
+```
+
+- 生成 W4A8 `set_a` v002 和 W4A4 `set_a` v002。
+
+新增候选图：
+
+| 实验 | 候选集 | 版本 | 选样 | 说明 |
+|---|---|---|---|---|
+| W4A8 | set_a | v001 | 自动选择同一 patch 三退化程度 | 选中 Kerry3D `test_000077.npy`，结构偏弱，保留作候选 |
+| W4A8 | set_a | v002 | 固定 `test_000297.npy` 三退化程度 | 视觉结构更清楚，当前优先推荐 |
+| W4A8 | set_b | v001 | 三个中等退化样本 | 覆盖 Anisotropic/Kerry3D/Shots0001 |
+| W4A4 | set_a | v001 | 自动选择同一 patch 三退化程度 | 选中 Shots0001 `test_000100.npy`，W4A4 损失明显 |
+| W4A4 | set_a | v002 | 固定 `test_000297.npy` 三退化程度 | 与 W4A8 v002 对齐，便于横向比较 |
+| W4A4 | set_b | v001 | 三个中等退化样本 | 覆盖 Anisotropic/Kerry3D/Shots0001 |
+
+关键样本：
+
+- W4A8 `set_a` v002：`test_000297.npy`，`patch_index=296`，`source=Shots0001`。
+- W4A4 `set_a` v002：`test_000297.npy`，`patch_index=296`，`source=Shots0001`。
+- 三种退化条件：
+  - light：`snr_setting_db=10.0`，`missing_rate=0.02`
+  - medium：`snr_setting_db=1.0`，`missing_rate=0.18`
+  - heavy：`snr_setting_db=-2.0`，`missing_rate=0.38`
+
+人工检查：
+
+- 六张图均为 3 行 × 6 列。
+- 图内无最左侧行标签。
+- 顶部保留列含义和 SNR。
+- W4A8 v002 与 W4A4 v002 使用同一 patch，适合对比 W4A8/W4A4 激活量化差异。
+
+提交前复核：
+
+- 两个 `experiment_info.json` 和 6 个 manifest 均通过 `jq empty`。
+- 6 张 PNG 均为 `5040 x 2040` RGBA 图像。
+- 6 张 PDF 均为 1 页 PDF。
+- 本地联合测试通过：`Ran 14 tests in 5.238s`。

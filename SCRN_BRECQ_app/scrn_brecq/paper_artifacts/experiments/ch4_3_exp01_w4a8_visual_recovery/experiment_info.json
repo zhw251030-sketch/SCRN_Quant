@@ -1,0 +1,29 @@
+{
+  "activation_experiment": "w4a8",
+  "activation_label": "W4A8",
+  "created_date": "2026-05-12",
+  "experiment_id": "ch4_3_exp01_w4a8_visual_recovery",
+  "layout": {
+    "columns": [
+      "Clean",
+      "Degraded input",
+      "FP32",
+      "W4A32 final",
+      "W4A8 pre-act",
+      "W4A8 final"
+    ],
+    "rows": 3
+  },
+  "purpose": "Generate 3x6 visual recovery candidates for W4A8 activation quantization.",
+  "source_artifacts": {
+    "activation_eval_run": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction/eval/20260509_221644_normalized_w4a8_tensor_a5000_grid478_seed20260507",
+    "activation_final_checkpoint": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq.pth",
+    "activation_pre_act_checkpoint": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction/quant/20260509_213701_normalized_w4a8_tensor_a5000_1024cali_single_gpu1/checkpoints/quantized_scrn_brecq_pre_act_recon.pth",
+    "grid_metrics": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction/eval/20260509_221644_normalized_w4a8_tensor_a5000_grid478_seed20260507/metrics.json",
+    "per_sample_metrics": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_0_normalized_w4a8_activation_reconstruction/eval/20260509_221644_normalized_w4a8_tensor_a5000_grid478_seed20260507/per_sample_metrics.jsonl",
+    "test_dataset": "SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478",
+    "test_dataset_manifest": "SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478/manifest.json",
+    "w4a32_final_checkpoint": "SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq.pth"
+  },
+  "status": "initialized_for_candidate_generation"
+}
