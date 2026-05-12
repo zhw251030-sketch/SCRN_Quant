@@ -267,3 +267,62 @@ conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/
 - 新版 PNG 重新通过 `file` 检查，分辨率均为 `4260 x 2160`，格式为 RGBA PNG。
 - 本地选择逻辑测试重新通过：`Ran 7 tests in 3.448s`。
 - 按“只提交图件结果和日志”的原则，本地画图脚本与测试文件继续保留在工作区，但不纳入 git 提交。
+
+## 2026-05-12 ch4_2_exp01 W4A32 视觉恢复纯数据版 v005/v006
+
+背景：
+
+- 论文图件需要进一步去除图内冗余文字。用户明确指出 `set_b_three_medium_samples` v002 左侧 `Sample 1/2/3` 不适合直接放入论文。
+- 本轮版式原则调整为“只保留 3×5 图像数据”，图内不显示行标签、列标题、小图 SNR 或色标文字。
+- 样本身份、列含义、退化条件与指标继续通过 `manifest_vXXX.json` 和 `selection_summary_vXXX.md` 追踪，避免把解释性文字塞进图内。
+
+本地工具更新：
+
+- 本地画图脚本新增 `--column-label-style {labels,none}`，用于关闭顶部列标题。
+- 本地画图脚本新增 `--colorbar-style {per_row,none}`，用于关闭右侧色标。
+- 本地脚本和测试文件仍按 `.gitignore` 规则仅作为生成工具保留，不纳入提交。
+
+测试：
+
+- 先新增测试约束“关闭列标题”和“关闭色标”两个行为。
+- 初次测试按预期失败，原因是脚本尚无 `column_title_text` 和 `should_draw_colorbar`。
+- 实现后重新运行：
+
+```bash
+conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.paper_artifacts.tests.test_w4a32_visual_recovery_selection
+```
+
+- 结果：通过，`Ran 9 tests in 3.228s`。
+
+生成命令与版本：
+
+```bash
+conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/scripts/make_w4a32_visual_recovery.py --candidate-set set_b_three_medium_samples --device cuda --cuda-device-index 1 --row-label-style none --panel-metric-style none --figure-title-style none --column-label-style none --colorbar-style none
+```
+
+- 生成 `set_b_three_medium_samples` v005：三张中等退化样本，图内无 `Sample 1/2/3`，无列标题，无 SNR，无色标。
+
+```bash
+conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/scripts/make_w4a32_visual_recovery.py --candidate-set set_a_three_degradation_levels --device cuda --cuda-device-index 1 --set-a-selection fixed_patch_from_medium --row-label-style none --panel-metric-style none --figure-title-style none --column-label-style none --colorbar-style none
+```
+
+- 生成 `set_a_three_degradation_levels` v006：固定同一 patch 的三种退化程度，图内无 `Light/Medium/Heavy`，无列标题，无 SNR，无色标。
+
+新增候选图：
+
+| 候选集 | 版本 | 选样 | 图内文字 | 说明 |
+|---|---|---|---|---|
+| set_b | v005 | Anisotropic/Kerry3D/Shots0001 中等退化样本 | none | 对应用户指出的 v002，去除 `Sample 1/2/3` 以及其他图内文字 |
+| set_a | v006 | 固定 `test_000297.npy`，三种退化程度 | none | 用图注说明三行退化程度，图内只保留数据图像 |
+
+人工检查：
+
+- `set_b_three_medium_samples` v005 图内已无 `Sample 1/2/3`。
+- `set_a_three_degradation_levels` v006 图内已无 `Light/Medium/Heavy`。
+- 两张图均只保留 3×5 恢复结果图像，样本来源以后续 manifest 和图注说明为准。
+
+提交前复核：
+
+- `manifest_v005.json` 和 `manifest_v006.json` 通过 `jq empty`。
+- 新版 PNG 均为 `4260 x 2160` RGBA 图像，对应 PDF 均为 1 页。
+- 本地选择与版式开关测试重新通过：`Ran 9 tests in 3.438s`。
