@@ -7060,3 +7060,39 @@ by-missing-rate 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
   2. `conv role g4`、`fusion branch g4`、`cnn branch g4`，从 NE004 的 Conv2d 主导结果里寻找比当前 selective 更接近 all Conv2d 的较小集合。
   3. `stage4/stage5 g4` 风险对照，验证旧 E006 中 stage5 独立细粒度有害的现象在 A4 normalized 协议下是否仍存在。
   4. 若仍没有 `>= +1 dB`，转向 mixed precision / selective A8，而不是继续扩大 tensor-wise range/clipping。
+
+## 2026-05-12 NE006 后续展开计划修订
+
+NE006 核心四组实验之后，后续路线需要从“验证旧 selective 策略”调整为“寻找 all Conv2d g4 收益中的关键缺失组”。当前证据是：
+
+- 旧重点组合 `split_proj + merge_proj + stage_output_conv` 有稳定收益，但只有 `+0.36 dB` 左右，不足以成为 W4A4 主策略。
+- `all Conv2d g4` 达到 `+0.8082 dB`，明显强于 selective，但仍未达到 `+1 dB` 强信号阈值。
+- `g4` 不弱于 per-channel，甚至在 selective 和 all Conv2d 两组对照里都略高，因此下一批优先做 g4 拆分，不优先做 per-channel sweep。
+- NE005 已排除 tensor-wise range/clipping 主线，后续不再回到 range/clipping，除非与 granularity 或 mixed precision 组合验证。
+
+下一批 NE006 建议按 g4 拆分执行：
+
+| priority | experiment | selector | 目的 |
+|---:|---|---|---|
+| 1 | NE006e | `stage_output_conv g4` | 判断原 selective 小集合里 stage output 是否贡献主要收益 |
+| 2 | NE006f | `split_proj + merge_proj g4` | 判断 fusion 投影是否需要与 stage output 绑定 |
+| 3 | NE006g | `conv role g4` | 覆盖普通 Conv2d role，寻找当前 selective 漏掉的收益 |
+| 4 | NE006h | `fusion branch g4` | 从 branch 维度验证 fusion 是否比 role-based 更集中 |
+| 5 | NE006i | `cnn branch g4` | 检查早期 CNN branch 是否贡献大 |
+| 6 | NE006j | `stage1/2/3/4/5 Conv2d g4` | 找 stage 层级热点，特别复核 stage5 风险 |
+| 7 | NE006k | `all Conv2d except stage5 g4` | 如果 stage5 独立细粒度不稳定，验证排除 stage5 后是否更稳 |
+
+判断标准：
+
+- 如果某个小集合达到 `+0.7 ~ +0.8 dB`，接近 all Conv2d g4，则优先围绕该集合做 g2/g4/g8 或少量 per-channel 对照。
+- 如果只有 all Conv2d 有收益，小集合都明显弱，说明 A4 activation 误差更分散，后续应转向 mixed precision / selective A8，而不是继续找单一小集合。
+- 如果任何拆分组合达到 `>= +1 dB`，再进入代表图、packed equivalence 和部署候选评估。
+- 如果 stage5 独立策略有害，应避免把 stage5 单独作为 fine granularity 默认策略，只在组合里谨慎纳入或显式排除。
+
+当前不建议立即做：
+
+- 不做 packed export：最佳结果未达到 `>= +1 dB` 主候选阈值。
+- 不做 per-channel 大 sweep：当前 per-channel 未优于 g4。
+- 不做 range/clipping 扩展：NE005 已显示收益接近噪声或有害。
+
+下一步实际执行应优先启动 NE006e-h 的 g4 拆分；如果这些拆分仍不能逼近 all Conv2d g4，则进入 mixed precision / selective A8 方向。
