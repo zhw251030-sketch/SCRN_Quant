@@ -326,3 +326,51 @@ conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/
 - `manifest_v005.json` 和 `manifest_v006.json` 通过 `jq empty`。
 - 新版 PNG 均为 `4260 x 2160` RGBA 图像，对应 PDF 均为 1 页。
 - 本地选择与版式开关测试重新通过：`Ran 9 tests in 3.438s`。
+
+## 2026-05-12 ch4_2_exp01 W4A32 视觉恢复保留 SNR 与列标题版
+
+背景：
+
+- 用户进一步明确版式需求：不要最左侧行文字，但需要保留 SNR 数据以及顶部各列图像含义。
+- 本轮图件因此采用：`row_label_style=none`、`panel_metric_style=snr`、`column_label_style=labels`。
+- 样本来源和退化条件仍通过 manifest 与 selection summary 追踪，图中不再放 `Sample 1/2/3` 或 `Light/Medium/Heavy`。
+
+生成命令与版本：
+
+```bash
+conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/scripts/make_w4a32_visual_recovery.py --candidate-set all --device cuda --cuda-device-index 1 --set-a-selection fixed_patch_from_medium --row-label-style none --panel-metric-style snr --figure-title-style none --column-label-style labels --colorbar-style per_row
+```
+
+- 生成 `set_a_three_degradation_levels` v007：无左侧行文字，保留列标题与 SNR，保留每行色标。
+- 生成 `set_b_three_medium_samples` v006：无左侧行文字，保留列标题与 SNR，保留每行色标。
+- 人工检查后发现色标会额外占用横向版面，因此继续生成无色标版本作为正文优先候选。
+
+```bash
+conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/scripts/make_w4a32_visual_recovery.py --candidate-set all --device cuda --cuda-device-index 1 --set-a-selection fixed_patch_from_medium --row-label-style none --panel-metric-style snr --figure-title-style none --column-label-style labels --colorbar-style none
+```
+
+- 生成 `set_a_three_degradation_levels` v008：无左侧行文字，保留列标题与 SNR，不显示色标。
+- 生成 `set_b_three_medium_samples` v007：无左侧行文字，保留列标题与 SNR，不显示色标。
+
+新增候选图：
+
+| 候选集 | 版本 | 左侧行文字 | 顶部列标题 | SNR | 色标 | 建议 |
+|---|---|---|---|---|---|---|
+| set_a | v007 | no | yes | yes | yes | 备用，色标占版面 |
+| set_a | v008 | no | yes | yes | no | 正文优先 |
+| set_b | v006 | no | yes | yes | yes | 备用，色标占版面 |
+| set_b | v007 | no | yes | yes | no | 正文优先 |
+
+人工检查：
+
+- `set_a_three_degradation_levels` v008 图内没有 `Light/Medium/Heavy` 行文字。
+- `set_b_three_medium_samples` v007 图内没有 `Sample 1/2/3` 行文字。
+- v008/v007 顶部保留 `Clean / Degraded input / FP32 / W4A32 pre / W4A32 final`。
+- v008/v007 对非 clean 图像保留 SNR 数值。
+
+提交前复核：
+
+- `set_a` 的 `manifest_v007.json`、`manifest_v008.json` 与 `set_b` 的 `manifest_v006.json`、`manifest_v007.json` 均通过 `jq empty`。
+- 新增 PNG 均为 `4260 x 2160` RGBA 图像，对应 PDF 均为 1 页。
+- `git diff --check -- SCRN_BRECQ_app/scrn_brecq/paper_artifacts/ARTIFACTS_LOG.md` 无输出。
+- 本地选择与版式开关测试重新通过：`Ran 9 tests in 3.230s`。
