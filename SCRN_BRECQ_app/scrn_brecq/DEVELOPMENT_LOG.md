@@ -6932,7 +6932,7 @@ NE006 分层实验矩阵：
 
 - `n_bits_w=4`，`n_bits_a=4`。
 - 保持 `num_samples=1024`、`batch_size=16`、`init_batch_size=64`、`iters_a=5000`、`activation_lr=0.0004`、`lp_norm=2.4`，与 NE000_2 / NE005 对齐。
-- `activation_range_method=none` 作为主线，避免把 NE006 与 NE005 的 range 因素混在一起。
+- 执行计划修正：细粒度 activation delta shape 需要通过 `activation_range_method=mse_grid` 写入，因此 NE006 实际使用 `mse_grid`；解释上仍把主变量限定为 granularity，不把 NE005 的 tensor-wise range/clipping 作为主线。
 - 使用物理 GPU 优先级 `1 -> 2 -> 3 -> 0`；单卡默认 GPU 1。
 - 输出目录建议：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE006_w4a4_activation_granularity/quant` 和 `.../eval`。
 
@@ -6966,3 +6966,97 @@ NE006 的关键决策树：
 - `all Conv2d per-channel` 主要是上限，不一定适合部署。
 - `stage5` 需要单独验证风险，不应因为 NE004 stage5 off gain 高就直接作为优化策略。
 - W4A8 只做 sanity，不应挤占 W4A4 主线资源。
+
+## 2026-05-12 NE006 W4A4 activation granularity 核心结果
+
+本轮完成 NE006 的 4 个最小闭环实验，目标是验证 W4A4 A4 activation gap 是否能通过 Conv2d selective granularity 修复。实际执行时按实现要求使用 `--activation-range-method mse_grid` 生成 per-channel / group-wise activation delta shape；解释上仍归类为 granularity 实验，不把 NE005 的 tensor-wise range/clipping 路线重新打开。
+
+固定设置：
+
+- 起点：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/inputs/e007_w4a32_nbitsa4_metadata_seed.pth`
+- calibration：`SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- eval：normalized `478 x 25` grid，seed `20260507`
+- activation reconstruction：`num_samples=1024`、`batch_size=16`、`init_batch_size=64`、`iters_a=5000`、`activation_lr=0.0004`、`lp_norm=2.4`
+- GPU：NE006a 用 GPU 1；NE006b 用 GPU 3；NE006c 用 GPU 0；NE006d 因 GPU 2 持续有外部进程，转用 GPU 3。NE006c 运行期间 GPU 0 出现外部 `swinir` 进程约 `868 MiB`，未 OOM，实验参数未改。
+
+产物目录与合法性：
+
+| variant | quant dir | eval dir | selected | verification |
+|---|---|---|---:|---|
+| NE006a selective g4 | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE006_w4a4_activation_granularity/quant/20260512_012630_ne006a_w4a4_g4_split_merge_stage_output_a5000_1024cali_gpu1` | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE006_w4a4_activation_granularity/eval/20260512_113739_ne006a_w4a4_g4_split_merge_stage_output_grid478_seed20260507` | 15 | passed |
+| NE006b selective per-channel | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE006_w4a4_activation_granularity/quant/20260512_012630_ne006b_w4a4_pc_split_merge_stage_output_a5000_1024cali_gpu3` | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE006_w4a4_activation_granularity/eval/20260512_113739_ne006b_w4a4_pc_split_merge_stage_output_grid478_seed20260507` | 15 | passed |
+| NE006c all Conv2d g4 | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE006_w4a4_activation_granularity/quant/20260512_012629_ne006c_w4a4_g4_all_conv2d_a5000_1024cali_gpu0` | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE006_w4a4_activation_granularity/eval/20260512_113739_ne006c_w4a4_g4_all_conv2d_grid478_seed20260507` | 31 | passed |
+| NE006d all Conv2d per-channel | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE006_w4a4_activation_granularity/quant/20260512_102116_ne006d_w4a4_pc_all_conv2d_a5000_1024cali_gpu3` | `SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE006_w4a4_activation_granularity/eval/20260512_114157_ne006d_w4a4_pc_all_conv2d_grid478_seed20260507` | 31 | passed |
+
+四个 final checkpoint 均为合法 W4A4：`weight_quant=true`、`act_quant=true`、`n_bits_a=4`、`activation_delta_count=52`、`initialized_activation_quantizers=52`、`non_positive_delta_count=0`、`level_offender_count=0`、weight bit counts 为 `4bit=50 / 8bit=2`。四个 grid eval 均为 `11950` rows。
+
+overall full-grid 结果：
+
+| variant | granularity | selected | pre SNR mean/median | final SNR mean/median | final SSIM mean/median | recon gain SNR/SSIM | vs NE000_2 W4A4 | gap to E007 W4A32 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| NE000_2 baseline | tensor | 51 | 11.1727 / 11.1577 | 12.9150 / 13.1180 | 0.939563 / 0.954078 | +1.7422 / -0.001929 | +0.0000 / +0.000000 | -4.8706 / -0.024574 |
+| NE006a selective g4 | g4 | 15 | 11.6854 / 11.7630 | 13.2824 / 13.4767 | 0.943762 / 0.958305 | +1.5970 / +0.011829 | +0.3674 / +0.004199 | -4.5032 / -0.020375 |
+| NE006b selective per-channel | per-channel | 15 | 11.7721 / 11.8035 | 13.2731 / 13.4541 | 0.944148 / 0.958580 | +1.5010 / +0.004267 | +0.3582 / +0.004585 | -4.5125 / -0.019989 |
+| NE006c all Conv2d g4 | g4 | 31 | 12.6877 / 12.8746 | 13.7231 / 13.9766 | 0.945327 / 0.960126 | +1.0354 / +0.014151 | +0.8082 / +0.005764 | -4.0624 / -0.018810 |
+| NE006d all Conv2d per-channel | per-channel | 31 | 12.5608 / 12.6432 | 13.6752 / 13.9117 | 0.945889 / 0.960663 | +1.1144 / +0.002959 | +0.7603 / +0.006326 | -4.1104 / -0.018248 |
+
+single-sample sanity 只用于确认运行，没有用于策略优劣判断：
+
+| variant | init s | recon s | elapsed min | single pre SNR/SSIM | single final SNR/SSIM | single recon gain |
+|---|---:|---:|---:|---:|---:|---:|
+| NE006a selective g4 | 26.3 | 1367.4 | 23.39 | 13.2416 / 0.893237 | 13.3777 / 0.907454 | +0.1361 / +0.014217 |
+| NE006b selective per-channel | 29.1 | 1366.9 | 23.43 | 13.3452 / 0.901292 | 13.4085 / 0.904635 | +0.0633 / +0.003342 |
+| NE006c all Conv2d g4 | 26.9 | 1968.7 | 33.41 | 13.0798 / 0.897449 | 13.4598 / 0.909815 | +0.3800 / +0.012366 |
+| NE006d all Conv2d per-channel | 29.4 | 1314.0 | 22.44 | 13.3368 / 0.908258 | 13.4437 / 0.910167 | +0.1070 / +0.001909 |
+
+by-source 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
+
+| variant | Anisotropic | Kerry3D | Shots0001 |
+|---|---:|---:|---:|
+| NE000_2 baseline | 13.2802 / +0.00 | 9.0332 / +0.00 | 13.0047 / +0.00 |
+| NE006a selective g4 | 13.8332 / +0.55 | 9.1187 / +0.09 | 13.3477 / +0.34 |
+| NE006b selective per-channel | 13.7811 / +0.50 | 9.1485 / +0.12 | 13.3452 / +0.34 |
+| NE006c all Conv2d g4 | 14.6337 / +1.35 | 9.1944 / +0.16 | 13.7339 / +0.73 |
+| NE006d all Conv2d per-channel | 14.5110 / +1.23 | 9.2155 / +0.18 | 13.6976 / +0.69 |
+
+by-input-SNR 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
+
+| variant | -2 dB | -1 dB | 1 dB | 5 dB | 10 dB |
+|---|---:|---:|---:|---:|---:|
+| NE000_2 baseline | 11.6505 / +0.00 | 12.0574 / +0.00 | 12.7252 / +0.00 | 13.6971 / +0.00 | 14.4447 / +0.00 |
+| NE006a selective g4 | 11.9312 / +0.28 | 12.3545 / +0.30 | 13.0656 / +0.34 | 14.1120 / +0.41 | 14.9485 / +0.50 |
+| NE006b selective per-channel | 11.9029 / +0.25 | 12.3312 / +0.27 | 13.0518 / +0.33 | 14.1140 / +0.42 | 14.9656 / +0.52 |
+| NE006c all Conv2d g4 | 12.3396 / +0.69 | 12.7811 / +0.72 | 13.5151 / +0.79 | 14.5793 / +0.88 | 15.4006 / +0.96 |
+| NE006d all Conv2d per-channel | 12.2798 / +0.63 | 12.7257 / +0.67 | 13.4628 / +0.74 | 14.5364 / +0.84 | 15.3714 / +0.93 |
+
+by-missing-rate 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
+
+| variant | 0.02 | 0.08 | 0.18 | 0.28 | 0.38 |
+|---|---:|---:|---:|---:|---:|
+| NE000_2 baseline | 13.9245 / +0.00 | 13.6206 / +0.00 | 13.0601 / +0.00 | 12.4028 / +0.00 | 11.5668 / +0.00 |
+| NE006a selective g4 | 14.3411 / +0.42 | 14.0199 / +0.40 | 13.4314 / +0.37 | 12.7460 / +0.34 | 11.8734 / +0.31 |
+| NE006b selective per-channel | 14.3468 / +0.42 | 14.0236 / +0.40 | 13.4200 / +0.36 | 12.7241 / +0.32 | 11.8510 / +0.28 |
+| NE006c all Conv2d g4 | 14.8362 / +0.91 | 14.5018 / +0.88 | 13.8812 / +0.82 | 13.1596 / +0.76 | 12.2368 / +0.67 |
+| NE006d all Conv2d per-channel | 14.8009 / +0.88 | 14.4599 / +0.84 | 13.8326 / +0.77 | 13.1000 / +0.70 | 12.1826 / +0.62 |
+
+人类可读结论：
+
+1. NE006 证明 granularity 比 NE005 的 range/clipping 更有效。NE005 最好只有 `+0.018 dB`，NE006 selective 可到 `+0.36 dB`，all Conv2d 可到 `+0.76 ~ +0.81 dB`。
+2. 但这 4 个核心实验都没有达到 `+1 dB` 强信号阈值，也没有接近 W4A32。即使最好的 NE006c，距离 E007 W4A32 final 仍有 `-4.0624 dB` mean SNR gap。
+3. `split_proj + merge_proj + stage_output_conv` selective 组合有稳定正收益，但幅度不足：g4 `+0.3674 dB`，per-channel `+0.3582 dB`。这说明旧 E006C 的 selective 结论在新 normalized A4 场景下不完全复现，当前 selective 小集合不是足够强的 A4 主策略。
+4. g4 不弱于 per-channel。本轮两个对照里，selective g4 略高于 selective per-channel，all Conv2d g4 也高于 all Conv2d per-channel。对 W4A4 来说，更细的 per-channel 并没有自动带来更高 full-grid SNR，后续不应默认把 per-channel 当上限最优。
+5. all Conv2d 明显强于 selective，说明 NE004 里 Conv2d 主导的判断成立，但当前 selective 集合只覆盖了一部分关键误差。需要继续拆分或扩展 Conv2d 组，而不是直接把 selective g4 标为候选。
+6. by-source 显示 Anisotropic 获益最大，all Conv2d g4 达到 `+1.35 dB`；Kerry3D 只有 `+0.16 ~ +0.18 dB`。W4A4 的残余 gap 仍有强 source 依赖，后续不能只看 overall。
+7. by-input-SNR 显示输入越干净收益越大：all Conv2d g4 从 `-2 dB` 的 `+0.69 dB` 增至 `10 dB` 的 `+0.96 dB`，说明细粒度主要恢复高质量输入场景中的 activation 表达能力。
+8. by-missing-rate 显示低 missing rate 收益更大，高 missing rate 收益下降：all Conv2d g4 从 `0.02` 的 `+0.91 dB` 降至 `0.38` 的 `+0.67 dB`。细粒度不是只改善单一条件，但在困难缺失条件下仍不足。
+9. activation reconstruction 仍然重要。四个变体 final-pre mean SNR gain 都为正，`+1.04 ~ +1.60 dB`；但 selective 组 pre-act 不低，final 仍弱，说明仅在 15 个 Conv2d quantizer 上细粒度化不能充分释放 reconstruction。
+
+后续决策：
+
+- 暂不做 NE006 packed export，因为最佳 all Conv2d g4 只有 `+0.8082 dB`，未达到 `>= +1 dB` 主候选阈值。
+- 继续 NE006e-h 拆分实验是有必要的，但优先级应调整为“寻找缺失的 Conv2d 关键组”而不是验证原 selective 小集合。
+- 下一批建议：
+  1. `stage_output_conv g4` 和 `split_proj + merge_proj g4` 拆分，判断 selective 小集合内谁贡献主要收益。
+  2. `conv role g4`、`fusion branch g4`、`cnn branch g4`，从 NE004 的 Conv2d 主导结果里寻找比当前 selective 更接近 all Conv2d 的较小集合。
+  3. `stage4/stage5 g4` 风险对照，验证旧 E006 中 stage5 独立细粒度有害的现象在 A4 normalized 协议下是否仍存在。
+  4. 若仍没有 `>= +1 dB`，转向 mixed precision / selective A8，而不是继续扩大 tensor-wise range/clipping。
