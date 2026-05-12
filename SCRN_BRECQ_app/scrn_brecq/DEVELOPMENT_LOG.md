@@ -7351,3 +7351,13 @@ by-missing-rate 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
 本次只完成目录骨架、实验说明、样本追踪规范和日志入口，不生成候选图。后续每个候选图版本必须写入 `manifest_vXXX.json`，记录 `testset_id`、`patch_index`、`patch_file`、`source`、`condition_index`、`snr_setting_db`、`missing_rate` 以及 FP32/W4A32 pre/final 指标，确保论文图中的每一行都能追溯到固定测试集中的具体样本。
 
 详细图件日志见：`SCRN_BRECQ_app/scrn_brecq/paper_artifacts/ARTIFACTS_LOG.md`。
+
+## 2026-05-12 论文 W4A32 视觉恢复图生成脚本
+
+为论文 4.2.2 的 W4A32 权重量化结果展示新增候选图生成脚本：
+
+- 脚本：`SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/scripts/make_w4a32_visual_recovery.py`
+- 测试：`SCRN_BRECQ_app/scrn_brecq/paper_artifacts/tests/test_w4a32_visual_recovery_selection.py`
+- 功能：从 E007 W4A32 full-grid `per_sample_metrics.jsonl` 自动选择代表样本，生成 3x5 候选图，并为每个版本写入 `manifest_vXXX.json`
+
+本步骤只完成脚本与选择规则测试，不生成图片。测试命令 `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.paper_artifacts.tests.test_w4a32_visual_recovery_selection` 已通过。

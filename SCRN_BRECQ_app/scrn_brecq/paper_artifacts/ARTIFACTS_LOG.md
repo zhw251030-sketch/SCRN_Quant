@@ -32,3 +32,39 @@ Sample provenance rule:
 - The manifest, not the image filename, is the authoritative record of which test-set sample was used.
 
 No figures were generated in this initialization step.
+
+## 2026-05-12 ch4_2_exp01 W4A32 visual recovery generator
+
+Purpose:
+
+- Add a reusable script for generating Chapter 4.2.2 W4A32 3x5 visual recovery candidate figures.
+- Keep sample selection reproducible and record exact test-set provenance in `manifest_vXXX.json`.
+- Add focused tests for representative selection and required manifest fields.
+
+Added files:
+
+- `experiments/ch4_2_exp01_w4a32_visual_recovery/scripts/make_w4a32_visual_recovery.py`
+- `tests/test_w4a32_visual_recovery_selection.py`
+
+Selection policy implemented:
+
+- Candidate set A selects one median-like representative for each planned degradation condition:
+  - light: `snr_setting_db=10.0`, `missing_rate=0.02`
+  - medium: `snr_setting_db=1.0`, `missing_rate=0.18`
+  - heavy: `snr_setting_db=-2.0`, `missing_rate=0.38`
+- Candidate set B selects three medium-degradation samples with source diversity using source priority:
+  - `Anisotropic`
+  - `Kerry3D`
+  - `Shots0001`
+- Representative score uses condition medians of:
+  - `fp32_snr_db`
+  - `quant_pre_minus_fp32_snr_db`
+  - `quant_post_minus_fp32_snr_db`
+  - `quant_post_minus_pre_snr_db`
+
+Verification:
+
+- Red test first: `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.paper_artifacts.tests.test_w4a32_visual_recovery_selection` failed because `make_w4a32_visual_recovery.py` did not exist.
+- Green test after implementation: same command passed, `Ran 3 tests in 2.111s`.
+
+No figures were generated in this script-development step.
