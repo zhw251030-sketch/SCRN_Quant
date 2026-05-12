@@ -7367,3 +7367,17 @@ by-missing-rate 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
 首次按文件路径运行 `make_w4a32_visual_recovery.py` 时出现 `ModuleNotFoundError: No module named 'SCRN_BRECQ_app'`。原因是文件路径执行时 Python 未自动加入仓库根目录。已在脚本启动阶段加入仓库根目录到 `sys.path`，并新增 `--help` 路径执行回归测试。
 
 验证命令 `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.paper_artifacts.tests.test_w4a32_visual_recovery_selection` 通过，覆盖 4 个测试。
+
+## 2026-05-12 W4A32 视觉恢复候选图 v001
+
+使用 `make_w4a32_visual_recovery.py` 生成论文 4.2.2 的两套 3x5 候选图：
+
+- `set_a_three_degradation_levels`：轻度 / 中度 / 重度退化各 1 行
+- `set_b_three_medium_samples`：中等退化条件下 3 个不同 source 样本
+
+输出位置：
+
+- `SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/candidates/set_a_three_degradation_levels`
+- `SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_2_exp01_w4a32_visual_recovery/candidates/set_b_three_medium_samples`
+
+每套图均保存 `png`、`pdf`、`manifest_v001.json` 和 `selection_summary_v001.md`。详细选样结果和验证记录见 `SCRN_BRECQ_app/scrn_brecq/paper_artifacts/ARTIFACTS_LOG.md`。
