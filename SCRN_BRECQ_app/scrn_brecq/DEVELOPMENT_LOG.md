@@ -7338,3 +7338,16 @@ by-missing-rate 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
 1. 可选继续 NE006m-q：做 `stage1/2/3/4/5 Conv2d except head g4` 或 `stage_output_conv + conv role` 的 stage-level 拆分，目标是减少 selected count 并定位 residual gain。
 2. 更直接的下一阶段是 NE007：以 `all Conv2d except head g4` / `stage_output_conv + conv role g4` 为基础，做 selective A8 或 mixed precision，对 residual gap 最高的 Conv2d 子组升 A8。
 3. 暂不做 packed export。当前 W4A4 g4 最强结果仍比 E007 W4A32 低 `4.0529 dB`，packed equivalence 不会改变模型质量判断。
+
+## 2026-05-12 论文图件工作区初始化
+
+为本科毕业论文第 4 章实验结果展示新增图件管理工作区：
+
+- 根目录：`SCRN_BRECQ_app/scrn_brecq/paper_artifacts`
+- 首个实验：`experiments/ch4_2_exp01_w4a32_visual_recovery`
+- 目标小节：4.2.2 W4A32 权重量化结果分析
+- 图件目标：管理 `Clean / Degraded input / FP32 / W4A32 pre-reconstruction / W4A32 final` 的 3x5 视觉恢复候选图
+
+本次只完成目录骨架、实验说明、样本追踪规范和日志入口，不生成候选图。后续每个候选图版本必须写入 `manifest_vXXX.json`，记录 `testset_id`、`patch_index`、`patch_file`、`source`、`condition_index`、`snr_setting_db`、`missing_rate` 以及 FP32/W4A32 pre/final 指标，确保论文图中的每一行都能追溯到固定测试集中的具体样本。
+
+详细图件日志见：`SCRN_BRECQ_app/scrn_brecq/paper_artifacts/ARTIFACTS_LOG.md`。

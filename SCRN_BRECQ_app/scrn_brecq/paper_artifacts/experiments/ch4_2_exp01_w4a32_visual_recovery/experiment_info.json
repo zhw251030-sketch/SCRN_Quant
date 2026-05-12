@@ -1,0 +1,114 @@
+{
+  "experiment_id": "ch4_2_exp01_w4a32_visual_recovery",
+  "created_date": "2026-05-12",
+  "status": "initialized_no_figures_generated",
+  "thesis_section": {
+    "chapter": "4",
+    "section": "4.2",
+    "subsection": "W4A32权重量化结果分析"
+  },
+  "purpose": "Generate and manage 3x5 visual recovery candidates comparing Clean, Degraded input, FP32, W4A32 pre-reconstruction, and W4A32 final outputs.",
+  "layout": {
+    "rows": 3,
+    "columns": [
+      {
+        "key": "clean",
+        "label": "Clean"
+      },
+      {
+        "key": "degraded_input",
+        "label": "Degraded input"
+      },
+      {
+        "key": "fp32",
+        "label": "FP32"
+      },
+      {
+        "key": "w4a32_pre_recon",
+        "label": "W4A32 pre-reconstruction"
+      },
+      {
+        "key": "w4a32_final",
+        "label": "W4A32 final"
+      }
+    ]
+  },
+  "source_artifacts": {
+    "fp32_checkpoint": "SCRN_BRECQ_app/scrn_repro/runs/train/20260508_194718_paper5_energy_filtered_perpatch_absmax_10750_ddp3_seed20260425_nodecay_lr1e-3/checkpoints/best.pth",
+    "w4a32_quant_run": "SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1",
+    "w4a32_pre_recon_checkpoint": "SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq_pre_recon.pth",
+    "w4a32_final_checkpoint": "SCRN_BRECQ_app/scrn_brecq/runs/quant/20260509_144941_normalized_w4a32_1024cali_w20000_single_gpu1/checkpoints/quantized_scrn_brecq.pth",
+    "test_dataset": "SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478",
+    "test_dataset_manifest": "SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478/manifest.json",
+    "grid_eval_run": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E007_normalized_w4a32_baseline/eval/20260509_153415_normalized_w4a32_single_gpu1_grid478_seed20260507",
+    "per_sample_metrics": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E007_normalized_w4a32_baseline/eval/20260509_153415_normalized_w4a32_single_gpu1_grid478_seed20260507/per_sample_metrics.jsonl",
+    "grid_metrics": "SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/E007_normalized_w4a32_baseline/eval/20260509_153415_normalized_w4a32_single_gpu1_grid478_seed20260507/metrics.json"
+  },
+  "candidate_sets": [
+    {
+      "id": "set_a_three_degradation_levels",
+      "directory": "candidates/set_a_three_degradation_levels",
+      "description": "Three rows represent light, medium, and heavy degradation levels.",
+      "planned_conditions": [
+        {
+          "row_label": "light",
+          "snr_setting_db": 10.0,
+          "missing_rate": 0.02
+        },
+        {
+          "row_label": "medium",
+          "snr_setting_db": 1.0,
+          "missing_rate": 0.18
+        },
+        {
+          "row_label": "heavy",
+          "snr_setting_db": -2.0,
+          "missing_rate": 0.38
+        }
+      ]
+    },
+    {
+      "id": "set_b_three_medium_samples",
+      "directory": "candidates/set_b_three_medium_samples",
+      "description": "Three different test patches under the same medium-degradation condition.",
+      "planned_conditions": [
+        {
+          "row_label": "sample_1",
+          "snr_setting_db": 1.0,
+          "missing_rate": 0.18
+        },
+        {
+          "row_label": "sample_2",
+          "snr_setting_db": 1.0,
+          "missing_rate": 0.18
+        },
+        {
+          "row_label": "sample_3",
+          "snr_setting_db": 1.0,
+          "missing_rate": 0.18
+        }
+      ]
+    }
+  ],
+  "manifest_schema": {
+    "required_row_fields": [
+      "testset_id",
+      "patch_index",
+      "patch_file",
+      "source",
+      "condition_index",
+      "snr_setting_db",
+      "missing_rate",
+      "fp32_snr_db",
+      "quant_pre_recon_snr_db",
+      "quant_post_recon_snr_db",
+      "quant_post_minus_fp32_snr_db"
+    ],
+    "notes": "The manifest is the authoritative record for identifying which test-set sample appears in a generated figure."
+  },
+  "versioning": {
+    "candidate_file_template": "fig_ch4_2_w4a32_<candidate_set>_vXXX.<ext>",
+    "manifest_file_template": "manifest_vXXX.json",
+    "overwrite_policy": "Do not overwrite existing candidate versions; create the next vXXX version instead."
+  }
+}
