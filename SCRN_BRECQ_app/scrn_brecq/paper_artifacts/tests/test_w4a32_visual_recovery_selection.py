@@ -1,5 +1,7 @@
 import importlib.util
 from pathlib import Path
+import subprocess
+import sys
 import unittest
 
 
@@ -10,6 +12,7 @@ SCRIPT_PATH = (
     / "scripts"
     / "make_w4a32_visual_recovery.py"
 )
+REPO_ROOT = Path(__file__).resolve().parents[6]
 
 
 def load_module():
@@ -21,6 +24,18 @@ def load_module():
 
 
 class W4A32VisualRecoverySelectionTest(unittest.TestCase):
+    def test_script_help_runs_when_executed_by_path(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT_PATH), "--help"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--candidate-set", result.stdout)
+
     def test_select_condition_representative_prefers_median_like_row(self) -> None:
         module = load_module()
         rows = [

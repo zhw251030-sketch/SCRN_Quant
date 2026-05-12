@@ -8,10 +8,18 @@ import json
 import os
 from pathlib import Path
 import re
+import sys
 import time
 from typing import Any, Mapping, Sequence
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/scrn_brecq_matplotlib_cache")
+
+SCRIPT_PATH = Path(__file__).resolve()
+EXPERIMENT_DIR = SCRIPT_PATH.parents[1]
+PAPER_ARTIFACTS_DIR = SCRIPT_PATH.parents[3]
+REPO_ROOT = SCRIPT_PATH.parents[6]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import matplotlib  # noqa: E402
 
@@ -37,10 +45,6 @@ from SCRN_BRECQ_app.scrn_brecq.cli.visualize_quantized_scrn_grid import (  # noq
 from SCRN_BRECQ_app.scrn_repro.utils import snr_db, ssim_score  # noqa: E402
 
 
-SCRIPT_PATH = Path(__file__).resolve()
-EXPERIMENT_DIR = SCRIPT_PATH.parents[1]
-PAPER_ARTIFACTS_DIR = SCRIPT_PATH.parents[3]
-REPO_ROOT = SCRIPT_PATH.parents[6]
 EXPERIMENT_INFO_PATH = EXPERIMENT_DIR / "experiment_info.json"
 DEFAULT_TESTSET_ID = "paper5_energy_filtered_perpatch_absmax_478"
 DEFAULT_SEED = 20260507

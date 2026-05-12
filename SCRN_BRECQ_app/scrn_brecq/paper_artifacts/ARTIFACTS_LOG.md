@@ -68,3 +68,23 @@ Verification:
 - Green test after implementation: same command passed, `Ran 3 tests in 2.111s`.
 
 No figures were generated in this script-development step.
+
+## 2026-05-12 ch4_2_exp01 generator path-execution fix
+
+Issue:
+
+- Running `make_w4a32_visual_recovery.py` by file path failed with `ModuleNotFoundError: No module named 'SCRN_BRECQ_app'`.
+- Root cause: Python adds the script directory to `sys.path`, but not the repository root, when a script is executed by file path.
+
+Fix:
+
+- Add repository-root discovery at script startup.
+- Insert the repository root into `sys.path` before importing project modules.
+- Add a regression test that executes `python make_w4a32_visual_recovery.py --help` by file path.
+
+Verification:
+
+- Before fix: `test_script_help_runs_when_executed_by_path` failed with the same `ModuleNotFoundError`.
+- After fix: `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.paper_artifacts.tests.test_w4a32_visual_recovery_selection` passed, `Ran 4 tests in 3.371s`.
+
+No figures were generated in this fix step.

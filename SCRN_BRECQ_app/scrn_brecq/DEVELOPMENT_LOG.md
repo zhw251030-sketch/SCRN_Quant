@@ -7361,3 +7361,9 @@ by-missing-rate 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
 - 功能：从 E007 W4A32 full-grid `per_sample_metrics.jsonl` 自动选择代表样本，生成 3x5 候选图，并为每个版本写入 `manifest_vXXX.json`
 
 本步骤只完成脚本与选择规则测试，不生成图片。测试命令 `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.paper_artifacts.tests.test_w4a32_visual_recovery_selection` 已通过。
+
+## 2026-05-12 W4A32 图生成脚本路径执行修复
+
+首次按文件路径运行 `make_w4a32_visual_recovery.py` 时出现 `ModuleNotFoundError: No module named 'SCRN_BRECQ_app'`。原因是文件路径执行时 Python 未自动加入仓库根目录。已在脚本启动阶段加入仓库根目录到 `sys.path`，并新增 `--help` 路径执行回归测试。
+
+验证命令 `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.paper_artifacts.tests.test_w4a32_visual_recovery_selection` 通过，覆盖 4 个测试。
