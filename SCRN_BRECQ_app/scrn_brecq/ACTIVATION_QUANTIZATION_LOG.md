@@ -9220,3 +9220,100 @@ NE006e-h 对后续路线的影响很明确：新 normalized W4A4 场景下，不
 - 不做 per-channel sweep：g4 当前不弱于 per-channel。
 - 不回到 range/clipping：NE005 已排除主线价值。
 - 不用单样本做任何策略筛选。
+
+## 2026-05-12 NE006i-l W4A4 g4 head / combination 实验结果
+
+本批实验按上一节计划完成 4 个 head / 组合 / 排除实验，目标是解释 NE006c `all Conv2d g4` 的 `+0.8082 dB` 收益是否来自 `head`、`stage_output_conv + conv role` 组合，或是否可以排除 `split_proj + merge_proj`。
+
+固定口径：
+
+- 起点：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/inputs/e007_w4a32_nbitsa4_metadata_seed.pth`
+- calibration：`SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- eval：`SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- eval grid：`478 x 25 = 11950` rows，seed `20260507`
+- activation：W4A4，`group_wise`，`group_size=4`，`activation_range_method=mse_grid`
+- reconstruction：`iters_a=5000`，`activation_lr=0.0004`，`lp_norm=2.4`
+
+run 目录：
+
+| id | quant run dir | eval run dir | GPU | selector | selected |
+|---|---|---|---:|---|---:|
+| NE006i | `.../quant/20260512_131527_ne006i_w4a4_g4_head_a5000_1024cali_gpu1` | `.../eval/20260512_134445_ne006i_w4a4_g4_head_grid478_seed20260507` | 1 | `role=head,module_type=Conv2d` | 1 |
+| NE006j | `.../quant/20260512_131527_ne006j_w4a4_g4_stage_output_conv_role_a5000_1024cali_gpu2` | `.../eval/20260512_134445_ne006j_w4a4_g4_stage_output_conv_role_grid478_seed20260507` | 2 | `stage_output_conv + conv` | 20 |
+| NE006k | `.../quant/20260512_131526_ne006k_w4a4_g4_all_conv2d_except_split_merge_a5000_1024cali_gpu3` | `.../eval/20260512_134444_ne006k_w4a4_g4_all_conv2d_except_split_merge_grid478_seed20260507` | 3 | `all Conv2d except split_proj/merge_proj` | 21 |
+| NE006l | `.../quant/20260512_131526_ne006l_w4a4_g4_all_conv2d_except_head_a5000_1024cali_gpu0` | `.../eval/20260512_134444_ne006l_w4a4_g4_all_conv2d_except_head_grid478_seed20260507` | 0 | `all Conv2d except head` | 30 |
+
+验证结果：4 个 final checkpoint 均 `passed=true`，`weight_quant=true`，`act_quant=true`，`n_bits_a=4`，`activation_delta_count=52`，`initialized_activation_quantizers=52`，`level_offender_count=0`。activation-only metrics 中 `non_positive_delta_count=0`，说明本批没有合法性问题。
+
+overall full-grid 结果：
+
+| variant | selected | pre SNR mean/median | final SNR mean/median | final SSIM mean/median | recon gain SNR/SSIM | vs NE000_2 W4A4 | gap to NE006c all Conv2d g4 | gap to E007 W4A32 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| NE000_2 baseline | 51 | 11.1727 / 11.1577 | 12.9150 / 13.1180 | 0.939563 / 0.954078 | +1.7422 / -0.001929 | +0.0000 / +0.000000 | -0.8082 / -0.005764 | -4.8706 / -0.024574 |
+| NE006c all Conv2d g4 | 31 | 12.6877 / 12.8746 | 13.7231 / 13.9766 | 0.945327 / 0.960126 | +1.0354 / +0.003835 | +0.8082 / +0.005764 | +0.0000 / +0.000000 | -4.0624 / -0.018810 |
+| NE006i head g4 | 1 | 11.1606 / 11.1444 | 12.9031 / 13.1007 | 0.939624 / 0.954139 | +1.7425 / -0.002001 | -0.0119 / +0.000061 | -0.8200 / -0.005703 | -4.8825 / -0.024513 |
+| NE006j stage_output+conv g4 | 20 | 12.1962 / 12.3257 | 13.6186 / 13.8908 | 0.942366 / 0.956958 | +1.4224 / +0.005869 | +0.7036 / +0.002803 | -0.1045 / -0.002961 | -4.1670 / -0.021771 |
+| NE006k all Conv2d except split/merge g4 | 21 | 12.1841 / 12.3104 | 13.6097 / 13.8824 | 0.942403 / 0.957057 | +1.4256 / +0.005919 | +0.6948 / +0.002840 | -0.1134 / -0.002924 | -4.1759 / -0.021734 |
+| NE006l all Conv2d except head g4 | 30 | 12.6993 / 12.8885 | 13.7326 / 13.9838 | 0.945303 / 0.960038 | +1.0334 / +0.003626 | +0.8177 / +0.005740 | +0.0095 / -0.000024 | -4.0529 / -0.018834 |
+
+single-sample sanity 只用于确认运行，不作为策略判断：
+
+| variant | init s | recon s | elapsed min | single pre SNR/SSIM | single final SNR/SSIM | single gain |
+|---|---:|---:|---:|---:|---:|---:|
+| NE006i head g4 | 25.0 | 1320.9 | 22.51 | 13.1970 / 0.901847 | 13.2355 / 0.897892 | +0.0384 / -0.003955 |
+| NE006j stage_output+conv g4 | 25.7 | 1340.7 | 22.86 | 13.1508 / 0.906505 | 13.3789 / 0.906634 | +0.2281 / +0.000128 |
+| NE006k all Conv2d except split/merge g4 | 25.7 | 1321.4 | 22.51 | 13.1808 / 0.904265 | 13.3432 / 0.904612 | +0.1624 / +0.000347 |
+| NE006l all Conv2d except head g4 | 26.1 | 1325.5 | 22.61 | 13.1257 / 0.896068 | 13.4422 / 0.906453 | +0.3165 / +0.010384 |
+
+by-source 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
+
+| variant | Anisotropic | Kerry3D | Shots0001 |
+|---|---:|---:|---:|
+| NE000_2 baseline | 13.2802 / +0.00 | 9.0332 / +0.00 | 13.0047 / +0.00 |
+| NE006i head g4 | 13.2608 / -0.02 | 9.0372 / +0.00 | 12.9936 / -0.01 |
+| NE006j stage_output+conv g4 | 14.4953 / +1.22 | 9.1336 / +0.10 | 13.6341 / +0.63 |
+| NE006k all Conv2d except split/merge g4 | 14.4754 / +1.20 | 9.1433 / +0.11 | 13.6266 / +0.62 |
+| NE006l all Conv2d except head g4 | 14.6524 / +1.37 | 9.1988 / +0.17 | 13.7419 / +0.74 |
+
+by-input-SNR 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
+
+| variant | -2 dB | -1 dB | 1 dB | 5 dB | 10 dB |
+|---|---:|---:|---:|---:|---:|
+| NE006i head g4 | 11.6400 / -0.01 | 12.0429 / -0.01 | 12.7113 / -0.01 | 13.6870 / -0.01 | 14.4342 / -0.01 |
+| NE006j stage_output+conv g4 | 12.2814 / +0.63 | 12.7096 / +0.65 | 13.4247 / +0.70 | 14.4523 / +0.76 | 15.2251 / +0.78 |
+| NE006k all Conv2d except split/merge g4 | 12.2715 / +0.62 | 12.7029 / +0.65 | 13.4131 / +0.69 | 14.4424 / +0.75 | 15.2187 / +0.77 |
+| NE006l all Conv2d except head g4 | 12.3480 / +0.70 | 12.7912 / +0.73 | 13.5235 / +0.80 | 14.5910 / +0.89 | 15.4095 / +0.96 |
+
+by-missing-rate 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
+
+| variant | 0.02 | 0.08 | 0.18 | 0.28 | 0.38 |
+|---|---:|---:|---:|---:|---:|
+| NE006i head g4 | 13.9038 / -0.02 | 13.6028 / -0.02 | 13.0506 / -0.01 | 12.3946 / -0.01 | 11.5636 / -0.00 |
+| NE006j stage_output+conv g4 | 14.6629 / +0.74 | 14.3597 / +0.74 | 13.7830 / +0.72 | 13.0911 / +0.69 | 12.1965 / +0.63 |
+| NE006k all Conv2d except split/merge g4 | 14.6463 / +0.72 | 14.3440 / +0.72 | 13.7752 / +0.72 | 13.0885 / +0.69 | 12.1945 / +0.63 |
+| NE006l all Conv2d except head g4 | 14.8501 / +0.93 | 14.5173 / +0.90 | 13.8922 / +0.83 | 13.1633 / +0.76 | 12.2403 / +0.67 |
+
+关键结论：
+
+1. `head g4` 单独无效。NE006i final SNR mean `12.9031`，比 NE000_2 baseline 还低 `-0.0119 dB`，说明 `model.head` 不是独立收益来源。
+2. `all Conv2d except head` 与 `all Conv2d g4` 基本等价，甚至 SNR mean 高 `+0.0095 dB`。因此 head 不但不是关键，作为 g4 细粒度对象还可以从主策略中排除。
+3. `stage_output_conv + conv role` 解释了 all Conv2d 的大部分收益。NE006j 达到 `13.6186 dB`，只比 all Conv2d g4 低 `0.1045 dB`，且比 W4A4 baseline 高 `+0.7036 dB`。
+4. `all Conv2d except split/merge` 与 NE006j 几乎一致：`13.6097 dB`，比 NE006j 低 `0.0089 dB`。这进一步证明 split/merge 不是新协议 W4A4 主收益来源。
+5. `all Conv2d except head` 是当前最强 W4A4 g4 结果：`13.7326 / 13.9838`，相对 NE000_2 提升 `+0.8177 dB`，略高于 NE006c all Conv2d g4。
+6. by-source 收益主要来自 Anisotropic 和 Shots0001，Kerry3D 提升始终较小。NE006l 在 Anisotropic 上 `+1.37 dB`，Shots0001 上 `+0.74 dB`，Kerry3D 只有 `+0.17 dB`。
+7. by-input-SNR 趋势显示收益在高输入 SNR 条件下更大；NE006l 从 `-2 dB` 条件的 `+0.70 dB` 增至 `10 dB` 条件的 `+0.96 dB`。
+8. by-missing-rate 趋势显示收益在低 missing rate 更大，missing rate 越高收益越小；NE006l 从 `0.02` 的 `+0.93 dB` 降至 `0.38` 的 `+0.67 dB`。
+
+对后续实验的影响：
+
+- NE006 granularity 仍有价值，但当前最佳只到 `+0.8177 dB`，没有达到 `>= +1.0 dB` 强候选阈值，更没有达到可以替代 W4A8 的程度。
+- 后续不应再优先研究 `split_proj + merge_proj`，也不应把 `head` 纳入 W4A4 g4 主策略。
+- 当前最合理的 W4A4 g4 候选是 `all Conv2d except head`，但部署前还需要更强证据；它可以作为后续 mixed precision / selective A8 的基础组合。
+- 若继续 granularity，应转向 stage-level 拆分：优先验证 `stage_output_conv + conv role` 是否只需要某些 stage，或者 `all Conv2d except head` 是否可以进一步减少 selected count。
+- 若目标是把 W4A4 推近 W4A32/W4A8，单纯 g4 granularity 可能不够，下一阶段应准备 `W4A4 + selective A8` 或 mixed precision，优先把残余误差最大的 Conv2d 子组升到 A8。
+
+下一步建议：
+
+1. 可选继续 NE006m-q：做 `stage1/2/3/4/5 Conv2d except head g4` 或 `stage_output_conv + conv role` 的 stage-level 拆分，目标是减少 selected count 并定位 residual gain。
+2. 更直接的下一阶段是 NE007：以 `all Conv2d except head g4` / `stage_output_conv + conv role g4` 为基础，做 selective A8 或 mixed precision，对 residual gap 最高的 Conv2d 子组升 A8。
+3. 暂不做 packed export。当前 W4A4 g4 最强结果仍比 E007 W4A32 低 `4.0529 dB`，packed equivalence 不会改变模型质量判断。
