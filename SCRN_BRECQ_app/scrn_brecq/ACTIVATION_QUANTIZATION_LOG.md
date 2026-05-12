@@ -9416,3 +9416,89 @@ by-missing-rate 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
 - 若仍在 NE006 内收尾，唯一值得补的最小组合是 `stage1 + stage4 + stage5 Conv2d g4`，因为这三个 stage 是正收益来源，selected count 18，可能接近 NE006l 的 30 个 selected count 效果。
 - 更建议进入 NE007：以 W4A4 为主对象做 selective A8 / mixed precision。优先候选为 stage5、stage4、stage1 的 Conv2d，或者以 NE006l `all Conv2d except head g4` 为基础，将 residual 最大的 stage/role 升 A8。
 - 不建议继续研究 stage2/stage3 g4，也不建议回到 split/merge、head 或 range/clipping。
+
+## 2026-05-12 NE006r W4A4 g4 stage1+stage4+stage5 组合实验结果
+
+本批作为 NE006 的 granularity 收尾验证，目标是检查单 stage 正收益来源 `stage1 + stage4 + stage5 Conv2d g4` 是否能用更少 selected quantizer 接近或超过 `NE006l all Conv2d except head g4`。实验不改代码，不改变 A4 起点、calibration、eval grid 或重建超参。
+
+固定口径：
+
+- 起点：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/inputs/e007_w4a32_nbitsa4_metadata_seed.pth`
+- quant run：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE006_w4a4_activation_granularity/quant/20260512_194621_ne006r_w4a4_g4_stage145_conv2d_a5000_1024cali_gpu1_rerun2`
+- eval run：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE006_w4a4_activation_granularity/eval/20260512_202217_ne006r_w4a4_g4_stage145_conv2d_grid478_seed20260507`
+- selector：`[{"stage":"stage1","module_type":"Conv2d"},{"stage":"stage4","module_type":"Conv2d"},{"stage":"stage5","module_type":"Conv2d"}]`
+- selected count：18
+- activation：W4A4，`group_wise`，`group_size=4`，`activation_range_method=mse_grid`
+- reconstruction：`iters_a=5000`，`activation_lr=0.0004`，`lp_norm=2.4`
+- eval grid：`478 x 25 = 11950` rows，seed `20260507`
+
+执行备注：
+
+- 首次 run `20260512_191720_ne006r_w4a4_g4_stage145_conv2d_a5000_1024cali_gpu1` 只产出 `quantized_scrn_brecq_pre_act_recon.pth`，没有 final checkpoint/config/metrics，不纳入结果。
+- 一次后台执行包装未成功拉起 conda 进程，无有效 run dir，不纳入结果。
+- 有效 run 为 `_rerun2`，使用 GPU1；该 run 完整产出 pre/final checkpoint、`config.json`、`metrics.json` 和 `summary.md`。
+- activation initialization 用时 `25.64 s`，activation reconstruction 用时 `1317.19 s`（约 `21.95 min`）。
+- single-sample sanity：`post_weight_snr=13.8918`，`pre_act_snr=13.1765`，`act_init_delta=-0.7152`，`non_positive_delta_count=0`。该单样本只用于运行 sanity，不参与正式结论。
+
+验证结果：
+
+- `verification_final.json`：`passed=true`
+- final quant state：`weight_quant=true`，`act_quant=true`
+- `n_bits_a=4`，`n_bits_w=4`
+- activation quantizer：`activation_delta_count=52`，`initialized_activation_quantizers=52`
+- weight bit counts：`4bit=50`，`8bit=2`
+- `level_offender_count=0`
+
+overall full-grid 结果：
+
+| variant | selected | pre SNR mean/median | final SNR mean/median | final SSIM mean/median | recon gain SNR/SSIM | vs NE000_2 W4A4 | vs NE006l | gap to E007 W4A32 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| NE000_2 W4A4 baseline | 51 | 11.1727 / 11.1577 | 12.9150 / 13.1180 | 0.939563 / 0.954078 | +1.7422 / -0.001929 | +0.0000 / +0.000000 | -0.8177 / -0.005740 | -4.8706 / -0.024574 |
+| NE006l all Conv2d except head g4 | 30 | 12.6993 / 12.8885 | 13.7326 / 13.9838 | 0.945303 / 0.960038 | +1.0334 / +0.003626 | +0.8177 / +0.005740 | +0.0000 / +0.000000 | -4.0529 / -0.018834 |
+| NE006r stage1+stage4+stage5 Conv2d g4 | 18 | 12.6441 / 12.8061 | 13.8098 / 14.0845 | 0.945084 / 0.959776 | +1.1656 / +0.011979 | +0.8948 / +0.005521 | +0.0771 / -0.000219 | -3.9758 / -0.019053 |
+
+by-source 结果，单元格为 `final SNR mean / 相对 NE000_2 gain / 相对 NE006l gain`：
+
+| source | NE006r result |
+|---|---:|
+| Anisotropic | 14.8681 / +1.5879 / +0.2158 |
+| Kerry3D | 9.1589 / +0.1257 / -0.0399 |
+| Shots0001 | 13.7969 / +0.7923 / +0.0551 |
+
+by-input-SNR 结果，单元格为 `final SNR mean / 相对 NE000_2 gain / 相对 NE006l gain`：
+
+| input SNR | NE006r result |
+|---:|---:|
+| -2 dB | 12.3851 / +0.7347 / +0.0371 |
+| -1 dB | 12.8418 / +0.7844 / +0.0506 |
+| 1 dB | 13.5927 / +0.8675 / +0.0692 |
+| 5 dB | 14.6928 / +0.9957 / +0.1018 |
+| 10 dB | 15.5363 / +1.0917 / +0.1268 |
+
+by-missing-rate 结果，单元格为 `final SNR mean / 相对 NE000_2 gain / 相对 NE006l gain`：
+
+| missing rate | NE006r result |
+|---:|---:|
+| 0.02 | 14.8449 / +0.9204 / -0.0052 |
+| 0.08 | 14.5507 / +0.9302 / +0.0334 |
+| 0.18 | 13.9845 / +0.9244 / +0.0922 |
+| 0.28 | 13.2879 / +0.8851 / +0.1246 |
+| 0.38 | 12.3808 / +0.8140 / +0.1405 |
+
+人类可读结论：
+
+1. NE006r 是当前最强且更紧凑的 W4A4 g4 granularity 候选。它只选 18 个 Conv2d activation quantizer，却比 NE006l 的 30 个 selected count 高 `+0.0771 dB` mean SNR。
+2. stage1/4/5 的组合收益不是单 stage 简单弱信号，而是可叠加的主信号。此前单 stage 最强仅 `+0.2883 dB`，三者组合达到 `+0.8948 dB`。
+3. head、split/merge、stage2、stage3 不再是 W4A4 g4 主线。NE006r 不包含这些组仍超过 all Conv2d except head，说明它们至少不是必要条件，部分还可能拖累。
+4. NE006r 的主要收益来自 Anisotropic 与 Shots0001；Kerry3D 仍提升很小且略低于 NE006l，说明后续若追求全源稳定性，需要结合 selective A8/mixed precision，而不是只继续 g4。
+5. by-input-SNR 显示高输入 SNR 条件收益更强，说明 g4 granularity 更像是在减少模型自身 activation 量化误差上限，而不是只在严重退化输入上做补救。
+6. by-missing-rate 显示 NE006r 在高 missing rate 下相对 NE006l 反而优势更大；这让它比 NE006l 更适合作为后续 W4A4 主候选。
+
+后续决策：
+
+- 将 NE006r 作为当前 W4A4 g4 主 baseline，优先级高于 NE006l。
+- NE006 的纯 g4 granularity 阶段可以收束；除非需要论文消融，不再继续 stage2/stage3、head、split/merge 或 range/clipping。
+- 下一阶段建议进入 NE007 selective A8 / mixed precision，以 NE006r 为紧凑 g4 基线，优先比较：
+  - `stage1+stage4+stage5 Conv2d` 升 A8；
+  - `stage1+stage4+stage5 Conv2d g4 + residual group A8`；
+  - `all Conv2d except head` 升 A8 作为上限参考。
