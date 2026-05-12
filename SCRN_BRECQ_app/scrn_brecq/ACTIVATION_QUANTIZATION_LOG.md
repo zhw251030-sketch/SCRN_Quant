@@ -9175,3 +9175,48 @@ by-missing-rate 结果，单元格为 `final SNR mean / 相对 NE000_2 gain`：
   4. `all Conv2d except head g4`：验证 head 是否是 all Conv2d 收益的重要来源。
 - stage1-5 拆分仍有价值，但优先级低于 head / 组合效应。若组合实验仍不能解释 all Conv2d 收益，再进入 stage-level。
 - 不进入 packed export；不做 per-channel sweep；不回到 range/clipping。
+
+## 2026-05-12 NE006e-h 后续影响与下一批计划
+
+NE006e-h 对后续路线的影响很明确：新 normalized W4A4 场景下，不应继续沿旧 E006C 的 `split_proj + merge_proj + stage_output_conv` selective 策略直接加码。旧 selective 组合的收益主要来自 `stage_output_conv`，而不是 `split_proj + merge_proj`。
+
+当前关键判断：
+
+- `split_proj + merge_proj` 从旧实验里的重要对象降级为近似无效对象。NE006f/NE006h full-grid 只有 `+0.0164 dB`，接近噪声级。
+- `stage_output_conv` 是当前最有效的小集合，5 个 quantizer 带来 `+0.3433 dB`，基本解释了旧 selective 组合的大部分收益。
+- `conv role` 是另一个独立有效组，15 个 quantizer 带来 `+0.3091 dB`，说明 all Conv2d 收益分散在多个 Conv2d 子组。
+- `all Conv2d g4` 仍有 `+0.8082 dB`，明显强于任何单独拆分组；这说明剩余收益可能来自 `model.head`、head 与其它 Conv2d 的组合效应，或多组 activation 误差的非线性叠加。
+- full-grid 与 single-sample 再次冲突，后续仍必须只用 normalized `478 x 25` grid 做策略判断。
+
+下一批 NE006 建议只做 4 个 head / 组合 / 排除实验：
+
+| priority | experiment | selector | 目的 | 预期解释 |
+|---:|---|---|---|---|
+| 1 | NE006i | `head g4` | 验证 all Conv2d 中唯一未拆出的 `model.head` 是否关键 | 如果有明显收益，head 需要纳入后续策略 |
+| 2 | NE006j | `stage_output_conv + conv role g4` | 组合两个已知有效组 | 如果接近 all Conv2d，说明 split/merge 可排除 |
+| 3 | NE006k | `all Conv2d except split/merge g4` | 从 all Conv2d 中移除近似无效 split/merge | 如果接近 all Conv2d，证明 split/merge 不该进主策略 |
+| 4 | NE006l | `all Conv2d except head g4` | 从 all Conv2d 中移除 head | 判断 head 是否解释 all Conv2d 的剩余优势 |
+
+执行设置应继续沿用 NE006 固定口径：
+
+- 起点：`e007_w4a32_nbitsa4_metadata_seed.pth`
+- `n_bits_w=4`、`n_bits_a=4`
+- `activation_granularity=group_wise`、`activation_group_size=4`
+- `activation_range_method=mse_grid`，用于写入 g4 activation delta shape
+- `iters_a=5000`、`activation_lr=0.0004`、`lp_norm=2.4`
+- calibration：normalized 1024 stratified calibration
+- eval：normalized `478 x 25` grid，seed `20260507`
+
+判断标准：
+
+- 若 `all Conv2d except split/merge` 接近 NE006c all Conv2d g4，后续策略应明确排除 split/merge。
+- 若 `head g4` 或 `all Conv2d except head` 显著改变结果，后续需要围绕 head 做组合验证。
+- 若 `stage_output_conv + conv role` 仍明显低于 all Conv2d，说明存在 head 参与效应或多组非线性组合效应。
+- 若这 4 个实验仍没有 `>= +1 dB` 的策略，NE006 granularity 单线应降级，下一阶段转向 `W4A4 + selective A8` 或 mixed precision。
+
+当前不建议：
+
+- 不做 packed export：没有达到主候选阈值。
+- 不做 per-channel sweep：g4 当前不弱于 per-channel。
+- 不回到 range/clipping：NE005 已排除主线价值。
+- 不用单样本做任何策略筛选。
