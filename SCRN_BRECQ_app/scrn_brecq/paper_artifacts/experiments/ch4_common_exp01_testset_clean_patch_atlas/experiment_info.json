@@ -1,0 +1,35 @@
+{
+  "experiment_id": "ch4_common_exp01_testset_clean_patch_atlas",
+  "paper_usage": {
+    "chapter": "chapter_4",
+    "purpose": "manual_patch_selection_before_visual_recovery_figures",
+    "is_final_thesis_figure": false
+  },
+  "dataset": {
+    "testset_id": "paper5_energy_filtered_perpatch_absmax_478",
+    "dataset_dir": "SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478",
+    "manifest": "SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478/manifest.json",
+    "sample_count": 478,
+    "per_source_counts": {
+      "Anisotropic": 75,
+      "Kerry3D": 16,
+      "Shots0001": 387
+    }
+  },
+  "atlas_defaults": {
+    "content": "clean_normalized_patch",
+    "rows": 8,
+    "cols": 6,
+    "patches_per_page": 48,
+    "page_count": 10,
+    "cmap": "seismic",
+    "vmin": -1.0,
+    "vmax": 1.0
+  },
+  "generated_result_policy": {
+    "commit_generated_png_pdf": false,
+    "commit_generated_manifest": false,
+    "commit_generated_selection_index": false,
+    "selection_source_of_truth": "selection_index_vXXX.csv and manifest_vXXX.json are kept locally"
+  }
+}

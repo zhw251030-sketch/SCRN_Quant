@@ -7642,3 +7642,15 @@ git 提交范围进一步调整为只提交代码、说明和日志类文件：
 - 不提交 Python 缓存和临时文件
 
 本次同步会把已跟踪的候选图、manifest 和 selection summary 从 git 索引中移除，但保留本地文件用于继续查看和挑选。
+
+## 2026-05-12 478 张 clean patch 浏览图册
+
+为论文第 4 章样本挑选新增 clean patch 浏览图册实验：
+
+- 实验目录：`SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_common_exp01_testset_clean_patch_atlas`
+- 脚本：`scripts/make_testset_clean_atlas.py`
+- 测试：`SCRN_BRECQ_app/scrn_brecq/paper_artifacts/tests/test_clean_patch_atlas.py`
+- 数据集：`scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- 图册内容：478 张 clean normalized patch，每页 48 张，共 10 页
+
+生成结果保留在本地 `candidates/clean_patch_atlas/`，包括 PDF、10 张 PNG、`selection_index_v001.csv` 和 `manifest_v001.json`。这些结果文件按 `.gitignore` 规则不提交；代码、测试、README、`experiment_info.json` 和日志提交。测试命令 `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.paper_artifacts.tests.test_clean_patch_atlas` 已通过。

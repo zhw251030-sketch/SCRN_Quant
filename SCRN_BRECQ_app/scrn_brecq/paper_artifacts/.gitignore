@@ -5,14 +5,17 @@ experiments/*/candidates/**/*.png
 experiments/*/candidates/**/*.pdf
 experiments/*/candidates/**/manifest_v*.json
 experiments/*/candidates/**/selection_summary_v*.md
+experiments/*/candidates/**/selection_index_v*.csv
 experiments/*/shortlisted/**/*.png
 experiments/*/shortlisted/**/*.pdf
 experiments/*/shortlisted/**/manifest_v*.json
 experiments/*/shortlisted/**/selection_summary_v*.md
+experiments/*/shortlisted/**/selection_index_v*.csv
 experiments/*/final/**/*.png
 experiments/*/final/**/*.pdf
 experiments/*/final/**/manifest_v*.json
 experiments/*/final/**/selection_summary_v*.md
+experiments/*/final/**/selection_index_v*.csv
 
 # Python 缓存和临时文件
 __pycache__/

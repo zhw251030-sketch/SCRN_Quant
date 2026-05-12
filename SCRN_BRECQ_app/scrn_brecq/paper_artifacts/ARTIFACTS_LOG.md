@@ -483,3 +483,54 @@ conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/
 - 更新 `paper_artifacts/.gitignore`，加入候选集、筛选集和最终集下图件与按版本元数据的忽略规则。
 - 只使用 `git rm --cached` 从 git 索引移除已跟踪的生成结果，保留工作区本地文件，便于继续挑图和查看。
 - 后续每次提交前需要用 `git status --short` 和 `git ls-files SCRN_BRECQ_app/scrn_brecq/paper_artifacts` 检查是否误把生成结果加入索引。
+
+## 2026-05-12 ch4_common_exp01 478 张 clean patch 浏览图册
+
+背景：
+
+- 用户希望先快速浏览 478 张固定测试集样本，人工挑选视觉结构更适合论文展示的 patch。
+- 本轮不跑 FP32/W4A32/W4A8/W4A4 推理，只生成 clean normalized patch 浏览图册，降低出图时间。
+- 图册用于挑样本，不作为论文最终正文图。
+
+实验目录：
+
+- `SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_common_exp01_testset_clean_patch_atlas`
+- 数据集：`SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- 样本数量：`478`
+- source 分布：Anisotropic `75`、Kerry3D `16`、Shots0001 `387`
+
+本地工具：
+
+- 脚本：`scripts/make_testset_clean_atlas.py`
+- 测试：`SCRN_BRECQ_app/scrn_brecq/paper_artifacts/tests/test_clean_patch_atlas.py`
+- 版式：每页 `6 × 8 = 48` 张 patch，共 `10` 页，最后一页 `46` 张。
+- 小图标注：`test_XXXXX.npy`、`idx`、`source`。
+- 色图：`seismic`，振幅范围固定为 `[-1, 1]`。
+
+TDD 记录：
+
+- 先新增 `test_clean_patch_atlas.py`，覆盖脚本路径执行、478 个 `.npy`、manifest `sample_count`、分页数量和 CSV 字段。
+- 初次测试按预期失败，原因是 `make_testset_clean_atlas.py` 尚不存在。
+- 实现脚本并修正测试中的 repo root 后，单项测试通过：`Ran 5 tests in 0.062s`。
+
+生成命令：
+
+```bash
+conda run -n quant python SCRN_BRECQ_app/scrn_brecq/paper_artifacts/experiments/ch4_common_exp01_testset_clean_patch_atlas/scripts/make_testset_clean_atlas.py
+```
+
+输出文件：
+
+- `candidates/clean_patch_atlas/atlas_clean_test478_v001.pdf`
+- `candidates/clean_patch_atlas/atlas_clean_test478_v001_page_001.png` 至 `page_010.png`
+- `candidates/clean_patch_atlas/selection_index_v001.csv`
+- `candidates/clean_patch_atlas/manifest_v001.json`
+
+验证结果：
+
+- PDF 为 `10` 页。
+- PNG page 数量为 `10`。
+- `selection_index_v001.csv` 为 `479` 行，即 `1` 行表头加 `478` 行样本。
+- `manifest_v001.json` 记录 `sample_count=478`、`page_count=10`、`last_page_count=46`。
+- 人工检查 page 001 和 page 010，图册可正常显示样本编号、idx 和 source。
+- `paper_artifacts/.gitignore` 已增加 `selection_index_v*.csv` 忽略规则；PNG、PDF、manifest 和 CSV 结果文件本地保留，不进入 git。
