@@ -7524,6 +7524,68 @@ by-missing-rate 结果，单元格为 `final SNR mean / 相对 NE000_2 gain / �
   - `stage1+stage4+stage5 Conv2d g4 + residual group A8`；
   - `all Conv2d except head` 升 A8 作为上限参考。
 
+## 2026-05-12 NE006 W4A4 activation granularity 阶段总览
+
+NE006 目标是在 normalized 新协议下确认 W4A4 的 activation gap 是否能通过 activation granularity 缓解，并定位最值得作为后续 mixed precision / selective A8 基线的 Conv2d 子集。本阶段共形成 18 个正式 full-grid eval 结果（NE006a-r），全部使用 `478 x 25 = 11950` 固定 grid、seed `20260507`。复核结果显示，18 个正式 eval 行数均为 `11950`，对应 final checkpoint verification 均 `passed=true`。
+
+固定背景：
+
+- 主对象：`NE000_2 W4A4 final`，SNR mean/median `12.9150 / 13.1180`，SSIM mean/median `0.939563 / 0.954078`
+- weight-only 上限参照：`E007 W4A32 final`，SNR mean/median `17.7856 / 18.1128`，SSIM mean/median `0.964137 / 0.978461`
+- 起点：`e007_w4a32_nbitsa4_metadata_seed.pth`
+- 所有 granularity 实验均保持 `n_bits_w=4`、`n_bits_a=4`、`iters_a=5000`、`activation_lr=0.0004`、`lp_norm=2.4`
+- `mse_grid` 在 NE006 中主要承担细粒度 delta shape 初始化职责；实验解释以 granularity 为主，不把它重新解释为 range/clipping 路线
+
+NE006 全量结果表：
+
+| id | strategy | granularity | selected | final SNR mean/median | final SSIM mean/median | recon gain | vs W4A4 | gap to W4A32 |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| NE006a | g4 selective split+merge+stage_output | g4 | 15 | 13.2824 / 13.4767 | 0.943762 / 0.958305 | +1.5970 | +0.3674 | -4.5032 |
+| NE006b | per-channel selective split+merge+stage_output | per-channel | 15 | 13.2731 / 13.4541 | 0.944148 / 0.958580 | +1.5010 | +0.3582 | -4.5125 |
+| NE006c | g4 all Conv2d | g4 | 31 | 13.7231 / 13.9766 | 0.945327 / 0.960126 | +1.0354 | +0.8082 | -4.0624 |
+| NE006d | per-channel all Conv2d | per-channel | 31 | 13.6752 / 13.9117 | 0.945889 / 0.960663 | +1.1144 | +0.7603 | -4.1104 |
+| NE006e | g4 stage_output_conv | g4 | 5 | 13.2582 / 13.4803 | 0.940681 / 0.955035 | +1.7208 | +0.3433 | -4.5274 |
+| NE006f | g4 split+merge | g4 | 10 | 12.9314 / 13.1217 | 0.942282 / 0.956952 | +1.6832 | +0.0164 | -4.8542 |
+| NE006g | g4 conv role | g4 | 15 | 13.2241 / 13.4930 | 0.941117 / 0.956052 | +1.6087 | +0.3091 | -4.5615 |
+| NE006h | g4 fusion branch | g4 | 10 | 12.9314 / 13.1217 | 0.942282 / 0.956952 | +1.6832 | +0.0164 | -4.8542 |
+| NE006i | g4 head | g4 | 1 | 12.9031 / 13.1007 | 0.939624 / 0.954139 | +1.7425 | -0.0119 | -4.8825 |
+| NE006j | g4 stage_output+conv role | g4 | 20 | 13.6186 / 13.8908 | 0.942366 / 0.956958 | +1.4224 | +0.7036 | -4.1670 |
+| NE006k | g4 all Conv2d except split/merge | g4 | 21 | 13.6097 / 13.8824 | 0.942403 / 0.957057 | +1.4256 | +0.6948 | -4.1759 |
+| NE006l | g4 all Conv2d except head | g4 | 30 | 13.7326 / 13.9838 | 0.945303 / 0.960038 | +1.0334 | +0.8177 | -4.0529 |
+| NE006m | g4 stage1 Conv2d | g4 | 6 | 13.1610 / 13.3724 | 0.940107 / 0.954443 | +1.6499 | +0.2460 | -4.6246 |
+| NE006n | g4 stage2 Conv2d | g4 | 6 | 12.8185 / 13.0006 | 0.939369 / 0.953903 | +1.7225 | -0.0965 | -4.9671 |
+| NE006o | g4 stage3 Conv2d | g4 | 6 | 12.8957 / 13.0939 | 0.939752 / 0.954255 | +1.7152 | -0.0193 | -4.8899 |
+| NE006p | g4 stage4 Conv2d | g4 | 6 | 13.1833 / 13.4054 | 0.940243 / 0.954534 | +1.5252 | +0.2683 | -4.6023 |
+| NE006q | g4 stage5 Conv2d | g4 | 6 | 13.2033 / 13.4520 | 0.943476 / 0.958300 | +1.5356 | +0.2883 | -4.5823 |
+| NE006r | g4 stage1+stage4+stage5 Conv2d | g4 | 18 | 13.8098 / 14.0845 | 0.945084 / 0.959776 | +1.1656 | +0.8948 | -3.9758 |
+
+按 final SNR mean 排序的关键层级：
+
+1. `NE006r stage1+stage4+stage5 Conv2d g4`：`13.8098`，`+0.8948 dB`，selected 18
+2. `NE006l all Conv2d except head g4`：`13.7326`，`+0.8177 dB`，selected 30
+3. `NE006c all Conv2d g4`：`13.7231`，`+0.8082 dB`，selected 31
+4. `NE006d all Conv2d per-channel`：`13.6752`，`+0.7603 dB`，selected 31
+5. `NE006j stage_output+conv role g4`：`13.6186`，`+0.7036 dB`，selected 20
+6. `NE006k all Conv2d except split/merge g4`：`13.6097`，`+0.6948 dB`，selected 21
+
+阶段性结论：
+
+1. Conv2d activation granularity 仍是 W4A4 的主要可优化方向，但收益上限有限。最佳 NE006r 追回 `+0.8948 dB`，但距离 W4A32 仍有 `-3.9758 dB` gap。
+2. 新协议 W4A4 与旧 E006 结论不完全一致。旧协议中 `split_proj + merge_proj + stage_output_conv` 是强候选；新协议 W4A4 下 split/merge 基本无效，NE006f/NE006h 只有 `+0.0164 dB`。
+3. g4 比 per-channel 更适合作为当前主线。all Conv2d g4 比 all Conv2d per-channel 高 `+0.0479 dB`，selective g4 也略高于 selective per-channel。per-channel 不再是必然上限。
+4. `head` 应从 W4A4 granularity 主策略中排除。NE006i 单独低于 baseline，NE006l 去掉 head 后反而略高于 all Conv2d。
+5. stage1/4/5 是正收益组合，stage2/3 是负收益或近零收益。NE006r 不包含 stage2/3 仍超过 NE006l，说明 stage2/3 不是必要条件，可能拖累整体策略。
+6. 单 stage 不够强，但 stage1/4/5 有明显组合效应。最强单 stage 只有 stage5 的 `+0.2883 dB`，三者组合达到 `+0.8948 dB`。
+7. by-source 结论保持一致：主要收益来自 Anisotropic 与 Shots0001，Kerry3D 提升很小。这说明 W4A4 的 residual gap 不是所有 source 均匀下降，后续策略需要检查 source stability。
+8. NE006r 在高输入 SNR 和高 missing rate 条件下相对 NE006l 更有优势，因此比 NE006l 更适合作为后续 W4A4 主 baseline。
+
+NE006 收束决策：
+
+- 当前 W4A4 g4 主 baseline：`NE006r stage1+stage4+stage5 Conv2d g4`
+- W4A4 g4 上限参考：`NE006l all Conv2d except head g4` 和 `NE006c all Conv2d g4`
+- 不再优先投入：range/clipping、split/merge、head、stage2/stage3 单独 g4、更多 per-channel sweep
+- 下一阶段：进入 NE007 selective A8 / mixed precision。建议以 NE006r 为紧凑 g4 基线，比较 `stage1+stage4+stage5 Conv2d` 升 A8，以及 `all Conv2d except head` 升 A8 作为上限参考。
+
 ## 2026-05-12 论文图件工作区初始化
 
 为本科毕业论文第 4 章实验结果展示新增图件管理工作区：
