@@ -9564,3 +9564,125 @@ NE006 收束决策：
 - W4A4 g4 上限参考：`NE006l all Conv2d except head g4` 和 `NE006c all Conv2d g4`
 - 不再优先投入：range/clipping、split/merge、head、stage2/stage3 单独 g4、更多 per-channel sweep
 - 下一阶段：进入 NE007 selective A8 / mixed precision。建议以 NE006r 为紧凑 g4 基线，比较 `stage1+stage4+stage5 Conv2d` 升 A8，以及 `all Conv2d except head` 升 A8 作为上限参考。
+
+## 2026-05-14 NE007 selective A8 / mixed precision 初步统筹计划
+
+本节在实现和跑实验之前记录 NE007 的阶段目标、命名、配置口径和分支决策。NE007 的定位不是一次性穷举所有 A4/A8 组合，而是在 NE006r 已成为 W4A4 g4 主 baseline 后，建立一个可恢复、可验证、可解释的 activation mixed precision 工作流。
+
+### 1. 阶段目标
+
+NE007 要回答的核心问题是：
+
+`W4 + mostly A4 activation + selective A8 activation` 是否能用较少 A8 quantizer 显著缩小 W4A4 到 W4A32 的剩余 gap。
+
+具体目标：
+
+1. 验证 NE006r 的正收益组合 `stage1+stage4+stage5 Conv2d` 升 A8 后是否继续提升。
+2. 验证 stage2/stage3 等 residual Conv2d 组在 A4 g4 下无效，是否只是因为 A4 表达太粗。
+3. 用 `all Conv2d except head -> A8` 建立 selective A8 上限参考。
+4. 记录 activation effective bit counts，避免把全局 `n_bits_a=4`、BRECQ first/last 8bit 和 NE007 selector override A8 混在一起解释。
+5. 用 full-grid、by-source、by-SNR、by-missing-rate 同时判断整体收益和 source stability。
+
+### 2. 固定实验口径
+
+- 数据协议：`paper5_energy_filtered_perpatch_absmax`
+- 起点：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE000_2_normalized_w4a4_activation_reconstruction_probe/inputs/e007_w4a32_nbitsa4_metadata_seed.pth`
+- calibration：`SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- test：`SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- eval grid：`478 x 25 = 11950` rows，seed `20260507`
+- weight：`n_bits_w=4`，沿用 W4 起点和 BRECQ first/last 8bit 策略
+- activation base：`n_bits_a=4`
+- activation reconstruction：`iters_a=5000`，`activation_lr=0.0004`，`lp_norm=2.4`
+- activation range：优先沿用 `mse_grid`；group-wise 时使用 `activation_group_size=4`
+
+### 3. 基础设施要求
+
+实现前必须先补 mixed precision plumbing：
+
+- 新增 activation bitwidth override 配置，支持按 selector group 将指定 activation quantizer `bitwidth_refactor(8)`。
+- selector 复用现有结构标签：`index`、`name_contains`、`stage`、`branch`、`role`、`module_type`。其中 `infer_quantizer_structure()` 已将 head 标成 `stage="head"`、`role="head"`，后续 `all Conv2d except head` 应通过 exclude selector 明确排除。
+- checkpoint 保存时必须保留 override 配置；重新通过 `evaluate_quantized_scrn.py`、`evaluate_quantized_scrn_grid.py` 或 `verify_quantized_scrn.py` 加载时，必须在加载 state dict 前恢复相同 bitwidth。
+- verification 需要报告 activation bit counts、active bit counts、override selected names 和 output quantizer 是否排除。
+- 未配置 override 时，NE000-NE006 的统一 `n_bits_a` 行为必须不变。
+
+计划配置字段示意：
+
+```json
+"activation_bitwidth_overrides": [
+  {
+    "n_bits": 8,
+    "selector_groups": [
+      {"stage": "stage1", "module_type": "Conv2d"},
+      {"stage": "stage4", "module_type": "Conv2d"},
+      {"stage": "stage5", "module_type": "Conv2d"}
+    ]
+  }
+]
+```
+
+### 4. 命名约定
+
+配置文件：
+
+- `configs/activation_quantization/ne007a_stage145_conv2d_a8.json`
+- `configs/activation_quantization/ne007b_stage145_g4_stage23_conv2d_a8.json`
+- `configs/activation_quantization/ne007c_all_conv2d_except_head_a8.json`
+
+run root：
+
+- quant：`runs/activation_quantization/NE007_w4a4_mixed_precision/quant`
+- eval：`runs/activation_quantization/NE007_w4a4_mixed_precision/eval`
+
+run name 后缀：
+
+- `ne007a_w4a4_stage145_conv2d_a8_group4_a5000_1024cali_gpuX`
+- `ne007b_w4a4_stage145_g4_stage23_a8_group4_a5000_1024cali_gpuX`
+- `ne007c_w4a4_all_conv2d_except_head_a8_group4_a5000_1024cali_gpuX`
+
+失败重跑使用 `_rerun`、`_rerun2` 等后缀，并记录失败 run 是否产出 pre-act、final checkpoint、config、metrics 或 verification。
+
+### 5. 初始锚点实验矩阵
+
+| id | 策略 | 目标 | 主要判断 |
+|---|---|---|---|
+| NE007a | `stage1+stage4+stage5 Conv2d -> A8` | 直接验证 NE006r 主正收益组合升 A8 是否继续增益 | 若接近 NE007c，后续做最小 A8 subset |
+| NE007b | `NE006r g4 + stage2/stage3 Conv2d A8` | 检查 residual Conv2d 在 A4 下无效是否由 bitwidth 限制导致 | 若 Kerry3D 或 overall 改善，后续拆 residual role |
+| NE007c | `all Conv2d except head -> A8` | selective A8 上限参考 | 若仍弱，停止堆 A8，转向重建目标或插入位置 |
+
+对照必须至少包含：
+
+- `NE000_2 W4A4 baseline`：`12.9150 / 13.1180`
+- `NE006r stage1+stage4+stage5 Conv2d g4`：`13.8098 / 14.0845`
+- `NE006l all Conv2d except head g4`：`13.7326 / 13.9838`
+- `E007 W4A32 final`：`17.7856 / 18.1128`
+
+### 6. 分支决策
+
+- 若 NE007a 明显超过 NE006r 且接近 NE007c：说明 NE006r 选中的 stage1/4/5 是主收益来源，下一轮做 stage/role 剪枝，目标是减少 A8 count。
+- 若 NE007c 明显强于 NE007a：说明还有遗漏 Conv2d 组，下一轮按 stage2、stage3、fusion、cnn、stage_output 拆分。
+- 若 NE007b 改善 Kerry3D：优先围绕 source stability 做 residual group 拆分，而不是只追 overall mean。
+- 若 NE007a/b/c 均提升有限：说明单纯 activation bitwidth 不是主要瓶颈，后续回到 activation reconstruction target、teacher 模型、zero-point 或 quantizer placement。
+- 若某个结果只改善 Anisotropic / Shots0001 但 Kerry3D 继续弱：记录为 source-biased improvement，不直接作为稳定主策略。
+
+### 7. 每次实验日志必须包含
+
+- config path
+- command
+- GPU 使用情况与偏离原因
+- quant run dir
+- pre-act checkpoint path
+- final checkpoint path
+- verification path 与 `passed=true/false`
+- activation bit counts 与 selected override names
+- full-grid row count
+- overall SNR/SSIM mean/median
+- vs NE000_2 / NE006r / NE006l / E007 W4A32
+- by-source 关键结论
+- by-SNR 关键结论
+- by-missing-rate 关键结论
+- 人类可读结论
+- 下一步决策
+
+### 8. 当前执行决策
+
+先实现 NE007 mixed precision 基础设施并提交，再跑 NE007a-c 三个锚点实验。三者完成前不扩展更多组合；锚点结果出来后再按上述分支规则决定是否进入第二轮 follow-up。

@@ -7654,3 +7654,64 @@ git 提交范围进一步调整为只提交代码、说明和日志类文件：
 - 图册内容：478 张 clean normalized patch，每页 48 张，共 10 页
 
 生成结果保留在本地 `candidates/clean_patch_atlas/`，包括 PDF、10 张 PNG、`selection_index_v001.csv` 和 `manifest_v001.json`。这些结果文件按 `.gitignore` 规则不提交；代码、测试、README、`experiment_info.json` 和日志提交。测试命令 `conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.paper_artifacts.tests.test_clean_patch_atlas` 已通过。
+
+## 2026-05-14 NE007 W4A4 selective A8 / mixed precision 统筹计划
+
+本节在开始实现前记录 NE007 的整体统筹计划。NE007 不是单个孤立实验，而是 W4A4 activation quantization 在 NE006 收束后的下一阶段：先补齐 mixed precision 基础设施，再用少量锚点实验判断后续是否继续细分。
+
+固定背景：
+
+- 当前默认数据协议：`paper5_energy_filtered_perpatch_absmax`
+- calibration：`SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_cali_1024_stratified`
+- test：`SCRN_BRECQ_app/scrn_repro/datasets/scrn_paper5_energy_filtered_perpatch_absmax_test_478`
+- 正式评估：`478 x 25 = 11950` fixed grid，seed `20260507`
+- 当前 W4A4 g4 主 baseline：`NE006r stage1+stage4+stage5 Conv2d g4`
+- NE006r final SNR mean/median：`13.8098 / 14.0845`
+- NE006r selected count：`18`
+- W4A32 上限参照：`E007 W4A32 final`，SNR mean/median `17.7856 / 18.1128`
+
+NE007 主目标：
+
+- 验证 `W4 + mostly A4 activation + selective A8 activation` 是否能显著缩小 NE006r 到 W4A32 的剩余 gap。
+- 找到 A8 activation quantizer 数量、结构位置和 full-grid 质量收益之间的关系。
+- 判断继续做 mixed precision 是否比继续扩展纯 g4 granularity 更有价值。
+
+基础设施计划：
+
+1. 新增 activation bitwidth override 能力，支持按 `stage`、`branch`、`role`、`module_type`、`index` 或 selector group 将指定 activation quantizer 升 A8。
+2. checkpoint 的 `quant_config` 必须保存 mixed precision 配置；eval、grid eval 和 verify 重新加载 checkpoint 时必须恢复逐 quantizer bitwidth，不能退回统一 `n_bits_a`。
+3. metrics / verification 需要记录 activation effective bit counts，并区分全局 `n_bits_a=4`、BRECQ 固有 first/last 8bit activation、NE007 主动 selector override A8。
+4. 默认未配置 override 时，现有 NE000-NE006 行为保持不变。
+
+计划新增配置命名：
+
+- `SCRN_BRECQ_app/scrn_brecq/configs/activation_quantization/ne007a_stage145_conv2d_a8.json`
+- `SCRN_BRECQ_app/scrn_brecq/configs/activation_quantization/ne007b_stage145_g4_stage23_conv2d_a8.json`
+- `SCRN_BRECQ_app/scrn_brecq/configs/activation_quantization/ne007c_all_conv2d_except_head_a8.json`
+
+计划 run root：
+
+- quant：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE007_w4a4_mixed_precision/quant`
+- eval：`SCRN_BRECQ_app/scrn_brecq/runs/activation_quantization/NE007_w4a4_mixed_precision/eval`
+
+计划锚点实验：
+
+| id | 目的 | 初始策略 | 解释 |
+|---|---|---|---|
+| NE007a | 验证 NE006r 正收益组合升 A8 是否继续增益 | `stage1+stage4+stage5 Conv2d -> A8` | 如果接近 NE007c，说明主收益集中在 NE006r 组合 |
+| NE007b | 检查 residual Conv2d 是否只是 A4 太粗 | `NE006r g4 + stage2/stage3 Conv2d A8` | 如果改善 Kerry3D 或 overall，后续再拆 residual group |
+| NE007c | selective A8 上限参考 | `all Conv2d except head -> A8` | 如果仍不强，说明单纯 activation bitwidth 不是主瓶颈 |
+
+分支决策规则：
+
+- 若 NE007a 已接近 NE007c：后续做 stage/role 剪枝，目标是减少 A8 count。
+- 若 NE007c 明显强于 NE007a：后续按 stage2/stage3、fusion、stage_output、cnn role 拆分，定位遗漏组。
+- 若 NE007a/b/c 均提升有限：暂停继续堆 A8，转向 reconstruction target、teacher 模型、activation 插入位置或 zero-point 机制。
+- 若 overall 提升但 Kerry3D 继续弱：单独做 source-stability 分析，不直接把 NE007 作为稳定策略。
+
+日志与执行要求：
+
+- 每个 NE007 实验必须记录 config path、command、GPU 选择、run dir、checkpoint path、verification summary、full-grid overall、by-source、by-SNR、by-missing-rate、人类可读结论和后续决策。
+- 涉及 GPU 实验前必须先查看 `nvidia-smi`；单卡优先级仍为 `1 -> 2 -> 3 -> 0`，偏离时记录原因。
+- 失败 run 不覆盖、不静默修改变量；使用 `_rerun` / `_rerun2` 后缀，并在日志中记录失败原因。
+- NE007 初步阶段先限制为 3 个锚点实验；只有锚点结果支持继续细分时，再开启下一轮 3-5 个 follow-up。
