@@ -65,6 +65,22 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
         self.assertTrue(activation_checkpoint["quant_config"]["act_quant"])
         self.assertEqual(activation_checkpoint["quant_config"]["n_bits_a"], 8)
 
+    def test_activation_only_checkpoint_config_preserves_activation_bitwidth_overrides(self) -> None:
+        checkpoint = {"quant_config": {"n_bits_w": 4, "n_bits_a": 4, "act_quant": False, "scale_method": "mse"}}
+        overrides = [{"n_bits": 8, "selector_groups": [{"stage": "stage1", "module_type": "Conv2d"}]}]
+        config = normalize_config(
+            {
+                "weight_recon_checkpoint": __file__,
+                "act_quant": True,
+                "n_bits_a": 4,
+                "activation_bitwidth_overrides": overrides,
+            }
+        )
+
+        activation_checkpoint = build_activation_only_checkpoint_config(checkpoint, config)
+
+        self.assertEqual(activation_checkpoint["quant_config"]["activation_bitwidth_overrides"], overrides)
+
     def test_config_file_supplies_activation_range_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             checkpoint = Path(tmpdir) / "weight_recon.pth"
@@ -128,6 +144,8 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
                 '[{"role":"merge_proj","module_type":"Conv2d"}]',
                 "--range-exclude-selector-groups-json",
                 '[{"stage":"stage5","module_type":"Conv2d"}]',
+                "--activation-bitwidth-overrides-json",
+                '[{"n_bits":8,"selector_groups":[{"stage":"stage1","module_type":"Conv2d"}]}]',
                 "--cuda-device-index",
                 "2",
             ]
@@ -149,7 +167,25 @@ class ActivationOnlyQuantizeScrnTest(unittest.TestCase):
         self.assertEqual(args.range_max_values_per_layer, 1234)
         self.assertEqual(args.range_selector_groups_json, '[{"role":"merge_proj","module_type":"Conv2d"}]')
         self.assertEqual(args.range_exclude_selector_groups_json, '[{"stage":"stage5","module_type":"Conv2d"}]')
+        self.assertEqual(
+            args.activation_bitwidth_overrides_json,
+            '[{"n_bits":8,"selector_groups":[{"stage":"stage1","module_type":"Conv2d"}]}]',
+        )
         self.assertEqual(args.cuda_device_index, 2)
+
+    def test_normalize_config_parses_activation_bitwidth_overrides_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint = Path(tmpdir) / "weight_recon.pth"
+            checkpoint.write_bytes(b"placeholder")
+
+            config = normalize_config(
+                {
+                    "weight_recon_checkpoint": str(checkpoint),
+                    "activation_bitwidth_overrides_json": '[{"n_bits":8,"selector_groups":[{"stage":"stage1"}]}]',
+                }
+            )
+
+        self.assertEqual(config["activation_bitwidth_overrides"], [{"n_bits": 8, "selector_groups": [{"stage": "stage1"}]}])
 
     def test_normalize_config_records_cuda_device_index_with_cuda(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

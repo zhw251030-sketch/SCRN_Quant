@@ -7715,3 +7715,51 @@ NE007 主目标：
 - 涉及 GPU 实验前必须先查看 `nvidia-smi`；单卡优先级仍为 `1 -> 2 -> 3 -> 0`，偏离时记录原因。
 - 失败 run 不覆盖、不静默修改变量；使用 `_rerun` / `_rerun2` 后缀，并在日志中记录失败原因。
 - NE007 初步阶段先限制为 3 个锚点实验；只有锚点结果支持继续细分时，再开启下一轮 3-5 个 follow-up。
+
+## 2026-05-14 NE007 mixed precision 基础设施实现
+
+本次提交实现 NE007 第一阶段基础设施，不启动 GPU 实验，不产生 quant/eval run dir 或 checkpoint。目标是让 `W4A4 + selective A8 activation` 能通过配置进入 activation-only quantization、checkpoint 保存、eval reload 和 verify 报告链路。
+
+实现内容：
+
+- 新增 `quant/activation_precision.py`，提供 `activation_bitwidth_overrides` 标准化、selector group 选择、`bitwidth_refactor(n_bits)` 应用和 effective activation bit count summary。
+- `activation_only_quantize_scrn.py` 新增 `--activation-bitwidth-overrides-json`，并在 activation init/range calibration 前应用 mixed precision override。
+- activation-only checkpoint `quant_config` 现在保存 `activation_bitwidth_overrides`，metrics/summary 记录 `activation_bitwidth_summary`，包括 bit counts、disabled count 和 selected override names。
+- `evaluate_quantized_scrn.py` 在 checkpoint rebuild 时于 `set_first_last_layer_to_8bit()` 之后恢复 per-activation bitwidth override，避免 eval/grid eval 回退到统一 `n_bits_a`。
+- `verify_quantized_scrn.py` 报告 activation bit counts、enabled activation bit counts、disabled count、override 配置和 selected override names。
+- 新增/扩展测试覆盖 selector union、exclude、默认排除 output quantizer、后置 override 覆盖前置 override、CLI JSON 解析、checkpoint config 保留、eval rebuild 恢复和 verify bit count 报告。
+
+配置接口：
+
+```json
+"activation_bitwidth_overrides": [
+  {
+    "n_bits": 8,
+    "selector_groups": [
+      {"stage": "stage1", "module_type": "Conv2d"},
+      {"stage": "stage4", "module_type": "Conv2d"},
+      {"stage": "stage5", "module_type": "Conv2d"}
+    ],
+    "exclude_selector_groups": []
+  }
+]
+```
+
+验证：
+
+- 红测：新增测试首次运行失败，失败点为缺少 `activation_precision` 模块、CLI 参数、checkpoint override 保存、eval rebuild 应用和 verify bit count 报告。
+- 绿测：`conda run -n quant python -m unittest SCRN_BRECQ_app.scrn_brecq.tests.test_activation_precision SCRN_BRECQ_app.scrn_brecq.tests.test_activation_only_quantize_scrn SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_quantized_scrn SCRN_BRECQ_app.scrn_brecq.tests.test_verify_quantized_scrn`，`Ran 30 tests ... OK`。
+
+实验记录：
+
+- run dir：无，本次 infra-only。
+- checkpoint path：无，本次 infra-only。
+- 数据协议：未运行数据实验；后续仍使用 `paper5_energy_filtered_perpatch_absmax`。
+- GPU 使用情况：未使用 GPU；无 `nvidia-smi`。
+- full-grid 指标：无，本次未做 `478 x 25 = 11950` eval。
+- by-source / by-SNR / by-missing-rate：无，本次未评估。
+
+后续决策：
+
+- 下一步单独新增 NE007a/b/c 配置文件，再按 GPU 原则启动 NE007a 锚点实验。
+- 正式实验时必须在 verification 和 eval 日志中记录 activation bit counts 与 selected override names，确认 checkpoint reload 后 mixed precision 生效。

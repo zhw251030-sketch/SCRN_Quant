@@ -9686,3 +9686,97 @@ run name 后缀：
 ### 8. 当前执行决策
 
 先实现 NE007 mixed precision 基础设施并提交，再跑 NE007a-c 三个锚点实验。三者完成前不扩展更多组合；锚点结果出来后再按上述分支规则决定是否进入第二轮 follow-up。
+
+## 2026-05-14 NE007 mixed precision infra 实现记录
+
+本次执行 NE007 第一阶段：mixed precision 基础设施。没有启动 GPU 量化或 grid eval，也没有产生 run dir、checkpoint 或 full-grid 指标。
+
+### 1. 实现目标
+
+让 `W4A4 + selective A8 activation` 成为正式可配置路径：
+
+- activation-only quantization 可通过 `activation_bitwidth_overrides` 将 selector group 命中的 activation quantizer 改为 A8 或其他 `2..8` bit。
+- checkpoint `quant_config` 保存 override 配置。
+- eval/grid eval/verify 重新构建 QuantModel 时恢复逐 activation bitwidth。
+- metrics、summary、verification 报告 effective activation bit counts 与 selected override names。
+- 未配置 override 时，NE000-NE006 的统一 `n_bits_a` 行为保持兼容。
+
+### 2. 配置接口
+
+新增字段：
+
+```json
+"activation_bitwidth_overrides": [
+  {
+    "n_bits": 8,
+    "selector_groups": [
+      {"stage": "stage1", "module_type": "Conv2d"},
+      {"stage": "stage4", "module_type": "Conv2d"},
+      {"stage": "stage5", "module_type": "Conv2d"}
+    ],
+    "exclude_selector_groups": []
+  }
+]
+```
+
+规则：
+
+- `n_bits` 限制为 `2..8`。
+- `selector_groups` 为 union。
+- `exclude_selector_groups` 从 union 中扣除。
+- 默认不包含最后 output activation quantizer，沿用现有 selector 语义。
+- 多个 override 按列表顺序应用，后者可覆盖前者 bitwidth。
+
+### 3. 代码变更
+
+- 新增 `quant/activation_precision.py`：
+  - `normalize_activation_bitwidth_overrides()`
+  - `apply_activation_bitwidth_overrides()`
+  - `summarize_activation_bitwidths()`
+- `activation_only_quantize_scrn.py`：
+  - 新增 CLI 参数 `--activation-bitwidth-overrides-json`
+  - 在 activation init/range calibration 前应用 override
+  - metrics/summary/checkpoint config 写入 activation bitwidth summary
+- `evaluate_quantized_scrn.py`：
+  - checkpoint rebuild 时恢复 override
+  - eval metrics/summary 显示 mixed precision 信息
+- `verify_quantized_scrn.py`：
+  - activation report 增加 bit counts、enabled bit counts、disabled count、override 配置和 selected names
+- 测试：
+  - 新增 `test_activation_precision.py`
+  - 新增 `test_verify_quantized_scrn.py`
+  - 扩展 `test_activation_only_quantize_scrn.py`
+  - 扩展 `test_evaluate_quantized_scrn.py`
+
+### 4. Verification summary
+
+TDD 红测：
+
+- 新增测试首次运行失败。
+- 失败点符合预期：缺少 `activation_precision` 模块、`--activation-bitwidth-overrides-json` 参数、checkpoint config 保存、eval rebuild 恢复和 verify bit count 报告。
+
+绿测：
+
+```bash
+conda run -n quant python -m unittest \
+  SCRN_BRECQ_app.scrn_brecq.tests.test_activation_precision \
+  SCRN_BRECQ_app.scrn_brecq.tests.test_activation_only_quantize_scrn \
+  SCRN_BRECQ_app.scrn_brecq.tests.test_evaluate_quantized_scrn \
+  SCRN_BRECQ_app.scrn_brecq.tests.test_verify_quantized_scrn
+```
+
+结果：`Ran 30 tests ... OK`。
+
+### 5. 实验结果记录
+
+- run dir：无，infra-only。
+- checkpoint path：无，infra-only。
+- 数据协议：本次未运行数据实验；后续正式实验继续使用 `paper5_energy_filtered_perpatch_absmax`。
+- GPU 使用情况：未使用 GPU；无 `nvidia-smi`。
+- full-grid 指标：无；未运行 normalized `478 x 25 = 11950` grid。
+- by-source / by-SNR / by-missing-rate：无；未运行评估。
+- 人类可读结论：NE007 mixed precision plumbing 已具备进入配置生成和锚点实验的条件。
+
+### 6. 后续决策
+
+下一步单独创建 NE007a/b/c 配置文件。随后按 GPU 优先级启动 NE007a，并在每个 run 的 verification/eval 日志中记录 activation bit counts、selected override names、checkpoint path 和 full-grid 分组结论。

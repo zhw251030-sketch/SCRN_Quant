@@ -11,6 +11,11 @@ from .activation_diagnostics import (
     collect_quantizer_rows,
     summarize_activation_quantizers,
 )
+from .activation_precision import (
+    apply_activation_bitwidth_overrides,
+    normalize_activation_bitwidth_overrides,
+    summarize_activation_bitwidths,
+)
 from .block_recon import BlockLossFunction, LinearTempDecay, block_reconstruction, reconstruction_loss
 from .data_utils import (
     DataSaverHook,
@@ -30,6 +35,7 @@ from .quant_model import QuantModel
 
 __all__ = [
     "AdaRoundQuantizer",
+    "apply_activation_bitwidth_overrides",
     "BaseQuantBlock",
     "BlockLossFunction",
     "build_activation_diagnostics_report",
@@ -41,6 +47,7 @@ __all__ = [
     "GradSaverHook",
     "LayerLossFunction",
     "LinearTempDecay",
+    "normalize_activation_bitwidth_overrides",
     "QuantModel",
     "QuantModule",
     "QuantFeatureFusionBlock",
@@ -59,5 +66,6 @@ __all__ = [
     "save_grad_data",
     "save_inp_oup_data",
     "specials",
+    "summarize_activation_bitwidths",
     "summarize_activation_quantizers",
 ]

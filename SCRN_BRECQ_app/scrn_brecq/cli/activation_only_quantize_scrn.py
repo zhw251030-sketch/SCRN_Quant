@@ -35,6 +35,11 @@ from SCRN_BRECQ_app.scrn_brecq.quant.activation_range import (
     normalize_selector_groups,
     parse_mse_shrink_ratios,
 )
+from SCRN_BRECQ_app.scrn_brecq.quant.activation_precision import (
+    apply_activation_bitwidth_overrides,
+    normalize_activation_bitwidth_overrides,
+    summarize_activation_bitwidths,
+)
 from SCRN_BRECQ_app.scrn_brecq.quant.activation_diagnostics import summarize_activation_quantizers
 from SCRN_BRECQ_app.scrn_brecq.quant.activation_diagnostics import collect_quantizer_rows
 from SCRN_BRECQ_app.scrn_brecq.utils import build_model_size_report, load_json, require_file
@@ -92,6 +97,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--range-selector-groups-json", default=None)
     parser.add_argument("--range-exclude-selector-groups-json", default=None)
     parser.add_argument("--range-max-values-per-layer", type=int, default=None)
+    parser.add_argument("--activation-bitwidth-overrides-json", default=None)
     parser.add_argument("--include-output-quantizer", action=argparse.BooleanOptionalAction, default=None)
     return parser
 
@@ -116,6 +122,10 @@ def main() -> None:
     state_dict = checkpoint["quant_model_state_dict"]
     restore_quantizer_state_shapes(quant_model, state_dict)
     quant_model.load_state_dict(state_dict, strict=True)
+    activation_bitwidth_override_summary = apply_activation_bitwidth_overrides(
+        quant_model,
+        config["activation_bitwidth_overrides"],
+    )
     quant_model.to(device)
     quant_model.eval()
 
@@ -158,6 +168,10 @@ def main() -> None:
     metrics["elapsed_seconds"] = float(time.time() - run_start_time)
     metrics["elapsed_minutes"] = metrics["elapsed_seconds"] / 60.0
     metrics["activation_quantizer_summary"] = summarize_activation_quantizers(collect_quantizer_rows(quant_model))
+    metrics["activation_bitwidth_summary"] = build_activation_bitwidth_summary(
+        quant_model,
+        activation_bitwidth_override_summary,
+    )
     metrics["activation_range_summary"] = activation_range_summary
     metrics["source_weight_recon_metrics"] = checkpoint.get("metrics", {})
     metrics["model_size"] = build_model_size_report(
@@ -200,6 +214,10 @@ def main() -> None:
                 "activation_reconstruction_seconds": float(activation_reconstruction_seconds),
                 "activation_reconstruction_minutes": float(activation_reconstruction_seconds) / 60.0,
                 "activation_quantizer_summary": summarize_activation_quantizers(collect_quantizer_rows(quant_model)),
+                "activation_bitwidth_summary": build_activation_bitwidth_summary(
+                    quant_model,
+                    activation_bitwidth_override_summary,
+                ),
             }
         )
         metrics["elapsed_seconds"] = float(time.time() - run_start_time)
@@ -245,6 +263,7 @@ def main() -> None:
                 "activation_granularity": config["activation_granularity"],
                 "activation_group_size": config["activation_group_size"],
                 "range_selector": activation_range_summary.get("selector", {}),
+                "activation_bitwidth_summary": metrics["activation_bitwidth_summary"],
             },
         },
     )
@@ -302,6 +321,7 @@ def load_and_resolve_config(args: argparse.Namespace, checkpoint: Mapping[str, A
         "range_exclude_selector_groups",
         "range_selector_groups_json",
         "range_exclude_selector_groups_json",
+        "activation_bitwidth_overrides",
         "range_max_values_per_layer",
         "include_output_quantizer",
     }
@@ -338,6 +358,7 @@ def build_activation_only_checkpoint_config(checkpoint: Mapping[str, Any], confi
     quant_config["act_quant"] = bool(config["act_quant"])
     quant_config["n_bits_a"] = int(config["n_bits_a"])
     quant_config["scale_method"] = str(config["scale_method"])
+    quant_config["activation_bitwidth_overrides"] = list(config["activation_bitwidth_overrides"])
     activation_checkpoint["quant_config"] = quant_config
     return activation_checkpoint
 
@@ -385,6 +406,8 @@ def default_config() -> dict[str, Any]:
         "range_exclude_selector_groups": None,
         "range_selector_groups_json": None,
         "range_exclude_selector_groups_json": None,
+        "activation_bitwidth_overrides": [],
+        "activation_bitwidth_overrides_json": None,
         "range_max_values_per_layer": 500_000,
         "include_output_quantizer": False,
         "distributed": False,
@@ -447,6 +470,10 @@ def normalize_config(config: Mapping[str, Any]) -> dict[str, Any]:
         "range_exclude_selector_groups",
         "range_exclude_selector_groups_json",
     )
+    normalized["activation_bitwidth_overrides"] = _normalize_config_activation_bitwidth_overrides(
+        normalized.get("activation_bitwidth_overrides"),
+        normalized.get("activation_bitwidth_overrides_json"),
+    )
     if normalized["activation_lr"] <= 0.0:
         raise ValueError(f"activation_lr must be positive, got {normalized['activation_lr']}")
     if normalized["range_loss_p"] <= 0.0:
@@ -495,6 +522,28 @@ def _normalize_config_selector_groups(
         except json.JSONDecodeError as exc:
             raise ValueError(f"{json_field_name} must be valid JSON.") from exc
     return normalize_selector_groups(value, field_name)
+
+
+def _normalize_config_activation_bitwidth_overrides(value: Any, json_value: Any) -> list[dict[str, Any]]:
+    """Parse optional activation bitwidth overrides from config or JSON CLI args."""
+    if json_value is not None:
+        try:
+            value = json.loads(str(json_value))
+        except json.JSONDecodeError as exc:
+            raise ValueError("activation_bitwidth_overrides_json must be valid JSON.") from exc
+    return normalize_activation_bitwidth_overrides(value)
+
+
+def build_activation_bitwidth_summary(
+    quant_model: torch.nn.Module,
+    override_summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Merge current effective bit counts with the original override audit."""
+    summary = summarize_activation_bitwidths(quant_model)
+    summary["override_count"] = int(override_summary.get("override_count", 0))
+    summary["activation_bitwidth_overrides"] = list(override_summary.get("activation_bitwidth_overrides", []))
+    summary["applied_overrides"] = list(override_summary.get("applied_overrides", []))
+    return summary
 
 
 def configure_visible_gpus(config: Mapping[str, Any]) -> None:

@@ -18,6 +18,10 @@ import torch
 from torch import nn
 
 from SCRN_BRECQ_app.scrn_brecq.quant import AdaRoundQuantizer, QuantModel, QuantModule
+from SCRN_BRECQ_app.scrn_brecq.quant.activation_precision import (
+    apply_activation_bitwidth_overrides,
+    normalize_activation_bitwidth_overrides,
+)
 from SCRN_BRECQ_app.scrn_brecq.utils import build_model_size_report
 from SCRN_BRECQ_app.scrn_repro.model import SCRNConfig, build_scrn_from_config
 from SCRN_BRECQ_app.scrn_repro.training import collect_environment, create_run_dir, write_json, write_summary
@@ -73,6 +77,10 @@ def main() -> None:
         source_checkpoint_path=checkpoint.get("source_checkpoint"),
         quant_checkpoint_path=checkpoint_path,
     )
+    metrics["activation_bitwidth_summary"] = apply_activation_bitwidth_overrides(
+        quant_model,
+        quant_config["activation_bitwidth_overrides"],
+    )
 
     run_dir = create_run_dir(args.run_root, run_name=args.run_name)
     np.save(run_dir / "prediction.npy", prediction)
@@ -108,6 +116,7 @@ def main() -> None:
                 "act_quant": act_quant,
                 "n_bits_w": quant_config["n_bits_w"],
                 "n_bits_a": quant_config["n_bits_a"],
+                "activation_bitwidth_summary": metrics["activation_bitwidth_summary"],
             },
         },
     )
@@ -159,6 +168,7 @@ def build_quant_model_from_checkpoint(checkpoint: Mapping[str, Any]) -> QuantMod
     )
     if not bool(quant_config["disable_8bit_head_stem"]):
         quant_model.set_first_last_layer_to_8bit()
+    apply_activation_bitwidth_overrides(quant_model, quant_config["activation_bitwidth_overrides"])
     return quant_model
 
 
@@ -221,6 +231,7 @@ def normalize_quant_config(raw_config: Mapping[str, Any]) -> dict[str, Any]:
         "act_quant": False,
         "disable_8bit_head_stem": False,
         "save_figure": False,
+        "activation_bitwidth_overrides": [],
     }
     for key, value in defaults.items():
         config.setdefault(key, value)
@@ -230,6 +241,9 @@ def normalize_quant_config(raw_config: Mapping[str, Any]) -> dict[str, Any]:
     config["act_quant"] = bool(config["act_quant"])
     config["disable_8bit_head_stem"] = bool(config["disable_8bit_head_stem"])
     config["save_figure"] = bool(config["save_figure"])
+    config["activation_bitwidth_overrides"] = normalize_activation_bitwidth_overrides(
+        config.get("activation_bitwidth_overrides")
+    )
     return config
 
 

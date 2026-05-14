@@ -25,6 +25,7 @@ from SCRN_BRECQ_app.scrn_brecq.cli.evaluate_quantized_scrn import (
     select_device,
 )
 from SCRN_BRECQ_app.scrn_brecq.quant import AdaRoundQuantizer, QuantModule
+from SCRN_BRECQ_app.scrn_brecq.quant.activation_precision import apply_activation_bitwidth_overrides, summarize_activation_bitwidths
 from SCRN_BRECQ_app.scrn_brecq.utils import build_model_size_report
 from SCRN_BRECQ_app.scrn_repro.training import write_json
 from SCRN_BRECQ_app.scrn_repro.utils import snr_db, ssim_score
@@ -66,6 +67,12 @@ def main() -> None:
 
     layer_report = inspect_weight_quantization(quant_model, max_offenders=int(args.max_offenders))
     activation_report = inspect_activation_quantization(quant_model)
+    activation_report.update(
+        apply_activation_bitwidth_overrides(
+            quant_model,
+            quant_config["activation_bitwidth_overrides"],
+        )
+    )
     clean, degraded = load_eval_arrays(clean_path, input_path)
     output_report = compare_fp32_and_quant_outputs(
         quant_model,
@@ -93,6 +100,7 @@ def main() -> None:
             "scale_method": quant_config["scale_method"],
             "act_quant": quant_config["act_quant"],
             "disable_8bit_head_stem": quant_config["disable_8bit_head_stem"],
+            "activation_bitwidth_overrides": quant_config["activation_bitwidth_overrides"],
         },
         "eval_paths": {"clean": str(clean_path), "input": str(input_path)},
         "layer_quantization": layer_report,
@@ -140,7 +148,7 @@ def inspect_activation_quantization(quant_model: torch.nn.Module) -> dict[str, A
         elif has_delta and not is_inited:
             rows.append({"name": name, "reason": "activation quantizer is not marked initialized"})
 
-    return {
+    report = {
         "quant_modules": len(quant_modules),
         "initialized_activation_quantizers": initialized_count,
         "activation_delta_count": delta_count,
@@ -149,6 +157,8 @@ def inspect_activation_quantization(quant_model: torch.nn.Module) -> dict[str, A
         "missing_activation_state_count": len(rows),
         "missing_activation_state": rows,
     }
+    report.update(summarize_activation_bitwidths(quant_model))
+    return report
 
 
 def inspect_weight_quantization(quant_model: torch.nn.Module, *, max_offenders: int) -> dict[str, Any]:
